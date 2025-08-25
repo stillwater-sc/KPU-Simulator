@@ -1,0 +1,86 @@
+# cmake/StillwaterKPUConfig.cmake.in
+# Package configuration file template
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Find dependencies
+find_dependency(Threads REQUIRED)
+
+# Optional dependencies
+if(@KPU_ENABLE_OPENMP@)
+    find_dependency(OpenMP)
+endif()
+
+if(@KPU_ENABLE_CUDA@)
+    find_dependency(CUDAToolkit)
+endif()
+
+if(@KPU_ENABLE_OPENCL@)
+    find_dependency(OpenCL)
+endif()
+
+# Include targets
+include("${CMAKE_CURRENT_LIST_DIR}/StillwaterKPUTargets.cmake")
+
+# Define components
+set(StillwaterKPU_COMPONENTS Memory Compute Fabric DMA Power Simulator Tools)
+
+# Component availability
+set(StillwaterKPU_Memory_FOUND TRUE)
+set(StillwaterKPU_Compute_FOUND TRUE)
+set(StillwaterKPU_Fabric_FOUND TRUE)
+set(StillwaterKPU_DMA_FOUND TRUE)
+set(StillwaterKPU_Power_FOUND TRUE)
+set(StillwaterKPU_Simulator_FOUND TRUE)
+set(StillwaterKPU_Tools_FOUND @KPU_BUILD_TOOLS@)
+
+# Check components
+foreach(comp ${StillwaterKPU_FIND_COMPONENTS})
+    if(NOT StillwaterKPU_${comp}_FOUND)
+        set(StillwaterKPU_FOUND FALSE)
+        if(StillwaterKPU_FIND_REQUIRED_${comp})
+            message(FATAL_ERROR "Required component ${comp} not found")
+        else()
+            message(WARNING "Optional component ${comp} not found")
+        endif()
+    endif()
+endforeach()
+
+# Version information
+set(StillwaterKPU_VERSION @PROJECT_VERSION@)
+set(StillwaterKPU_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(StillwaterKPU_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(StillwaterKPU_VERSION_PATCH @PROJECT_VERSION_PATCH@)
+
+# Feature flags
+set(StillwaterKPU_HAS_OPENMP @KPU_ENABLE_OPENMP@)
+set(StillwaterKPU_HAS_CUDA @KPU_ENABLE_CUDA@)
+set(StillwaterKPU_HAS_OPENCL @KPU_ENABLE_OPENCL@)
+set(StillwaterKPU_HAS_PYTHON @KPU_BUILD_PYTHON_BINDINGS@)
+
+check_required_components(StillwaterKPU)
+
+# Helper function to link KPU components
+function(target_link_kpu target)
+    set(options PRIVATE PUBLIC INTERFACE)
+    set(oneValueArgs "")
+    set(multiValueArgs COMPONENTS)
+    cmake_parse_arguments(LINK "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    
+    if(NOT LINK_COMPONENTS)
+        set(LINK_COMPONENTS Memory Compute Fabric DMA Simulator)
+    endif()
+    
+    set(link_type PRIVATE)
+    if(LINK_PUBLIC)
+        set(link_type PUBLIC)
+    elseif(LINK_INTERFACE)
+        set(link_type INTERFACE)
+    endif()
+    
+    foreach(comp ${LINK_COMPONENTS})
+        target_link_libraries(${target} ${link_type} StillwaterKPU::${comp})
+    endforeach()
+endfunction()
