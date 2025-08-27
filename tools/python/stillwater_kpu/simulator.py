@@ -48,28 +48,32 @@ class MockNativeSimulator:
         size = data.nbytes
         if addr + size > len(self._main_memory):
             raise RuntimeError(f"Write out of bounds: {addr + size} > {len(self._main_memory)}")
-        self._main_memory[addr:addr + size] = data.view(np.uint8)
+        # FIX: Use ravel() to flatten properly
+        self._main_memory[addr:addr + size] = data.ravel().view(np.uint8)
     
     def main_memory_read(self, addr: int, dtype: np.dtype, shape: Tuple[int, ...]):
         result = np.zeros(shape, dtype=dtype)
         size = result.nbytes
         if addr + size > len(self._main_memory):
             raise RuntimeError(f"Read out of bounds: {addr + size} > {len(self._main_memory)}")
-        result.view(np.uint8).flat[:] = self._main_memory[addr:addr + size]
+        # FIX: Use ravel() to flatten properly
+        result.ravel().view(np.uint8)[:] = self._main_memory[addr:addr + size]
         return result
     
     def scratchpad_write(self, addr: int, data: np.ndarray):
         size = data.nbytes
         if addr + size > len(self._scratchpad):
             raise RuntimeError(f"Write out of bounds: {addr + size} > {len(self._scratchpad)}")
-        self._scratchpad[addr:addr + size] = data.view(np.uint8)
+        # FIX: Use ravel() to flatten properly
+        self._scratchpad[addr:addr + size] = data.ravel().view(np.uint8)
     
     def scratchpad_read(self, addr: int, dtype: np.dtype, shape: Tuple[int, ...]):
         result = np.zeros(shape, dtype=dtype)
         size = result.nbytes
         if addr + size > len(self._scratchpad):
             raise RuntimeError(f"Read out of bounds: {addr + size} > {len(self._scratchpad)}")
-        result.view(np.uint8).flat[:] = self._scratchpad[addr:addr + size]
+        # FIX: Use ravel() to flatten properly
+        result.ravel().view(np.uint8)[:] = self._scratchpad[addr:addr + size]
         return result
     
     def dma_transfer_sync(self, src_addr: int, dst_addr: int, size: int, 

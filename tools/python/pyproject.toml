@@ -1,0 +1,91 @@
+# tools/python/pyproject.toml
+# Modern Python packaging configuration
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "pybind11>=2.10.0", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stillwater-kpu"
+version = "1.0.0"
+description = "Stillwater Knowledge Processing Unit Simulator"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "MIT"}
+authors = [
+    {name = "Stillwater Supercomputing", email = "info@stillwater-sc.com"}
+]
+keywords = ["simulation", "hardware", "matrix-multiplication", "kpu"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",  
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8", 
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+# PyPI classifiers: https://pypi.org/classifiers/
+
+dependencies = [
+    "numpy>=1.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black>=21.0",
+    "flake8>=3.9", 
+    "mypy>=0.910",
+]
+viz = [
+    "matplotlib>=3.3.0",
+    "plotly>=5.0",
+]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
+]
+all = [
+    "stillwater-kpu[dev,viz,docs]"
+]
+
+[project.urls]
+Homepage = "https://github.com/stillwater-sc/kpu-simulator"
+Documentation = "https://stillwater-kpu.github.io/domain-flow/"
+Repository = "https://github.com/stillwater-sc/kpu-simulator.git"
+Issues = "https://github.com/stillwater-sc/kpu-simulator/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["stillwater_kpu*"]
+
+[tool.setuptools.package-data]
+stillwater_kpu = ["*.pyi", "py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 88
+target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.7"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
