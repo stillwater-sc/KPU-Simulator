@@ -135,9 +135,15 @@ private:
     
 public:
     struct Config {
-        Size external_memory_mb = 1024;
-        Size scratchpad_kb = 512;
-        Size memory_bandwidth_gbps = 100;
+        Size external_memory_mb;
+        Size scratchpad_kb;
+        Size memory_bandwidth_gbps;
+
+        Config(Size ext_mb = 1024, Size scratch_kb = 512, Size bw = 100)
+            : external_memory_mb(ext_mb),
+            scratchpad_kb(scratch_kb),
+            memory_bandwidth_gbps(bw) {
+        }
     };
     
     explicit KPUSimulator(const Config& config = {});
