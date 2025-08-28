@@ -239,21 +239,47 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         compute_tiles.emplace_back(i);
     }
     
-    // Initialize DMA engines (default: ext->scratch and scratch->ext)
+    // Initialize DMA engines with better bank distribution
     dma_engines.reserve(config.dma_engine_count);
+    
+    // DMA 0: External bank 0 -> Scratchpad 0
     if (config.dma_engine_count >= 1) {
         dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, 0, 
                                 DMAEngine::MemoryType::SCRATCHPAD, 0);
     }
+    
+    // DMA 1: Scratchpad 0 -> External bank 0  
     if (config.dma_engine_count >= 2) {
         dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, 0, 
                                 DMAEngine::MemoryType::EXTERNAL, 0);
     }
-    // Add more DMA engines as needed for multi-bank configurations
-    for (size_t i = 2; i < config.dma_engine_count; ++i) {
-        // Default additional DMAs to bank-to-bank transfers
-        dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, i % config.memory_bank_count, 
-                                DMAEngine::MemoryType::EXTERNAL, (i + 1) % config.memory_bank_count);
+    
+    // DMA 2: External bank 1 -> Scratchpad 0 (if we have multiple banks)
+    if (config.dma_engine_count >= 3 && config.memory_bank_count > 1) {
+        dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, 1, 
+                                DMAEngine::MemoryType::SCRATCHPAD, 0);
+    }
+    
+    // DMA 3: Scratchpad 0 -> External bank 1
+    if (config.dma_engine_count >= 4 && config.memory_bank_count > 1) {
+        dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, 0, 
+                                DMAEngine::MemoryType::EXTERNAL, 1);
+    }
+    
+    // Additional DMA engines: distribute across available banks
+    for (size_t i = 4; i < config.dma_engine_count; ++i) {
+        size_t src_bank = (i / 2) % config.memory_bank_count;
+        size_t dst_bank = ((i / 2) + 1) % config.memory_bank_count;
+        
+        if (i % 2 == 0) {
+            // Even: External -> Scratchpad
+            dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, src_bank, 
+                                    DMAEngine::MemoryType::SCRATCHPAD, i % config.scratchpad_count);
+        } else {
+            // Odd: Scratchpad -> External  
+            dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, i % config.scratchpad_count,
+                                    DMAEngine::MemoryType::EXTERNAL, dst_bank);
+        }
     }
     
     sim_start_time = std::chrono::high_resolution_clock::now();
