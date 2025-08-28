@@ -1,208 +1,169 @@
-cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-
-# Project definition
-project(StillwaterKPU 
-    VERSION 1.0.0
-    DESCRIPTION "Stillwater Knowledge Processing Unit Simulator"
-    HOMEPAGE_URL "https://github.com/stillwater-sc/kpu-simulator"
-    LANGUAGES CXX C
-)
+cmake_minimum_required(VERSION 3.16)
+project(kpu_simulator VERSION 0.1.0 LANGUAGES CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Include CMake modules
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-include(CompilerOptions)
-include(Dependencies)
-include(Documentation)
-include(Testing)
-include(Packaging)
-
-# Project options
-option(KPU_BUILD_TESTS "Build test suite" ON)
-option(KPU_BUILD_EXAMPLES "Build examples" ON)
-option(KPU_BUILD_TOOLS "Build development tools" ON)
-option(KPU_BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
-option(KPU_BUILD_BENCHMARKS "Build benchmark suite" ON)
-option(KPU_BUILD_DOCS "Build documentation" OFF)
-option(KPU_ENABLE_OPENMP "Enable OpenMP parallelization" ON)
-option(KPU_ENABLE_CUDA "Enable CUDA support" OFF)
-option(KPU_ENABLE_OPENCL "Enable OpenCL support" OFF)
-option(KPU_ENABLE_PROFILING "Enable profiling support" OFF)
-option(KPU_ENABLE_SANITIZERS "Enable sanitizers" OFF)
-option(KPU_STATIC_ANALYSIS "Enable static analysis" OFF)
-
-# Build type
+# Set default build type
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
-
-# Global properties
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake Targets")
-
-# Output directories
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
-# Platform-specific settings
-if(WIN32)
-    add_definitions(-DNOMINMAX -DWIN32_LEAN_AND_MEAN)
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-endif()
-
-# Find required dependencies
-find_package(Threads REQUIRED)
-
-# Optional dependencies
-if(KPU_ENABLE_OPENMP)
-    find_package(OpenMP)
-    if(OpenMP_CXX_FOUND)
-        message(STATUS "OpenMP found: ${OpenMP_CXX_VERSION}")
-    else()
-        message(WARNING "OpenMP not found, disabling parallel operations")
-        set(KPU_ENABLE_OPENMP OFF)
+# Compiler-specific options
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic)
+        if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_compile_options(-O3 -march=native)
     endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        # Remove problematic default flags
+    foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE 
+                     CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        string(REGEX REPLACE "/RTC[^ ]*" "" ${flag_var} "${${flag_var}}")
+        string(REGEX REPLACE "/W[0-4]" "" ${flag_var} "${${flag_var}}")
+    endforeach()
+    
+    # Set our own flags
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W3 /EHsc")
+    set(CMAKE_CXX_FLAGS_DEBUG "/MDd /Zi /Od /D_DEBUG")
+    set(CMAKE_CXX_FLAGS_RELEASE "/MD /O2 /DNDEBUG")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/MD /O2 /Zi /DNDEBUG")
+    set(CMAKE_CXX_FLAGS_MINSIZEREL "/MD /O1 /DNDEBUG")
+    
+    # Define for DLL export/import
+    add_definitions(-DBUILDING_KPU_SIMULATOR)
+    
+    # Suppress specific warnings
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/wd4251 /wd4275 /wd4996)
 endif()
 
-if(KPU_ENABLE_CUDA)
-    find_package(CUDAToolkit)
-    if(CUDAToolkit_FOUND)
-        message(STATUS "CUDA found: ${CUDAToolkit_VERSION}")
-        enable_language(CUDA)
+# Include directories
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# Source files for the core simulator
+set(SIMULATOR_SOURCES
+    src/simulator/kpu_simulator.cpp
+)
+
+# Header files
+set(SIMULATOR_HEADERS
+    include/sw/kpu/simulator.hpp
+)
+
+# Create the core simulator library
+add_library(kpu_simulator_core STATIC ${SIMULATOR_SOURCES} ${SIMULATOR_HEADERS})
+target_include_directories(kpu_simulator_core PUBLIC 
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+# Test executable
+add_executable(kpu_test tests/test_main.cpp)
+target_link_libraries(kpu_test kpu_simulator_core)
+
+# Python bindings (optional, if pybind11 is available)
+find_package(pybind11 QUIET)
+if(pybind11_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
+    pybind11_add_module(stillwater_kpu src/bindings/python/kpu_bindings.cpp)
+    target_link_libraries(stillwater_kpu PRIVATE kpu_simulator_core)
+    
+    # Set properties for the Python module
+    target_compile_definitions(stillwater_kpu PRIVATE VERSION_INFO=${PROJECT_VERSION})
+    
+    # Install the Python module
+    install(TARGETS stillwater_kpu
+        COMPONENT python
+        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/python/stillwater_kpu
+    )
+    message(STATUS "Building Python bindings")
+else()
+    if(NOT pybind11_FOUND)
+        message(STATUS "pybind11 not found, skipping Python bindings")
     else()
-        message(WARNING "CUDA not found, disabling CUDA support")
-        set(KPU_ENABLE_CUDA OFF)
-    endif()
+        message(STATUS "Python bindings source not found")
+    endif()    
 endif()
-
-if(KPU_ENABLE_OPENCL)
-    find_package(OpenCL)
-    if(OpenCL_FOUND)
-        message(STATUS "OpenCL found: ${OpenCL_VERSION_STRING}")
-    else()
-        message(WARNING "OpenCL not found, disabling OpenCL support")
-        set(KPU_ENABLE_OPENCL OFF)
-    endif()
-endif()
-
-# Third-party dependencies
-add_subdirectory(third_party)
-
-# Component libraries (hardware components)
-add_subdirectory(components)
-
-# Core simulator engine
-add_subdirectory(src)
-
-# Development tools
-if(KPU_BUILD_TOOLS)
-    add_subdirectory(tools)
-endif()
-
-# Examples
-if(KPU_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
-
-# Tests
-if(KPU_BUILD_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
-endif()
-
-# Benchmarks
-if(KPU_BUILD_BENCHMARKS)
-    add_subdirectory(benchmarks)
-endif()
-
-# Documentation
-if(KPU_BUILD_DOCS)
-    add_subdirectory(docs)
-endif()
-
-# Packaging
-add_subdirectory(packaging)
 
 # Installation
-include(GNUInstallDirs)
+install(TARGETS kpu_simulator_core
+    EXPORT kpu_simulator_targets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 
-# Install public headers
 install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    DESTINATION include
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
-# Install CMake config files
+install(TARGETS kpu_test
+    DESTINATION bin
+)
+
+# Export targets for use by other projects
+install(EXPORT kpu_simulator_targets
+    FILE kpu_simulator_targets.cmake
+    NAMESPACE kpu::
+    DESTINATION lib/cmake/kpu_simulator
+)
+
+# Create config file for find_package support
 include(CMakePackageConfigHelpers)
-
-# Generate package config
-configure_package_config_file(
-    cmake/StillwaterKPUConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/StillwaterKPUConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StillwaterKPU
-)
-
-# Generate version file
 write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/StillwaterKPUConfigVersion.cmake
+    kpu_simulator_config_version.cmake
     VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
+    COMPATIBILITY AnyNewerVersion
 )
 
-# Install package config files
+configure_package_config_file(
+    cmake/kpu_simulator_config.cmake.in
+    kpu_simulator_config.cmake
+    INSTALL_DESTINATION lib/cmake/kpu_simulator
+)
+
 install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/StillwaterKPUConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/StillwaterKPUConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StillwaterKPU
+    ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config_version.cmake
+    DESTINATION lib/cmake/kpu_simulator
 )
 
-# Export targets for build tree
-export(EXPORT StillwaterKPUTargets
-    FILE ${CMAKE_CURRENT_BINARY_DIR}/StillwaterKPUTargets.cmake
-    NAMESPACE StillwaterKPU::
-)
 
-# Export targets for install tree
-install(EXPORT StillwaterKPUTargets
-    FILE StillwaterKPUTargets.cmake
-    NAMESPACE StillwaterKPU::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/StillwaterKPU
-)
+# Print comprehensive build summary
+message(STATUS "")
+message(STATUS "========== KPU Simulator Build Configuration ==========")
+message(STATUS "Project: ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ standard: C++${CMAKE_CXX_STANDARD}")
+message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Generator: ${CMAKE_GENERATOR}")
+if(MSVC)
+    message(STATUS "MSVC Version: ${MSVC_VERSION}")
+    message(STATUS "CXX Flags: ${CMAKE_CXX_FLAGS}")
+    message(STATUS "CXX Flags (${CMAKE_BUILD_TYPE}): ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+endif()
+message(STATUS "Source files: ${SIMULATOR_SOURCES}")
+if(TARGET kpu_test)
+    message(STATUS "Test executable: ENABLED")
+else()
+    message(STATUS "Test executable: DISABLED")
+endif()
+if(TARGET stillwater_kpu)
+    message(STATUS "Python bindings: ENABLED")
+else()
+    message(STATUS "Python bindings: DISABLED")
+endif()
+message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "======================================================")
+message(STATUS "")
 
-# Register package in user registry
-export(PACKAGE StillwaterKPU)
-
-# Summary
-message(STATUS "")
-message(STATUS "Configuration Summary:")
-message(STATUS "  Project: ${PROJECT_NAME} ${PROJECT_VERSION}")
-message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "  Install prefix: ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "  C++ standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "")
-message(STATUS "Features:")
-message(STATUS "  Tests: ${KPU_BUILD_TESTS}")
-message(STATUS "  Examples: ${KPU_BUILD_EXAMPLES}")
-message(STATUS "  Tools: ${KPU_BUILD_TOOLS}")
-message(STATUS "  Python bindings: ${KPU_BUILD_PYTHON_BINDINGS}")
-message(STATUS "  Benchmarks: ${KPU_BUILD_BENCHMARKS}")
-message(STATUS "  Documentation: ${KPU_BUILD_DOCS}")
-message(STATUS "")
-message(STATUS "Acceleration:")
-message(STATUS "  OpenMP: ${KPU_ENABLE_OPENMP}")
-message(STATUS "  CUDA: ${KPU_ENABLE_CUDA}")
-message(STATUS "  OpenCL: ${KPU_ENABLE_OPENCL}")
-message(STATUS "")
-message(STATUS "Development:")
-message(STATUS "  Profiling: ${KPU_ENABLE_PROFILING}")
-message(STATUS "  Sanitizers: ${KPU_ENABLE_SANITIZERS}")
-message(STATUS "  Static analysis: ${KPU_STATIC_ANALYSIS}")
+# Helpful build instructions
+message(STATUS "To build:")
+message(STATUS "  cmake --build . --config ${CMAKE_BUILD_TYPE}")
+message(STATUS "To run tests:")
+message(STATUS "  .\\${CMAKE_BUILD_TYPE}\\kpu_test.exe")
 message(STATUS "")
