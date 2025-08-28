@@ -71,7 +71,7 @@ def check_accelerator_support() -> Dict[str, bool]:
     try:
         import numpy as np
         # Check if numpy was built with OpenMP
-        config = np.__config__.show()
+        config = np.__config__
         support['numpy_openmp'] = 'openblas' in str(config).lower() or 'mkl' in str(config).lower()
     except:
         support['numpy_openmp'] = False
@@ -89,7 +89,7 @@ def check_accelerator_support() -> Dict[str, bool]:
     # Intel MKL
     try:
         import numpy as np
-        support['intel_mkl'] = 'mkl' in np.__config__.show().lower()
+        support['intel_mkl'] = 'mkl' in np.__config__.lower()
     except:
         support['intel_mkl'] = False
     

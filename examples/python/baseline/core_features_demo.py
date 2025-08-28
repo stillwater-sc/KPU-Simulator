@@ -10,7 +10,6 @@ def main():
     print("=" * 50)
     
     # System information
-    print("\n🖥️  System Information:")
     kpu.core.print_system_info()
     
     # Generate test matrices

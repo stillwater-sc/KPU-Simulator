@@ -23,7 +23,9 @@ python core_features_demo.py
 ## Recommended location
 
 Recommended directory structure for demos, tools, and educational examples.
+
 ```txt
+
 examples/
 ├── python/
 │   ├── basic/                    # ← Your simple usage examples
