@@ -63,6 +63,15 @@ def get_system_info() -> Dict[str, Any]:
     
     return info
 
+def show_np_config():
+    """Display NumPy configuration for debugging."""
+    try:
+        import numpy as np
+        print("NumPy Configuration:")
+        np.__config__.show()
+    except ImportError:
+        print("NumPy is not installed.")
+
 def check_accelerator_support() -> Dict[str, bool]:
     """Check what acceleration libraries are available."""
     support = {}
