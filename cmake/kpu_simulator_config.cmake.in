@@ -1,0 +1,8 @@
+# cmake/kpu_simulator_config.cmake.in
+# Package configuration file template
+
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/kpu_simulator_targets.cmake")
+
+check_required_components(kpu_simulator)

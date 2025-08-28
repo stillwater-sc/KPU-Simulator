@@ -29,8 +29,8 @@ stillwater-kpu/
 │   ├── Testing.cmake                     # Test configuration
 │   └── Packaging.cmake                   # CPack configuration
 ├── include/                              # Public headers (install)
-│   └── stillwater/
-│       └── kpu/
+│   └── sw/                               # sw == Stillwater
+│       └── kpu/                          # kpu == Knowledge Processing Unit
 │           ├── kpu.hpp                   # Main public header
 │           ├── memory/                   # Memory system headers
 │           ├── compute/                  # Compute system headers
