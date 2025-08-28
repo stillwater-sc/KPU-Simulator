@@ -155,13 +155,29 @@ private:
 class KPU_API KPUSimulator {
 public:
     struct Config {
-        Size memory_bank_count = 1;
-        Size memory_bank_capacity_mb = 1024;
-        Size memory_bandwidth_gbps = 100;
-        Size scratchpad_count = 1;
-        Size scratchpad_capacity_kb = 512;
-        Size compute_tile_count = 1;
-        Size dma_engine_count = 2;
+        Size memory_bank_count;
+        Size memory_bank_capacity_mb;
+        Size memory_bandwidth_gbps;
+        Size scratchpad_count;
+        Size scratchpad_capacity_kb;
+        Size compute_tile_count;
+        Size dma_engine_count;
+
+		Config() = default;
+		Config(const Config&) = default;
+		Config& operator=(const Config&) = default;
+		Config(Config&&) = default;
+		Config& operator=(Config&&) = default;
+		~Config() = default;
+
+        Config (Size mem_banks, Size mem_cap, Size mem_bw,
+                Size pads, Size pad_cap,
+                Size tiles, Size dmas)
+            : memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
+              memory_bandwidth_gbps(mem_bw), scratchpad_count(pads),
+              scratchpad_capacity_kb(pad_cap), compute_tile_count(tiles),
+			dma_engine_count(dmas) {
+		}
     };
     
     struct MatMulTest {
@@ -183,7 +199,7 @@ private:
     std::chrono::high_resolution_clock::time_point sim_start_time;
     
 public:
-    explicit KPUSimulator(const Config& config = {});
+    explicit KPUSimulator(const Config& config = {});  // Config{ 2,1024,100,2,64,2,2 }: 2 banks, 1GB each, 100GBps, 2 pads 64KB each, 2 tiles, 2 DMAs
     ~KPUSimulator() = default;
     
     // Memory operations - clean delegation API

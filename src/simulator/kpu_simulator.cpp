@@ -627,6 +627,7 @@ KPUSimulator::Config generate_multi_bank_config(size_t num_banks, size_t num_til
     KPUSimulator::Config config;
     config.memory_bank_count = num_banks;
     config.memory_bank_capacity_mb = 512; // Smaller banks for multi-bank setup
+	config.memory_bandwidth_gbps = 16; // Higher bandwidth per bank
     config.scratchpad_count = num_tiles; // One scratchpad per tile
     config.scratchpad_capacity_kb = 256;
     config.compute_tile_count = num_tiles;
