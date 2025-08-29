@@ -230,12 +230,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
     m.def("run_distributed_matmul_test", &sw::kpu::test_utils::run_distributed_matmul_test,
           py::arg("sim"), py::arg("matrix_size") = 8);
     
-    // Convenience function for simple numpy integration
-    m.def("quick_matmul", [](py::array_t<float> a, py::array_t<float> b, const sw::kpu::KPUSimulator::Config& config) {
-        sw::kpu::KPUSimulator simulator(config);
-        return simulator.run_numpy_matmul(a, b, 0, 0, 0);
-    }, py::arg("a"), py::arg("b"), py::arg("config") = sw::kpu::KPUSimulator::Config{});
-}("generate_simple_matmul_test", &sw::kpu::test_utils::generate_simple_matmul_test,
+    m.def("generate_simple_matmul_test", &sw::kpu::test_utils::generate_simple_matmul_test,
           py::arg("m") = 4, py::arg("n") = 4, py::arg("k") = 4);
     
     m.def("generate_random_matrix", &sw::kpu::test_utils::generate_random_matrix,
@@ -246,8 +241,8 @@ PYBIND11_MODULE(stillwater_kpu, m) {
           py::arg("tolerance") = 1e-5f);
     
     // Convenience function for numpy integration
-    m.def("numpy_matmul", [](py::array_t<float> a, py::array_t<float> b, const sw::kpu::KPUSimulator::Config& config) {
-        sw::kpu::KPUSimulator simulator(config);
-        return simulator.run_numpy_matmul(a, b);
-    }, py::arg("a"), py::arg("b"), py::arg("config") = sw::kpu::KPUSimulator::Config{});
+    //m.def("numpy_matmul", [](py::array_t<float> a, py::array_t<float> b, const sw::kpu::KPUSimulator::Config& config) {
+    //    sw::kpu::KPUSimulator simulator(config);
+    //    return simulator.run_numpy_matmul(a, b);
+    //}, py::arg("a"), py::arg("b"), py::arg("config") = sw::kpu::KPUSimulator::Config{});
 }

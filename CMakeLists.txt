@@ -1,4 +1,8 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
+
+# Set modern CMake policies
+cmake_policy(SET CMP0148 NEW)  # Use FindPython instead of FindPythonInterp/FindPythonLibs
+
 project(kpu_simulator VERSION 0.1.0 LANGUAGES CXX)
 
 # Set C++ standard

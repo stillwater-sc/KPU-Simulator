@@ -64,11 +64,11 @@ if %ERRORLEVEL% neq 0 (
 
 REM Get pybind11 CMake directory
 echo Detecting pybind11 CMake configuration...
-for /f "tokens=*" %%i in ('python -m pybind11 --cmake 2^>nul') do set PYBIND11_DIR=%%i
+for /f "tokens=*" %%i in ('python -m pybind11 --cmakedir 2^>nul') do set PYBIND11_DIR=%%i
 
 if "%PYBIND11_DIR%"=="" (
     echo ERROR: Could not detect pybind11 CMake directory
-    echo Try running manually: python -m pybind11 --cmake
+    echo Try running manually: python -m pybind11 --cmakedir
     pause
     exit /b 1
 )
