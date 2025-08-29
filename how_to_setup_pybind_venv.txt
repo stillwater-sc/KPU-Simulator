@@ -1,0 +1,18 @@
+:: Delete the corrupted venv
+rmdir /s kpu_venv
+
+:: Create a fresh one
+python -m venv kpu_venv
+
+:: Activate it properly
+source kpu_venv\Scripts\activate
+
+:: Upgrade pip first
+python -m pip install --upgrade pip
+
+:: Install dependencies
+pip install "pybind11[global]" numpy matplotlib seaborn jupyter ipywidgets
+
+:: Test Python works correctly
+python -c "import sys; print('Python working correctly')"
+python -c "import pybind11; print('pybind11 version:', pybind11.__version__)"

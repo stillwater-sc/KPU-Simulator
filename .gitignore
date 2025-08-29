@@ -42,3 +42,7 @@
 
 # directories
 build/
+kpu_venv/
+build_*/
+.vs/
+.vscode/

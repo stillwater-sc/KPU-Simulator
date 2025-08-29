@@ -1,0 +1,28 @@
+# KPU Simulator Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core build dependencies
+pybind11[global]>=2.10.0
+
+# Scientific computing
+numpy>=1.21.0
+matplotlib>=3.5.0
+seaborn>=0.11.0
+
+# Jupyter environment for interactive development
+jupyter>=1.0.0
+ipywidgets>=8.0.0
+notebook>=6.4.0
+
+# Data analysis (optional but useful)
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# Plotting alternatives (optional)
+plotly>=5.0.0
+bokeh>=2.4.0
+
+# Development tools (optional)
+tqdm>=4.62.0  # Progress bars
+black>=22.0.0  # Code formatter
+pytest>=6.0.0  # Testing framework
