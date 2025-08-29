@@ -27,7 +27,7 @@ This guide helps new contributors set up their development environment for the K
 ```batch
 git clone <repository-url>
 cd KPU-simulator
-setup_development_environment.bat
+dev_setup_windows.bat
 ```
 
 ### Linux/macOS
@@ -35,7 +35,7 @@ setup_development_environment.bat
 git clone <repository-url>
 cd KPU-simulator
 chmod +x setup_development_environment.sh
-./setup_development_environment.sh
+./dev_setup_unix.sh
 ```
 
 ## Manual Setup (if scripts fail)
@@ -128,7 +128,12 @@ python tools/python/kpu_visualizer.py
 # Delete and recreate
 rm -rf kpu_venv
 python -m venv kpu_venv
+# Activate environment
+source kpu_venv/bin/activate  # Linux/macOS
+kpu_venv\Scripts\activate     # Windows
 # ... reinstall dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 ### CMake Can't Find Python/pybind11

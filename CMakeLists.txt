@@ -68,6 +68,7 @@ target_link_libraries(kpu_test kpu_simulator_core)
 # Python bindings (optional, if pybind11 is available)
 find_package(pybind11 QUIET)
 if(pybind11_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
+    message(STATUS "Building Python bindings with pybind11 ${pybind11_VERSION}")
     pybind11_add_module(stillwater_kpu src/bindings/python/kpu_bindings.cpp)
     target_link_libraries(stillwater_kpu PRIVATE kpu_simulator_core)
     
@@ -82,10 +83,25 @@ if(pybind11_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindin
     message(STATUS "Building Python bindings")
 else()
     if(NOT pybind11_FOUND)
-        message(STATUS "pybind11 not found, skipping Python bindings")
-    else()
-        message(STATUS "Python bindings source not found")
-    endif()    
+        message(STATUS "pybind11 not found. Install with: pip install 'pybind11[global]'")
+        
+        # Try to provide helpful debug info
+        execute_process(
+            COMMAND python --version
+            OUTPUT_VARIABLE PYTHON_VERSION
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(PYTHON_VERSION)
+            message(STATUS "Python version: ${PYTHON_VERSION}")
+        else()
+            message(STATUS "Python not found in PATH")
+        endif()
+    endif()
+    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
+        message(STATUS "Python bindings source not found at src/bindings/python/kpu_bindings.cpp")
+    endif()
+    message(STATUS "Python bindings disabled")   
 endif()
 
 # Installation
@@ -101,9 +117,9 @@ install(DIRECTORY include/
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
-install(TARGETS kpu_test
-    DESTINATION bin
-)
+if(TARGET kpu_test)
+    install(TARGETS kpu_test DESTINATION bin)
+endif()
 
 # Export targets for use by other projects
 install(EXPORT kpu_simulator_targets
