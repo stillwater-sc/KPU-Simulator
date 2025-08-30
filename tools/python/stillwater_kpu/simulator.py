@@ -21,10 +21,6 @@ try:
     NATIVE_AVAILABLE = True
 except ImportError:
     # Mock implementation for development when C++ module isn't built
-    # warnings.warn(
-    #     message="Native C++ module not found. Using mock implementation for development. ",
-    #     category=RuntimeWarning
-    # )
     print("\nNative C++ module not found. Using mock implementation for development.\n")
     # Performance will be slow and some features will not work.
     _native = None
