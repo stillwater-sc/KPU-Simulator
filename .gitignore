@@ -40,6 +40,20 @@
 # debug information files
 *.dwo
 
+# setuptool files
+*.egg-info/
+*.egg
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env/
+
+# virtual environment
+venv/
+kpu_venv/
+
 # directories
 build/
 kpu_venv/
