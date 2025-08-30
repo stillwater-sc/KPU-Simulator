@@ -23,9 +23,9 @@ def test_basic_functionality():
     config = kpu.SimulatorConfig()
     config.memory_bank_count = 2
     config.memory_bank_capacity_mb = 128
-    config.scratchpad_count = 1
+    config.scratchpad_count = 4
     config.scratchpad_capacity_kb = 64
-    config.compute_tile_count = 1
+    config.compute_tile_count = 2
     config.dma_engine_count = 4
     
     # Create simulator
@@ -33,20 +33,18 @@ def test_basic_functionality():
     print("✓ Simulator created successfully")
     
     # Test configuration queries
-    print(f"✓ Memory banks: {simulator.get_memory_bank_count()}")
-    print(f"✓ Scratchpads: {simulator.get_scratchpad_count()}")
-    print(f"✓ Compute tiles: {simulator.get_compute_tile_count()}")
-    print(f"✓ DMA engines: {simulator.get_dma_engine_count()}")
-    
+    print(f" Memory banks: {simulator.get_memory_bank_count()}")
     # Test capacity queries
     for i in range(simulator.get_memory_bank_count()):
         capacity = simulator.get_memory_bank_capacity(i) // (1024*1024)
-        print(f"✓ Memory bank[{i}] capacity: {capacity} MB")
-    
+        print(f"  Memory bank[{i}] capacity: {capacity} MB")
+    print(f" Scratchpads: {simulator.get_scratchpad_count()}")
     for i in range(simulator.get_scratchpad_count()):
         capacity = simulator.get_scratchpad_capacity(i) // 1024
-        print(f"✓ Scratchpad[{i}] capacity: {capacity} KB")
-    
+        print(f"  Scratchpad[{i}] capacity: {capacity} KB")    
+    print(f" Compute tiles: {simulator.get_compute_tile_count()}")
+    print(f" DMA engines: {simulator.get_dma_engine_count()}")
+      
     # Test reset
     simulator.reset()
     print("✓ Simulator reset successful")
@@ -59,7 +57,11 @@ def test_memory_operations():
     
     config = kpu.SimulatorConfig()
     config.memory_bank_count = 2
-    config.scratchpad_count = 1
+    config.memory_bank_capacity_mb = 128
+    config.scratchpad_count = 2
+    config.scratchpad_capacity_kb = 64
+    config.compute_tile_count = 1
+    config.dma_engine_count = 1
     simulator = kpu.KPUSimulator(config)
     
     # Test memory bank operations
@@ -68,9 +70,9 @@ def test_memory_operations():
     read_data = simulator.read_memory_bank(0, 0, len(test_data))
     
     if np.allclose(test_data, read_data):
-        print("✓ Memory bank read/write operations work")
+        print(" Memory bank read/write operations work")
     else:
-        print("✗ Memory bank operations failed")
+        print(" Memory bank operations failed")
         return False
     
     # Test scratchpad operations
@@ -78,9 +80,9 @@ def test_memory_operations():
     read_data = simulator.read_scratchpad(0, 0, len(test_data))
     
     if np.allclose(test_data, read_data):
-        print("✓ Scratchpad read/write operations work")
+        print(" Scratchpad read/write operations work")
     else:
-        print("✗ Scratchpad operations failed")
+        print(" Scratchpad operations failed")
         return False
     
     return True
@@ -94,17 +96,20 @@ def test_numpy_integration():
     A = np.random.randn(4, 6).astype(np.float32)
     B = np.random.randn(6, 3).astype(np.float32)
     
-    print(f"✓ Created matrices A{A.shape} and B{B.shape}")
+    print(f" Created matrices A{A.shape} and B{B.shape}")
     
     # Compute expected result using NumPy
     expected_C = A @ B
-    print(f"✓ NumPy reference result computed: C{expected_C.shape}")
+    print(f" NumPy reference result computed: C{expected_C.shape}")
     
     # Test with KPU simulator using new API
     config = kpu.SimulatorConfig()
     config.memory_bank_count = 1
+    config.memory_bank_capacity_mb = 64
     config.scratchpad_count = 1
+    config.scratchpad_capacity_kb = 64
     config.compute_tile_count = 1
+    config.dma_engine_count = 1
     
     try:
         simulator = kpu.KPUSimulator(config)
@@ -112,22 +117,22 @@ def test_numpy_integration():
         result_C = simulator.run_numpy_matmul(A, B, 0, 0, 0)  # bank_id, pad_id, tile_id
         end_time = time.time()
         
-        print(f"✓ KPU simulation completed in {(end_time - start_time)*1000:.2f} ms")
-        print(f"✓ Result shape: {result_C.shape}")
+        print(f" KPU simulation completed in {(end_time - start_time)*1000:.2f} ms")
+        print(f" Result shape: {result_C.shape}")
         
         # Verify results match
         max_diff = np.max(np.abs(result_C - expected_C))
-        print(f"✓ Maximum difference from NumPy: {max_diff:.2e}")
+        print(f" Maximum difference from NumPy: {max_diff:.2e}")
         
         if max_diff < 1e-5:
-            print("✓ Results match within tolerance!")
+            print(" Results match within tolerance!")
             return True
         else:
-            print("✗ Results don't match!")
+            print(" Results don't match!")
             return False
             
     except Exception as e:
-        print(f"✗ NumPy integration test failed: {e}")
+        print(f" NumPy integration test failed: {e}")
         return False
 
 def test_multi_bank_configuration():
@@ -138,13 +143,13 @@ def test_multi_bank_configuration():
     config = kpu.generate_multi_bank_config(4, 2)  # 4 banks, 2 tiles
     simulator = kpu.KPUSimulator(config)
     
-    print(f"✓ Created {simulator.get_memory_bank_count()}-bank, {simulator.get_compute_tile_count()}-tile simulator")
+    print(f" Created {simulator.get_memory_bank_count()}-bank, {simulator.get_compute_tile_count()}-tile simulator")
     
     # Test with distributed matmul
     try:
         success = kpu.run_distributed_matmul_test(simulator, 8)
         if success:
-            print("✓ Multi-bank distributed test PASSED!")
+            print(" Multi-bank distributed test PASSED!")
             simulator.print_component_status()
             return True
         else:
@@ -160,8 +165,11 @@ def test_step_by_step_simulation():
     
     config = kpu.SimulatorConfig()
     config.memory_bank_count = 1
+    config.memory_bank_capacity_mb = 64
     config.scratchpad_count = 1 
+    config.scratchpad_capacity_kb = 64
     config.compute_tile_count = 1
+    config.dma_engine_count = 1
     simulator = kpu.KPUSimulator(config)
     
     # Create small test matrices
@@ -177,29 +185,29 @@ def test_step_by_step_simulation():
     # Reset and get initial state
     simulator.reset()
     initial_cycle = simulator.get_current_cycle()
-    print(f"✓ Initial cycle: {initial_cycle}")
+    print(f" Initial cycle: {initial_cycle}")
     
     try:
         # Test the simulation
         result_C = simulator.run_numpy_matmul(A, B, 0, 0, 0)
         final_cycle = simulator.get_current_cycle()
         
-        print(f"✓ Simulation result:\n{result_C}")
-        print(f"✓ Final cycle: {final_cycle}")
-        print(f"✓ Cycles elapsed: {final_cycle - initial_cycle}")
+        print(f" Simulation result:\n{result_C}")
+        print(f" Final cycle: {final_cycle}")
+        print(f" Cycles elapsed: {final_cycle - initial_cycle}")
         
         # Verify correctness
         if np.allclose(result_C, expected_C, rtol=1e-5):
-            print("✓ Step-by-step simulation test PASSED!")
+            print(" Step-by-step simulation test PASSED!")
             return True
         else:
-            print("✗ Step-by-step simulation test FAILED!")
+            print(" Step-by-step simulation test FAILED!")
             print(f"Expected:\n{expected_C}")
             print(f"Got:\n{result_C}")
             return False
             
     except Exception as e:
-        print(f"✗ Step-by-step simulation failed: {e}")
+        print(f" Step-by-step simulation failed: {e}")
         return False
 
 def test_performance_scaling():
