@@ -51,7 +51,15 @@ def init_tile_tracker(rows, cols):
 def record_access(tracker, i, j):
     tracker[i, j] += 1
 
-def simulate_matmul(config):
+class SimulationContext:
+    def __init__(self, M_T, K_T, N_T):
+        self.A_tracker = init_tile_tracker(M_T, K_T)
+        self.B_tracker = init_tile_tracker(K_T, N_T)
+        self.C_tracker = init_tile_tracker(M_T, N_T)
+        self.tracker = BandwidthTracker()
+
+
+def simulate_matmul(config, context):
     """
     Simulate tiled matrix multiplication with memory movement tracking.
     
@@ -67,12 +75,6 @@ def simulate_matmul(config):
     B = np.random.rand(K, N).astype(np.float32)
     C = np.zeros((M, N), dtype=np.float32)
 
-    # set up tile access tracker
-    A_tracker = init_tile_tracker(M // T, K // T)
-    B_tracker = init_tile_tracker(K // T, N // T)
-    C_tracker = init_tile_tracker(M // T, N // T)
-
-    tracker = BandwidthTracker()
     tile_bytes = T * T * 4
 
     cached_tiles = {}
@@ -85,19 +87,18 @@ def simulate_matmul(config):
                 a_tile = A[i*T:(i+1)*T, k*T:(k+1)*T]
                 b_tile = B[k*T:(k+1)*T, j*T:(j+1)*T]
 
-                record_access(A_tracker, i, k)
-                record_access(B_tracker, k, j)
-
+                record_access(context.A_tracker, i, k)
+                record_access(context.B_tracker, k, j)
 
                 # Simulate memory movement
-                tracker.log('DRAM_to_L3', tile_bytes)
-                tracker.log('L3_to_L2', tile_bytes)
-                tracker.log('L2_to_L1', tile_bytes)
+                context.tracker.log('DRAM_to_L3', tile_bytes)
+                context.tracker.log('L3_to_L2', tile_bytes)
+                context.tracker.log('L2_to_L1', tile_bytes)
 
                 # Simulate reuse
                 a_key = (i, k)
                 if a_key in cached_tiles:
-                    tracker.reuse()
+                    context.tracker.reuse()
                 else:
                     cached_tiles[a_key] = True
 
@@ -105,16 +106,13 @@ def simulate_matmul(config):
 
             # Evict C tile if result-stationary
             if strategy == 'result-stationary':
-                tracker.log('C_evict', tile_bytes)
+                context.tracker.log('C_evict', tile_bytes)
 
             C[i*T:(i+1)*T, j*T:(j+1)*T] = C_tile
-            record_access(C_tracker, i, j)
-
-    tracker.report()
+            record_access(context.C_tracker, i, j)
 
     # Validate result
     C_ref = A @ B
     error = np.max(np.abs(C - C_ref))
     print(f"\nMax error vs reference: {error:.6f}")
 
-    return A_tracker, B_tracker, C_tracker, tracker  # reuse heatmaps + bandwidth tracker

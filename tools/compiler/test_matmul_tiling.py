@@ -1,4 +1,4 @@
-from kpu_tiling import generate_loop_config, simulate_matmul
+from kpu_tiling import generate_loop_config, simulate_matmul, SimulationContext
 import matplotlib.pyplot as plt
 
 def plot_heatmap(tracker, title="Tile Access Heatmap"):
@@ -12,14 +12,16 @@ def plot_heatmap(tracker, title="Tile Access Heatmap"):
     plt.show()
 
 # Example usage
-config = generate_loop_config(M=128, K=128, N=128, T=32, strategy="result-stationary")
-A_tracker, B_tracker, C_tracker, tracker = simulate_matmul(config)
-tracker.report()
+M, K, N, T = 128, 128, 128, 32
+config = generate_loop_config(M, K, N, T, strategy="result-stationary")
+context = SimulationContext(M//T,K//T,N//T)
+simulate_matmul(config, context)
+context.tracker.report()
 
 # Visualize heatmaps
-plot_heatmap(A_tracker, title="Matrix A Tile Access Heatmap")
-plot_heatmap(B_tracker, title="Matrix B Tile Access Heatmap")
-plot_heatmap(C_tracker, title="Matrix C Tile Access Heatmap")   
+plot_heatmap(context.A_tracker, title="Matrix A Tile Access Heatmap")
+plot_heatmap(context.B_tracker, title="Matrix B Tile Access Heatmap")
+plot_heatmap(context.C_tracker, title="Matrix C Tile Access Heatmap")   
 
 
 # Print bandwidth usage: loop_config(M=32768, K=7168, N=16384, T=32, strategy="result-stationary")
