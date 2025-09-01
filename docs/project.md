@@ -182,17 +182,17 @@ result = sim.matmul(matrix_a, matrix_b)
 
 
 
-1\. **Modularity**: Develop components independently
+1. **Modularity**: Develop components independently
 
-2\. **Maintainability**: Clear separation of concerns  
+2. **Maintainability**: Clear separation of concerns  
 
-3\. **Testability**: Component-level and integration testing
+3. **Testability**: Component-level and integration testing
 
-4\. **Extensibility**: Easy to add new features and components
+4. **Extensibility**: Easy to add new features and components
 
-5\. **Distribution**: Professional packaging and installation
+5. **Distribution**: Professional packaging and installation
 
-6\. **Documentation**: Automated docs with Doxygen/Sphinx
+6. **Documentation**: Automated docs with Doxygen/Sphinx
 
 
 
@@ -204,15 +204,15 @@ This structure provides a solid foundation for:
 
 
 
-1\. **Implementing the core simulator components**
+1. **Implementing the core simulator components**
 
-2\. **Building a community around the project**
+2. **Building a community around the project**
 
-3\. **Creating educational materials and tutorials**
+3. **Creating educational materials and tutorials**
 
-4\. **Developing advanced features like multi-GPU support**
+4. **Developing advanced features like multi-GPU support**
 
-5\. **Establishing industry partnerships**
+5. **Establishing industry partnerships**
 
 
 
