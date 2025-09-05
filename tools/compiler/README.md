@@ -231,3 +231,348 @@ KPU Compute Fabric                          ────────────
 - **Tile-aware scheduling**: Emit injection timestamps per tile index to guide hardware.
 
 ---
+
+# Timing generator utility
+
+Let's create a Python utility that emits **operand injection timestamps** for arbitrary tile indices and loop bounds, tailored to your Domain Flow KPU architecture. It models the **staggered prefetching** and **just-in-time injection** of A and B tiles into the compute fabric, based on memory latencies and loop structure.
+
+---
+
+### `emit_injection_schedule.py`
+
+```python
+def emit_injection_schedule(M, N, K, TM, TN, TK,
+                            dram_to_l3=100,
+                            l3_to_l2=10,
+                            l2_to_l1=10,
+                            l1_to_fabric=1):
+    """
+    Emit operand injection timestamps for tiled matmul.
+    Assumes push-only KPU fabric with streaming injection from L1.
+    """
+
+    schedule = []
+
+    for i in range(0, M, TM):         # Tile row of C and A
+        for j in range(0, N, TN):     # Tile col of C and B
+            for k in range(0, K, TK): # Shared dim
+
+                # Logical timestamp for compute start
+                T_compute = (i // TM) * (N // TN) * (K // TK) + \
+                            (j // TN) * (K // TK) + \
+                            (k // TK)
+
+                # Injection timing
+                T_dram   = T_compute - dram_to_l3 - l3_to_l2 - l2_to_l1
+                T_l3     = T_compute - l3_to_l2 - l2_to_l1
+                T_l2     = T_compute - l2_to_l1
+                T_l1     = T_compute
+
+                tile_id = f"C[{i//TM},{j//TN}] += A[{i//TM},{k//TK}] * B[{k//TK},{j//TN}]"
+                schedule.append({
+                    "tile": tile_id,
+                    "T_compute": T_compute,
+                    "A_in_L2": T_l2,
+                    "B_in_DRAM": T_dram,
+                    "B_in_L3": T_l3,
+                    "B_in_L2": T_l2,
+                    "A+B_in_L1": T_l1
+                })
+
+    return schedule
+```
+
+---
+
+### Example Output
+
+For `M=N=K=128`, `TM=TN=TK=32`:
+
+```python
+schedule = emit_injection_schedule(128, 128, 128, 32, 32, 32)
+for entry in schedule:
+    print(entry)
+```
+
+Sample output:
+```
+{
+  'tile': 'C[0,0] += A[0,0] * B[0,0]',
+  'T_compute': 0,
+  'A_in_L2': -20,
+  'B_in_DRAM': -120,
+  'B_in_L3': -20,
+  'B_in_L2': -10,
+  'A+B_in_L1': 0
+}
+{
+  'tile': 'C[0,0] += A[0,1] * B[1,0]',
+  'T_compute': 1,
+  'A_in_L2': -19,
+  'B_in_DRAM': -119,
+  'B_in_L3': -19,
+  'B_in_L2': -9,
+  'A+B_in_L1': 1
+}
+...
+```
+
+---
+
+### What This Gives You
+
+- **Precise timestamps** for when each operand must be present at each memory level
+- **Tile-indexed scheduling** for injection into the KPU fabric
+- **Loop-aware orchestration** that can be integrated into your tiler engine or compiler backend
+
+---
+
+# Distributed Sequencer Design
+
+Let's synthesize a distributed sequencer framework for executing a block matmul across the software-managed memory hierarchy, tailored to the Stillwater KPU's Domain Flow architecture.
+
+We’ll define three cooperating sequencers:
+
+---
+
+## Components Overview
+
+| Component      | Role                                                                 |
+|----------------|----------------------------------------------------------------------|
+| **DMA Engine** | Pulls B tiles from DRAM to L3 using cache-line reads                 |
+| **Block Mover**| Moves A and B tiles from L3 to L2 using cache-line transfers         |
+| **Streamer**   | Streams rows/columns from L2 to L1, pushing into KPU fabric          |
+
+Each sequencer operates semi-independently but synchronizes via **credit counts** and **tile-ready flags**.
+
+---
+
+## Assumptions
+
+- Tile size: `TS × TS` (e.g. 32×32)
+- Matrix dimensions: `M × N × K`
+- Matmul: `Cij += Aik * Bjk`
+- C tiles reside in fabric
+- A tiles reused across `j`, B tiles streamed per `k`
+- Software-managed caches
+- Push-only fabric interface
+
+---
+
+## Sequencer Code Skeletons
+
+### 1. DMA Engine (DRAM → L3)
+
+```python
+def dma_engine(dram, l3, tile_indices, credit_l3):
+    for k, j in tile_indices:  # B tiles only
+        while credit_l3[k][j] == 0:
+            wait()  # Wait for L3 to signal availability
+        tile = dram.read_tile('B', k, j)  # Cache-line reads
+        l3.write_tile('B', k, j, tile)
+        credit_l3[k][j] -= 1  # Consume credit
+        signal_ready(l3, 'B', k, j)
+```
+
+---
+
+### 2. Block Mover (L3 → L2)
+
+```python
+def block_mover(l3, l2, tile_indices, credit_l2):
+    for i, k in tile_indices:  # A tiles reused
+        if not tile_ready(l3, 'A', i, k):
+            continue
+        while credit_l2[i][k] == 0:
+            wait()
+        tile = l3.read_tile('A', i, k)
+        l2.write_tile('A', i, k, tile)
+        credit_l2[i][k] -= 1
+        signal_ready(l2, 'A', i, k)
+
+    for k, j in tile_indices:  # B tiles streamed
+        if not tile_ready(l3, 'B', k, j):
+            continue
+        while credit_l2[k][j] == 0:
+            wait()
+        tile = l3.read_tile('B', k, j)
+        l2.write_tile('B', k, j, tile)
+        credit_l2[k][j] -= 1
+        signal_ready(l2, 'B', k, j)
+```
+
+---
+
+### 3. Streamer (L2 → L1 → KPU Fabric)
+
+```python
+def streamer(l2, l1, fabric, tile_indices, credit_l1):
+    for i, j, k in tile_indices:
+        if not tile_ready(l2, 'A', i, k) or not tile_ready(l2, 'B', k, j):
+            continue
+        while credit_l1[i][j] == 0:
+            wait()
+        row_A = l2.read_row('A', i, k)
+        col_B = l2.read_col('B', k, j)
+        l1.push('A', row_A)
+        l1.push('B', col_B)
+        fabric.inject('C', i, j, row_A, col_B)
+        credit_l1[i][j] -= 1
+```
+
+---
+
+## Coordination via Credits
+
+Each level maintains a **credit count** per tile index to signal downstream readiness. Credits are incremented when buffers are freed and decremented when tiles are pushed.
+
+```python
+# Example credit initialization
+credit_l3 = defaultdict(lambda: 1)  # L3 can accept 1 tile per slot
+credit_l2 = defaultdict(lambda: 2)  # L2 has 2 slots per tile
+credit_l1 = defaultdict(lambda: 4)  # L1 can stream 4 rows/cols per tile
+```
+
+---
+
+## Execution Strategy
+
+- DMA runs ahead, prefetching B tiles into L3
+- Block Mover stages A and B tiles into L2
+- Streamer synchronizes operand injection with compute
+- Credits ensure no buffer overflows or stalls
+
+---
+
+# Tile scheduler
+
+Let’s synthesize a **tile scheduler** that emits tile indices in **dependency order**, orchestrating the flow of tiles through the memory hierarchy and into the compute fabric. This scheduler will serve as the control backbone for coordinating the DMA engine, Block Mover, and Streamer.
+
+---
+
+## Design Goals
+
+- Respect **data dependencies**: B tiles must arrive before compute; A tiles must be staged before reuse.
+- Emit tile indices in a **temporal order** that reflects the matmul loop nest.
+- Enable **concurrent execution**: overlapping DMA, block movement, and streaming.
+- Support **credit-based flow control**: downstream readiness gates upstream movement.
+
+---
+
+## Loop Nest Recap
+
+```c
+for (i = 0; i < M; i += TM)         // Tile row of C and A
+  for (j = 0; j < N; j += TN)       // Tile col of C and B
+    Cij = 0
+    for (k = 0; k < K; k += TK)     // Shared dim
+      Cij += Aik * Bjk              // Compute
+```
+
+---
+
+## Scheduler Output Format
+
+Each emitted tile event includes:
+- **Tile type**: A, B, or compute
+- **Indices**: (i, j, k)
+- **Stage**: `dma`, `move`, `stream`, or `compute`
+- **Timestamp**: logical cycle (optional)
+
+---
+
+## Python Scheduler
+
+```python
+def tile_scheduler(M, N, K, TM, TN, TK):
+    schedule = []
+    timestamp = 0
+
+    for i in range(0, M, TM):
+        for j in range(0, N, TN):
+            for k in range(0, K, TK):
+                # B tile must be fetched from DRAM
+                schedule.append({
+                    "type": "B",
+                    "stage": "dma",
+                    "i": None,
+                    "j": j,
+                    "k": k,
+                    "t": timestamp
+                })
+
+                # B tile must be moved to L2
+                schedule.append({
+                    "type": "B",
+                    "stage": "move",
+                    "i": None,
+                    "j": j,
+                    "k": k,
+                    "t": timestamp + 1
+                })
+
+                # A tile reused across j, move once per i,k
+                if j == 0:
+                    schedule.append({
+                        "type": "A",
+                        "stage": "move",
+                        "i": i,
+                        "j": None,
+                        "k": k,
+                        "t": timestamp + 1
+                    })
+
+                # Stream A and B into L1 for compute
+                schedule.append({
+                    "type": "A+B",
+                    "stage": "stream",
+                    "i": i,
+                    "j": j,
+                    "k": k,
+                    "t": timestamp + 2
+                })
+
+                # Compute Cij += Aik * Bjk
+                schedule.append({
+                    "type": "C",
+                    "stage": "compute",
+                    "i": i,
+                    "j": j,
+                    "k": k,
+                    "t": timestamp + 3
+                })
+
+                timestamp += 4  # Advance logical time
+
+    return schedule
+```
+
+---
+
+## Sample Output (M=N=K=64, TM=TN=TK=32)
+
+```python
+[
+  {'type': 'B', 'stage': 'dma',     'j': 0, 'k': 0, 't': 0},
+  {'type': 'B', 'stage': 'move',    'j': 0, 'k': 0, 't': 1},
+  {'type': 'A', 'stage': 'move',    'i': 0, 'k': 0, 't': 1},
+  {'type': 'A+B', 'stage': 'stream','i': 0, 'j': 0, 'k': 0, 't': 2},
+  {'type': 'C', 'stage': 'compute', 'i': 0, 'j': 0, 'k': 0, 't': 3},
+  ...
+]
+```
+
+---
+
+## Integration Strategy
+
+- **DMA engine** consumes `stage == 'dma'` events
+- **Block Mover** consumes `stage == 'move'`
+- **Streamer** consumes `stage == 'stream'`
+- **Fabric controller** triggers on `stage == 'compute'`
+
+Each component can filter and process its relevant events, respecting the timestamps or using credit-based gating.
+
+---
+
+# Gantt Chart of tiles
