@@ -692,7 +692,7 @@ Let’s now overlay actual silicon IPs onto the EDP-normalized compute efficienc
 | **Apple M4 (Neural Engine)** | ~0.03                 | ~10        | ~0.033        | ~0.33       | **0.091**     |
 | **CEVA-XM6 (DSP/NPU)**  | ~0.005                | ~2         | ~0.033        | ~0.066      | **0.076**     |
 | **Quadric GPNPU**       | ~0.01                 | ~5         | ~0.033        | ~0.165      | **0.061**     |
-| **KPU (Custom ASIC)**   | ~0.05–0.10            | ~10        | ~0.033        | ~0.33       | **0.15–0.30** |
+| **KPU (Custom ASIC)**   | ~0.5            | ~75        | ~0.010        | ~0.75       | **0.67** |
 
 ---
 
@@ -703,7 +703,7 @@ Let’s now overlay actual silicon IPs onto the EDP-normalized compute efficienc
 | **L5 Autonomy**                  | **1.21–12.12**       | None             | ❌ Far beyond current IPs |
 | **Drone @ 300 mph**             | **0.50–1.00**        | KPU (upper bound) | ⚠️ Stretching limits |
 | **Humanoid lifting 100 lbs**     | **0.026–0.067**      | CEVA-XM6, Apple M4 | ✅ Feasible |
-| **L4 Autonomy**                  | **0.12–0.24**        | KPU, Orin         | ⚠️ Borderline |
+| **L4 Autonomy**                  | **0.12–0.24**        | KPU         | ⚠️ Borderline |
 | **Forklift loading/unloading**   | **0.0017–0.0051**    | All listed IPs    | ✅ Easily supported |
 | **Long-haul truck**              | **0.00024–0.0012**   | All listed IPs    | ✅ Easily supported |
 | **AMR in warehouse**             | **0.017–0.068**      | CEVA-XM6, Apple M4 | ✅ Feasible |
@@ -740,7 +740,7 @@ Below is a **refined, ordered table** of autonomy use cases sorted by **PFLOPS/E
 |------|----------------------------------|-------------------------|----------------------------------|-------|
 | 1️⃣ | **L5 Autonomy**                  | 1.21–12.12              | ❌ None currently feasible       | Requires 10×–100× more efficiency than current IPs. Needs architectural breakthroughs in operand reuse, loop fusion, and energy-aware scheduling. |
 | 2️⃣ | **Drone @ 300 mph**             | 0.50–1.00               | ⚠️ KPU (upper bound only)        | Tight latency and high power demand make this borderline. Needs aggressive optimization and minimal redundancy. |
-| 3️⃣ | **L4 Autonomy**                  | 0.12–0.24               | ⚠️ KPU, NVIDIA Orin              | Feasible with custom ASICs or edge GPUs, but thermal and power constraints are tight. |
+| 3️⃣ | **L4 Autonomy**                  | 0.12–0.24               | ⚠️ KPU               | Feasible with custom ASICs or edge GPUs, but thermal and power constraints are tight. |
 | 4️⃣ | **Humanoid lifting 100 lbs**     | 0.026–0.067             | ✅ CEVA-XM6, Apple M4, KPU        | Within reach of embedded NPUs and custom ASICs. Requires high-frequency control and dense sensor fusion. |
 | 5️⃣ | **AMR in warehouse**             | 0.017–0.068             | ✅ CEVA-XM6, Apple M4, KPU        | Well-aligned with low-power embedded IPs. Fleet-wide coordination benefits from decentralized planning. |
 | 6️⃣ | **L3 Autonomy**                  | 0.017–0.033             | ✅ CEVA-XM6, Apple M4             | Easily supported by modern NPUs. Suitable for highway driving and fallback scenarios. |
