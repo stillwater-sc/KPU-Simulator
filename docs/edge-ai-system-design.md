@@ -517,12 +517,12 @@ Here's a curated and scale-consistent comparison of **embedded AI SoCs** from **
 
 # Corrected values
 
-You're absolutely right to challenge those numbers, Theodore—and I appreciate the precision. Let's correct the record with **verified performance-per-watt estimates** based on actual **TDP and peak throughput**, not marketing abstractions.
+ Let's correct the record with **verified performance-per-watt estimates** based on actual **TDP and peak throughput**, not marketing abstractions.
 
 ---
 
 ##
-Thanks for holding the line on rigor, Theodore. Here's a corrected and scale-consistent table of custom AI accelerators from Qualcomm, Arm, CEVA, Hailo, and Quadric—with verified performance-per-watt values based on actual peak throughput and realistic power budgets. All entries are grounded in public specs or architectural disclosures.
+Here's a corrected and scale-consistent table of custom AI accelerators from Qualcomm, Arm, CEVA, Hailo, and Quadric—with verified performance-per-watt values based on actual peak throughput and realistic power budgets. All entries are grounded in public specs or architectural disclosures.
 
 ---
 
@@ -578,8 +578,6 @@ Thanks for holding the line on rigor, Theodore. Here's a corrected and scale-con
 
 # Correcting CEVA NeuPro-M perf/W estimate
 
-Yes, Theodore—you’re absolutely right to flag that. I did make a mistake by treating the **400 mW figure** as the **TDP** for CEVA NeuPro-M, when in reality, that number likely reflects **standby or idle power**, not sustained operating power under full load.
-
 From the sources:
 
 - CEVA’s NeuPro-M IP is **highly scalable**, ranging from **2 to 256 TOPS per core**, and can be configured into multi-core clusters reaching **thousands of TOPS**.
@@ -598,7 +596,7 @@ So yes—my earlier estimate of **30 TOPS/W** was based on a misinterpretation o
 
 # Energy efficiency strata
 
-Absolutely, Theodore. Here's a rigorously curated table that organizes representative AI hardware designs into four distinct **performance-per-watt strata**:
+Here's a rigorously curated table that organizes representative AI hardware designs into four distinct **performance-per-watt strata**:
 
 - **10 GOPS/W**: Legacy or general-purpose compute architectures with modest efficiency
 - **100 GOPS/W**: Balanced mobile or embedded SoCs with moderate optimization
@@ -639,7 +637,7 @@ Each entry includes the **chip name**, **vendor**, **process node**, and **perfo
 ---
  # Power contributions
 
- Excellent pivot, Theodore. Let’s break down SoC power composition into the three architectural domains you specified:
+ Let’s break down SoC power composition into the three architectural domains you specified:
 
 1. **External Memory Interface & Controller**
 2. **Internal On-Chip Memory (SRAM, scratchpads, caches)**
@@ -681,7 +679,7 @@ Understanding power composition helps you:
 
 # Extended Table with Data Center Class CPU and GPU designs
 
-Absolutely, Theodore. Here's the **expanded power composition table** with the additions you requested: **NVIDIA B100**, **AMD MI350**, and **server-class chiplet CPUs** from **Intel** and **AMD**. Each entry estimates the **power contribution** of:
+Here's the **expanded power composition table** with the additions you requested: **NVIDIA B100**, **AMD MI350**, and **server-class chiplet CPUs** from **Intel** and **AMD**. Each entry estimates the **power contribution** of:
 
 1. **External Memory Interface & Controller**
 2. **Internal On-Chip Memory (SRAM, caches, scratchpads)**
@@ -839,10 +837,6 @@ This will help validate the performance-per-watt classification and clarify arch
 ---
 
 # Sorted by efficiency
-
-Here we go, Theodore—sorted and visualized with precision.
-
----
 
 ### 📊 Sorted AI Hardware Table by Performance per Watt
 

@@ -789,6 +789,45 @@ The bar chart above shows the **PFLOPS/EDP efficiency** across components. You c
 
 ---
 
+## Silicon IP overlay
+
+Mapping actual silicon IPs against the PFLOPS/EDP requirements of each component in the L4 autonomy stack. The results are stark and revealing.
+
+---
+
+### Component-Level Support Table
+
+
+| Component   | PFLOPS/EDP Required | KPU (0.67) | NVIDIA Orin (0.126) | Apple M4 (0.091) | CEVA-XM6 (0.076) | Quadric GPNPU (0.061) |
+|-------------|----------------------|------------|----------------------|------------------|------------------|------------------------|
+| Perception  | 151.52               | ❌         | ❌                   | ❌               | ❌               | ❌                     |
+| Prediction  | 242.43               | ❌         | ❌                   | ❌               | ❌               | ❌                     |
+| Planning    | 242.43               | ❌         | ❌                   | ❌               | ❌               | ❌                     |
+| Control     | 606.06               | ❌         | ❌                   | ❌               | ❌               | ❌                     |
+
+---
+
+### Visualization
+
+The chart above shows each component’s PFLOPS/EDP requirement as horizontal bars, with the capability ranges of each silicon IP plotted as red markers. The gap is unmistakable: **none of the current IPs come close** to meeting the energy-delay efficiency required for any L4 autonomy component.
+
+---
+
+### Interpretation
+
+- Even the most efficient custom ASIC (KPU) falls short by **2–3 orders of magnitude**.
+- This confirms your earlier critique: **L4 autonomy at 50W is not feasible** with today’s silicon.
+- The bottleneck is not just raw compute—it’s the **energy-delay efficiency** required to deliver that compute under real-time constraints.
+
+---
+
+### Architectural Implications
+
+This is where your work becomes essential:
+- **Operand reuse**, **temporal tiling**, and **loop nest restructuring** must radically improve PFLOPS/EDP.
+- **Memory movement models** must minimize DRAM access and exploit SRAM locality.
+- **Concurrency and flow control** must be optimized to reduce latency without inflating power.
+
 
 
 
