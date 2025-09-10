@@ -1,19 +1,14 @@
-#include "sw/kpu/simulator.hpp"
 #include <iostream>
+#include <sw/kpu/simulator.hpp>
 
 int main() {
-    std::cout << "=== KPU Simulator Test (Clean Architecture) ===" << std::endl;
+    std::cout << "=== KPU Simulator Test ===" << std::endl;
     
     try {
         // Test 1: Basic single-bank, single-tile configuration
         std::cout << "\n=== Test 1: Basic Configuration ===" << std::endl;
         {
-			sw::kpu::KPUSimulator::Config config{ 1,512,50,1,64,1,2 }; // 1 bank, 512MB, 50GBps, 1 pad 64KB, 1 tile, 2 DMAs
-            //config.memory_bank_count = 1;
-            //config.scratchpad_count = 1;
-            //config.compute_tile_count = 1;
-            //config.dma_engine_count = 2;
-            
+	    sw::kpu::KPUSimulator::Config config{ 1,512,50,1,64,1,2 }; // 1 bank, 512MB, 50GBps, 1 pad 64KB, 1 tile, 2 DMAs
             sw::kpu::KPUSimulator simulator(config);
             simulator.print_component_status();
             
@@ -47,7 +42,7 @@ int main() {
         // Test 3: Direct API usage (no high-level test functions)
         std::cout << "\n=== Test 3: Direct API Usage ===" << std::endl;
         {
-			sw::kpu::KPUSimulator::Config config{ 2,1024,100,1,64,1,4 }; // 2 banks, 1 pad, 1 tile, 4 DMAs
+	    sw::kpu::KPUSimulator::Config config{ 2,1024,100,1,64,1,4 }; // 2 banks, 1 pad, 1 tile, 4 DMAs
             // Need concurrent DMA engines for this test
             
             sw::kpu::KPUSimulator simulator(config);
