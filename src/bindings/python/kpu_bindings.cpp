@@ -2,7 +2,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 #include <pybind11/functional.h>
-#include "sw/kpu/simulator.hpp"
+#include "sw/kpu/kpu_simulator.hpp"
 
 namespace py = pybind11;
 

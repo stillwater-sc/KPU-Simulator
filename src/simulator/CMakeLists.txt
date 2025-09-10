@@ -4,39 +4,38 @@
 
 set(KPU_SIMULATOR_SOURCES
     kpu_simulator.cpp
-    device_manager.cpp
-    instruction_set.cpp
-    execution_engine.cpp
-    trace_logger.cpp
+#    device_manager.cpp
+#    instruction_set.cpp
+#    execution_engine.cpp
+#    trace_logger.cpp
 )
 
-set(KPU_SIMULATOR_HEADERS
-    kpu_simulator.hpp
-    device_manager.hpp
-    instruction_set.hpp
-    execution_engine.hpp
-    trace_logger.hpp
-)
+# Find required system packages
+find_package(Threads REQUIRED)    # this will create the Threads::Threads target
 
-add_library(kpu_simulator ${KPU_SIMULATOR_SOURCES} ${KPU_SIMULATOR_HEADERS})
+add_library(kpu_simulator ${KPU_SIMULATOR_SOURCES})
 add_library(StillwaterKPU::Simulator ALIAS kpu_simulator)
 
 target_include_directories(kpu_simulator
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+        $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# PUBLIC dependencies get exported and must be available to consumers of your library
+# PRIVATE dependencies are only used internally and don't get exported
+# External dependencies should typically be PRIVATE unless your public API directly exposes them
+
 target_link_libraries(kpu_simulator
     PUBLIC
-        StillwaterKPU::Components
-        Threads::Threads
-        fmt::fmt
-        spdlog::spdlog
-        nlohmann_json::nlohmann_json
+        StillwaterKPU::Memory
+    PRIVATE
+        $<TARGET_NAME_IF_EXISTS:Threads::Threads>
+        $<TARGET_NAME_IF_EXISTS:fmt::fmt>
+        $<TARGET_NAME_IF_EXISTS:spdlog::spdlog>
+        $<TARGET_NAME_IF_EXISTS:nlohmann_json::nlohmann_json>
 )
 
 kpu_set_target_options(kpu_simulator)
@@ -48,10 +47,11 @@ set_target_properties(kpu_simulator PROPERTIES
     FOLDER "Core"
 )
 
+# Installation
 install(TARGETS kpu_simulator
-    EXPORT StillwaterKPUTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    # EXPORT kpu_simulator_targets
+    LIBRARY DESTINATION lib
         COMPONENT Runtime
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION lib
         COMPONENT Development
 )

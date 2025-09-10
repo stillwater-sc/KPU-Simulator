@@ -2,34 +2,108 @@
 # tests/CMakeLists.txt
 # Test suite configuration
 
-# Test categories
-add_subdirectory(integration)
-add_subdirectory(performance)
-add_subdirectory(regression)
+# Test configuration
 
-# Function to add test data
-function(kpu_add_test_data)
-    set(options "")
-    set(oneValueArgs NAME DESTINATION)
-    set(multiValueArgs FILES)
-    cmake_parse_arguments(DATA "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+# Find or fetch a testing framework (e.g., Catch2)
+find_package(Catch2 3 QUIET)
+if(NOT Catch2_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        v3.4.0
+    )
+    FetchContent_MakeAvailable(Catch2)
+endif()
+
+# Helper function available to all test subdirectories
+function(add_kpu_test test_name test_category)
+    # Create the test executable
+    add_executable(${test_name} ${ARGN})
     
-    foreach(file ${DATA_FILES})
-        configure_file(
-            ${CMAKE_CURRENT_SOURCE_DIR}/data/${file}
-            ${CMAKE_CURRENT_BINARY_DIR}/${DATA_DESTINATION}/${file}
-            COPYONLY
-        )
-    endforeach()
+    # Link against our core library and Catch2
+    target_link_libraries(${test_name} 
+        PRIVATE 
+        kpu_simulator
+        kpu_memory 
+        Catch2::Catch2WithMain
+    )
+    
+    # Add the test to CTest with category label
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties(${test_name} PROPERTIES LABELS ${test_category})
+    
+    # Install test executable (optional)
+    install(TARGETS ${test_name} 
+        DESTINATION bin/tests
+        OPTIONAL
+    )
 endfunction()
 
-# Copy test data
-kpu_add_test_data(
-    NAME matrices
-    DESTINATION data/matrices
-    FILES
-        small_matrix_a.dat
-        small_matrix_b.dat
-        large_matrix_a.dat
-        large_matrix_b.dat
+# Add test subdirectories - each manages its own tests
+add_subdirectory(memory)
+#add_subdirectory(dma)
+#add_subdirectory(block_mover)
+#add_subdirectory(streamer)
+add_subdirectory(integration)
+#add_subdirectory(benchmarks)
+
+# Legacy test (in this directory)
+add_kpu_test(legacy_test_main "legacy" test_main.cpp)
+
+# Custom test targets for different categories
+# These targets are defined here because they orchestrate across all subdirectories
+
+# Usage: make test_memory, make test_dma, etc.
+# Each target runs tests with the corresponding label
+# ctest -L memory
+# ctest -L "dma|memory"  # multiple labels
+# ctest -LE "benchmarks"  # exclude label
+add_custom_target(test_memory 
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L memory
+    COMMENT "Running memory tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_dma
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L dma  
+    COMMENT "Running DMA tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_block_mover
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L block_mover
+    COMMENT "Running block mover tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_streamer
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L streamer
+    COMMENT "Running streamer tests" 
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_integration
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L integration
+    COMMENT "Running integration tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_benchmarks
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L benchmark
+    COMMENT "Running benchmark tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
+add_custom_target(test_all_categories
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    COMMENT "Running all tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
 )

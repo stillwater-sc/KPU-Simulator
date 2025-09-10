@@ -3,18 +3,51 @@ cmake_minimum_required(VERSION 3.20)
 # Set modern CMake policies
 cmake_policy(SET CMP0148 NEW)  # Use FindPython instead of FindPythonInterp/FindPythonLibs
 
-project(kpu_simulator VERSION 0.1.0 LANGUAGES CXX)
+project(kpu_simulator 
+    VERSION 0.1.0
+    DESCRIPTION "Stillwater Knowledge Processing Unit Simulator"
+    HOMEPAGE_URL "https://github.com/stillwater-sc/kpu-simulator"
+    LANGUAGES CXX C
+)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Include CMake modules
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(CompilerOptions)
+
+# Project options - MUST come before Dependencies.cmake
+option(KPU_BUILD_TESTS "Build test suite" ON)
+option(KPU_BUILD_EXAMPLES "Build examples" ON)
+option(KPU_BUILD_TOOLS "Build development tools" ON)
+option(KPU_BUILD_PYTHON_BINDINGS "Build Python bindings" ON)
+option(KPU_BUILD_BENCHMARKS "Build benchmark suite" ON)
+option(KPU_BUILD_DOCS "Build documentation" OFF)
+option(KPU_ENABLE_OPENMP "Enable OpenMP parallelization" ON)
+option(KPU_ENABLE_CUDA "Enable CUDA support" OFF)
+option(KPU_ENABLE_OPENCL "Enable OpenCL support" OFF)
+option(KPU_ENABLE_PROFILING "Enable profiling support" OFF)
+option(KPU_ENABLE_SANITIZERS "Enable sanitizers" OFF)
+option(KPU_STATIC_ANALYSIS "Enable static analysis" OFF)
+
+# Include dependencies AFTER options are defined
+include(Dependencies)
+include(Documentation)
+include(Testing)
+include(Packaging)
+
 # Set default build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
+
+# Enable testing
+enable_testing()
+include(CTest)
 
 # Compiler-specific options
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -45,145 +78,138 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_options(/wd4251 /wd4275 /wd4996)
 endif()
 
-# Include directories
-include_directories(${CMAKE_SOURCE_DIR}/include)
-
-# Source files for the core simulator
-set(SIMULATOR_SOURCES
-    src/simulator/kpu_simulator.cpp
-)
-
-# Header files
-set(SIMULATOR_HEADERS
-    include/sw/kpu/simulator.hpp
-)
-
-# Create the core simulator library
-add_library(kpu_simulator_core STATIC ${SIMULATOR_SOURCES} ${SIMULATOR_HEADERS})
-target_include_directories(kpu_simulator_core PUBLIC 
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
-
-# Test executable
-add_executable(kpu_test tests/test_main.cpp)
-target_link_libraries(kpu_test kpu_simulator_core)
-
-# Python bindings (optional, if pybind11 is available)
-find_package(pybind11 QUIET)
-if(pybind11_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
-    message(STATUS "Building Python bindings with pybind11 ${pybind11_VERSION}")
-    pybind11_add_module(stillwater_kpu src/bindings/python/kpu_bindings.cpp)
-    target_link_libraries(stillwater_kpu PRIVATE kpu_simulator_core)
+# Python bindings - check if pybind11 was fetched by Dependencies.cmake
+if(KPU_BUILD_PYTHON_BINDINGS)
+    # Check for various possible pybind11 target names
+    set(PYBIND11_AVAILABLE FALSE)
+    if(TARGET pybind11::module OR TARGET pybind11::pybind11 OR TARGET pybind11)
+        set(PYBIND11_AVAILABLE TRUE)
+    endif()
     
-    # Set properties for the Python module
-    target_compile_definitions(stillwater_kpu PRIVATE VERSION_INFO=${PROJECT_VERSION})
-    
-    # Install the Python module
-    install(TARGETS stillwater_kpu
-        COMPONENT python
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/python/stillwater_kpu
-    )
-    message(STATUS "Building Python bindings")
-else()
-    if(NOT pybind11_FOUND)
-        message(STATUS "pybind11 not found. Install with: pip install 'pybind11[global]'")
-        
-        # Try to provide helpful debug info
-        execute_process(
-            COMMAND python --version
-            OUTPUT_VARIABLE PYTHON_VERSION
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        if(PYTHON_VERSION)
-            message(STATUS "Python version: ${PYTHON_VERSION}")
+    if(PYBIND11_AVAILABLE AND EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
+        message(STATUS "Python bindings enabled - will be built by src/bindings/")
+    else()
+        if(NOT PYBIND11_AVAILABLE)
+            message(STATUS "pybind11 not available - Python bindings disabled")
         else()
-            message(STATUS "Python not found in PATH")
+            message(STATUS "Python bindings source not found at src/bindings/python/kpu_bindings.cpp")
+            message(STATUS "Python bindings disabled")
         endif()
     endif()
-    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/src/bindings/python/kpu_bindings.cpp")
-        message(STATUS "Python bindings source not found at src/bindings/python/kpu_bindings.cpp")
-    endif()
-    message(STATUS "Python bindings disabled")   
+else()
+    message(STATUS "Python bindings disabled by user option")
 endif()
 
-# Installation
-install(TARGETS kpu_simulator_core
-    EXPORT kpu_simulator_targets
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
+# Function to set common target options
+function(kpu_set_target_options target_name)
+    set_target_properties(${target_name} PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF
+    )
+    
+    if(MSVC)
+        target_compile_options(${target_name} PRIVATE /W3)
+    else()
+        target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
 
+# Function to add tests (simplified version of what's expected)
+function(kpu_add_test)
+    set(options INTEGRATION)
+    set(oneValueArgs NAME)
+    set(multiValueArgs SOURCES LIBS)
+    cmake_parse_arguments(TEST "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+    
+    add_executable(${TEST_NAME} ${TEST_SOURCES})
+    target_link_libraries(${TEST_NAME} PRIVATE ${TEST_LIBS} Catch2::Catch2WithMain)
+    
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    
+    if(TEST_INTEGRATION)
+        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "integration")
+    endif()
+endfunction()
+
+# Global include directories
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# Add subdirectory builds - each manages its own sources and targets
+add_subdirectory(src)
+
+# Only add tests if enabled
+if(KPU_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
+
+# Installation of headers
 install(DIRECTORY include/
     DESTINATION include
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
-if(TARGET kpu_test)
-    install(TARGETS kpu_test DESTINATION bin)
-endif()
+## DISABLE FOR NOW - Exporting targets causes dependency chain issues
 
-# Export targets for use by other projects
-install(EXPORT kpu_simulator_targets
-    FILE kpu_simulator_targets.cmake
-    NAMESPACE kpu::
-    DESTINATION lib/cmake/kpu_simulator
-)
+# # Export targets for use by other projects
+# install(EXPORT kpu_simulator_targets
+#     FILE kpu_simulator_targets.cmake
+#     NAMESPACE kpu::
+#     DESTINATION lib/cmake/kpu_simulator
+# )
 
-# Create config file for find_package support
-include(CMakePackageConfigHelpers)
-write_basic_package_version_file(
-    kpu_simulator_config_version.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY AnyNewerVersion
-)
+# # Create config file for find_package support
+# include(CMakePackageConfigHelpers)
+# write_basic_package_version_file(
+#     kpu_simulator_config_version.cmake
+#     VERSION ${PROJECT_VERSION}
+#     COMPATIBILITY AnyNewerVersion
+# )
 
-configure_package_config_file(
-    cmake/kpu_simulator_config.cmake.in
-    kpu_simulator_config.cmake
-    INSTALL_DESTINATION lib/cmake/kpu_simulator
-)
+# configure_package_config_file(
+#     cmake/kpu_simulator_config.cmake.in
+#     kpu_simulator_config.cmake
+#     INSTALL_DESTINATION lib/cmake/kpu_simulator
+# )
 
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config_version.cmake
-    DESTINATION lib/cmake/kpu_simulator
-)
-
+# install(FILES
+#     ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config.cmake
+#     ${CMAKE_CURRENT_BINARY_DIR}/kpu_simulator_config_version.cmake
+#     DESTINATION lib/cmake/kpu_simulator
+# )
 
 # Print comprehensive build summary
 message(STATUS "")
 message(STATUS "========== KPU Simulator Build Configuration ==========")
-message(STATUS "Project: ${PROJECT_NAME} v${PROJECT_VERSION}")
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ standard: C++${CMAKE_CXX_STANDARD}")
-message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "Generator: ${CMAKE_GENERATOR}")
-if(MSVC)
-    message(STATUS "MSVC Version: ${MSVC_VERSION}")
-    message(STATUS "CXX Flags: ${CMAKE_CXX_FLAGS}")
-    message(STATUS "CXX Flags (${CMAKE_BUILD_TYPE}): ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-endif()
-message(STATUS "Source files: ${SIMULATOR_SOURCES}")
-if(TARGET kpu_test)
-    message(STATUS "Test executable: ENABLED")
-else()
-    message(STATUS "Test executable: DISABLED")
-endif()
+message(STATUS "Project        : ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "Build type     : ${CMAKE_BUILD_TYPE}")
+message(STATUS "C++ standard   : C++${CMAKE_CXX_STANDARD}")
+message(STATUS "Compiler       : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Generator      : ${CMAKE_GENERATOR}")
+message(STATUS "")
+message(STATUS "Install prefix : ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Testing        : ${BUILD_TESTING}")
+message(STATUS "Python bindings option: ${KPU_BUILD_PYTHON_BINDINGS}")
 if(TARGET stillwater_kpu)
     message(STATUS "Python bindings: ENABLED")
 else()
     message(STATUS "Python bindings: DISABLED")
 endif()
-message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
+if(MSVC)
+    message(STATUS "MSVC Version: ${MSVC_VERSION}")
+    message(STATUS "CXX Flags: ${CMAKE_CXX_FLAGS}")
+    message(STATUS "CXX Flags (${CMAKE_BUILD_TYPE}): ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+endif()
 message(STATUS "======================================================")
 message(STATUS "")
 
 # Helpful build instructions
 message(STATUS "To build:")
-message(STATUS "  cmake --build . --config ${CMAKE_BUILD_TYPE}")
+message(STATUS "  # Enable Python bindings (default)")
+message(STATUS "  cmake -DKPU_BUILD_PYTHON_BINDINGS=ON ..")
+message(STATUS "  # Or, if pybind11 is not available, disable Python bindings :")
+message(STATUS " cmake -DKPU_BUILD_PYTHON_BINDINGS=OFF ..")
+message(STATUS "")
 message(STATUS "To run tests:")
 message(STATUS "  .\\${CMAKE_BUILD_TYPE}\\kpu_test.exe")
 message(STATUS "")

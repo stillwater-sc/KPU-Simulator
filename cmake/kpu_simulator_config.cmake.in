@@ -3,6 +3,30 @@
 
 @PACKAGE_INIT@
 
+# KPU Simulator Config
+# This file allows other projects to find and use the KPU Simulator library
+# Usage: find_package(kpu_simulator REQUIRED)
+
+include(CMakeFindDependencyMacro)
+
+# Find dependencies that our exported targets need
+# Add any dependencies here that kpu_simulator_core requires
+# find_dependency(SomeLibrary REQUIRED)
+
+# Include the exported targets
 include("${CMAKE_CURRENT_LIST_DIR}/kpu_simulator_targets.cmake")
 
+# Provide some useful variables
+set(KPU_SIMULATOR_VERSION @PROJECT_VERSION@)
+set(KPU_SIMULATOR_VERSION_MAJOR @PROJECT_VERSION_MAJOR@)
+set(KPU_SIMULATOR_VERSION_MINOR @PROJECT_VERSION_MINOR@)
+set(KPU_SIMULATOR_VERSION_PATCH @PROJECT_VERSION_PATCH@)
+
+# Check that all requested components are available
 check_required_components(kpu_simulator)
+
+# Provide information about what was found
+if(NOT kpu_simulator_FIND_QUIETLY)
+    message(STATUS "Found KPU Simulator: ${KPU_SIMULATOR_VERSION}")
+    message(STATUS "  Targets available: kpu::core")
+endif()

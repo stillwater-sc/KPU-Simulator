@@ -4,7 +4,7 @@
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-pybind11_add_module(stillwater_kpu_native pybind_module.cpp)
+pybind11_add_module(stillwater_kpu_native kpu_bindings.cpp)
 
 target_link_libraries(stillwater_kpu_native PRIVATE
     StillwaterKPU::Simulator

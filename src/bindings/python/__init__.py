@@ -1,2 +1,8 @@
-# a minimum __init__.py file placed inside the python bindings folder
-# to make it a package
+"""
+Stillwater KPU Simulator Python Bindings
+"""
+
+from .stillwater_kpu_native import *
+
+__version__ = "0.1.0"
+__all__ = ["KpuSimulator", "MemoryManager", "MemoryPool"]

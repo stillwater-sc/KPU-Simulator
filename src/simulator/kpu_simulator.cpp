@@ -1,10 +1,11 @@
-#include "sw/kpu/simulator.hpp"
+
 #include <algorithm>
 #include <random>
 #include <iostream>
 #include <cassert>
 #include <cstring>
 
+#include "sw/kpu/kpu_simulator.hpp"
 namespace sw::kpu {
 
 // ExternalMemory implementation - manages its own memory model
