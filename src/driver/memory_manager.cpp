@@ -1,11 +1,14 @@
-#include <sw/kpu/memory_manager.hpp>
+#include <sw/driver/memory_manager.hpp>
 #include <memory>
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
+#include <cstdalign>
 
-namespace sw::kpu {
+namespace sw::driver {
 
 // ============================================================================
 // MemoryManager Implementation
@@ -17,7 +20,7 @@ void* MemoryManager::allocate(size_t size) {
     }
     
     try {
-        void* ptr = std::aligned_alloc(alignof(std::max_align_t), size);
+		void* ptr = NULL; // std::aligned_alloc(alignof(std::max_align_t), size);  aligned_alloc is not supported in MSVC
         if (ptr) {
             update_statistics(size, true);
             // In a real implementation, you'd track this allocation
@@ -98,7 +101,7 @@ MemoryPool::MemoryPool(size_t pool_size, size_t block_size)
     }
     
     // Allocate the pool memory
-    pool_memory_ = std::aligned_alloc(block_size, pool_size);
+    pool_memory_ = NULL; //  std::aligned_alloc(block_size, pool_size);
     if (!pool_memory_) {
         throw std::bad_alloc();
     }

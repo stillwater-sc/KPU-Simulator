@@ -3,6 +3,7 @@
 # Core simulator engine
 
 add_subdirectory(simulator)
+add_subdirectory(driver)
 add_subdirectory(memory)
 
 # TODO: Add when implemented

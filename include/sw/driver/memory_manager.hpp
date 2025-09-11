@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <cstdint>
+#include <vector>
 
 namespace sw::driver {
 

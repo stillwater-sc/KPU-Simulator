@@ -1,4 +1,4 @@
-pragma once
+#pragma once
 // core types and concepts for KPU simulator
 #include <cstdint>
 #include <cstddef>
