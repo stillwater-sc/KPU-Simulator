@@ -1,6 +1,6 @@
 #pragma once
 
-namespace sw::kpu {
+namespace sw::sim {
 
 /**
  * @brief Main System Simulator class

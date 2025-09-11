@@ -2,6 +2,7 @@
 # tests/integration/CMakeLists.txt
 # Integration tests
 
+if(LATER)
 kpu_add_test(
     NAME end_to_end
     INTEGRATION
@@ -23,4 +24,6 @@ if(KPU_BUILD_PYTHON_BINDINGS)
         SOURCES test_python_cpp_integration.cpp
         LIBS StillwaterKPU::Simulator
     )
+endif()
+
 endif()

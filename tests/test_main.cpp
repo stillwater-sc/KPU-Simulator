@@ -1,5 +1,5 @@
 #include <iostream>
-#include <sw/kpu/simulator.hpp>
+#include <sw/kpu/kpu_simulator.hpp>
 
 int main() {
     std::cout << "=== KPU Simulator Test ===" << std::endl;

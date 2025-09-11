@@ -1,10 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
-#include <sw/kpu/kpu_simulator.hpp>
+#include <sw/system/toplevel.hpp>
 
-using namespace sw::kpu;
+using namespace sw::sim;
 
 TEST_CASE("End-to-end simulator test", "[integration][end_to_end]") {
-    KpuSimulator simulator;
+    TopLevelSimulator simulator;
     
     SECTION("Complete workflow") {
         REQUIRE(simulator.initialize());

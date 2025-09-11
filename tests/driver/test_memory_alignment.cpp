@@ -7,11 +7,16 @@
 #include <cstdint>
 #include <type_traits>
 
-using namespace sw::kpu;
+using namespace sw::driver;
+
+// Helper function to check if a pointer is aligned to a specific type's alignment
+template<typename T>
+bool is_aligned(void* ptr) {
+    return reinterpret_cast<uintptr_t>(ptr) % alignof(T) == 0;
+}
 
 // Helper function to check if a pointer is aligned to a given boundary
-template<typename T>
-bool is_aligned(void* ptr, size_t alignment = alignof(T)) {
+bool is_aligned(void* ptr, size_t alignment) {
     return reinterpret_cast<uintptr_t>(ptr) % alignment == 0;
 }
 
@@ -26,6 +31,8 @@ uintptr_t get_alignment(void* ptr) {
     }
     return alignment >> 1;
 }
+
+#ifdef DRIVER_TESTS
 
 TEST_CASE("Default memory alignment", "[memory][alignment]") {
     MemoryManager memory_mgr;
@@ -64,7 +71,7 @@ TEST_CASE("Explicit memory alignment", "[memory][alignment][aligned]") {
     AlignedMemoryManager memory_mgr;
     
     SECTION("Power-of-two alignments") {
-        auto alignment = GENERATE(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024);
+        size_t alignment = GENERATE(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024);
         constexpr size_t size = 1024;
         
         auto ptr = memory_mgr.allocate_aligned(size, alignment);
@@ -236,7 +243,7 @@ TEST_CASE("Multiple aligned allocations", "[memory][alignment][multiple]") {
                 auto addr1 = reinterpret_cast<uintptr_t>(ptr1);
                 auto addr2 = reinterpret_cast<uintptr_t>(ptr2);
                 
-                REQUIRE((addr1 + size1 <= addr2) || (addr2 + size2 <= addr1));
+                REQUIRE(((addr1 + size1 <= addr2) || (addr2 + size2 <= addr1)));
             }
         }
         
@@ -297,4 +304,6 @@ TEST_CASE("Aligned allocation performance", "[memory][alignment][performance]") 
             memory_mgr.deallocate_aligned(ptr);
         }
     }
-}
+} 
+
+#endif

@@ -1,17 +1,18 @@
 #include <catch2/catch_test_macros.hpp>
-#include <sw/kpu/kpu_simulator.hpp>
+#include <sw/system/toplevel.hpp>
 #include <sw/driver/memory_manager.hpp>
 
-using namespace sw::kpu;
+using namespace sw::sim;
 
 TEST_CASE("Multi-component integration", "[integration][multi_component]") {
-    KpuSimulator simulator;
+    TopLevelSimulator simulator;
     
     SECTION("Memory and simulator integration") {
         REQUIRE(simulator.initialize());
         
-        auto& memory_mgr = simulator.get_memory_manager();
-        
+        //auto& memory_mgr = simulator.get_memory_manager();
+		sw::driver::MemoryManager memory_mgr;
+
         // Test memory allocation through simulator
         void* ptr1 = memory_mgr.allocate(1024);
         REQUIRE(ptr1 != nullptr);

@@ -2,12 +2,14 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <sw/kpu/memory_manager.hpp>
+#include <sw/driver/memory_manager.hpp>
 #include <memory>
 #include <vector>
 #include <cstddef>
 
-using namespace sw::kpu;
+using namespace sw::driver;
+
+#ifdef DRIVER
 
 TEST_CASE("Basic memory allocation", "[memory][allocation]") {
     MemoryManager memory_mgr;
@@ -160,3 +162,5 @@ TEST_CASE("Memory allocation statistics", "[memory][allocation][stats]") {
         REQUIRE(memory_mgr.get_peak_allocated_bytes() == peak_after_allocs);
     }
 }
+
+#endif

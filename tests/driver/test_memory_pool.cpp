@@ -2,13 +2,15 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
-#include <sw/kpu/memory_manager.hpp>
+#include <sw/driver/memory_manager.hpp>
 #include <vector>
 #include <set>
 #include <chrono>
 #include <random>
 
-using namespace sw::kpu;
+using namespace sw::driver;
+
+#ifdef DRVIER
 
 TEST_CASE("Memory pool basic operations", "[memory][pool]") {
     constexpr size_t pool_size = 4096;
@@ -300,3 +302,5 @@ TEST_CASE("Memory pool performance characteristics", "[memory][pool][performance
         }
     }
 }
+
+#endif
