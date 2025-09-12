@@ -41,6 +41,7 @@ function(add_kpu_test test_name test_category)
 endfunction()
 
 # Add test subdirectories - each manages its own tests
+add_subdirectory(system)
 add_subdirectory(driver)
 add_subdirectory(memory)
 #add_subdirectory(dma)
@@ -60,6 +61,13 @@ add_kpu_test(legacy_test_main "legacy" test_main.cpp)
 # ctest -L memory
 # ctest -L "dma|memory"  # multiple labels
 # ctest -LE "benchmarks"  # exclude label
+add_custom_target(test_system 
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L system
+    COMMENT "Running system orchestration tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+
 add_custom_target(test_driver 
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L driver
     COMMENT "Running resource manager driver tests"

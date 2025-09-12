@@ -51,4 +51,4 @@ private:
     // DataStreamer data_streamer_;
 };
 
-} // namespace sw::kpu
+} // namespace sw::sim

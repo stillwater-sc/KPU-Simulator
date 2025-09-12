@@ -2,6 +2,7 @@
 # src/CMakeLists.txt
 # Core simulator engine
 
+add_subdirectory(system)
 add_subdirectory(simulator)
 add_subdirectory(driver)
 add_subdirectory(memory)

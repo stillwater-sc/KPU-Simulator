@@ -4,26 +4,42 @@
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-pybind11_add_module(stillwater_kpu_native kpu_bindings.cpp)
+# TopLevelSimulator bindings - clean and focused
+pybind11_add_module(stillwater_toplevel stillwater_toplevel_bindings.cpp)
 
-target_link_libraries(stillwater_kpu_native PRIVATE
-    StillwaterKPU::Simulator
+target_link_libraries(stillwater_toplevel PRIVATE
+    StillwaterKPU::System
     pybind11::headers
 )
 
-kpu_set_target_options(stillwater_kpu_native)
+kpu_set_target_options(stillwater_toplevel)
 
 # Compiler-specific options for pybind11
-target_compile_definitions(stillwater_kpu_native PRIVATE 
+target_compile_definitions(stillwater_toplevel PRIVATE 
     VERSION_INFO="${PROJECT_VERSION}"
 )
 
-set_target_properties(stillwater_kpu_native PROPERTIES
+set_target_properties(stillwater_toplevel PROPERTIES
     FOLDER "Bindings"
 )
 
-# Install Python module
-install(TARGETS stillwater_kpu_native
+# TODO: Re-enable KPU simulator bindings when the KPU components are implemented
+# This is the original complex binding that depends on non-existent KPU classes
+# pybind11_add_module(stillwater_kpu_native kpu_bindings.cpp)
+# target_link_libraries(stillwater_kpu_native PRIVATE
+#     StillwaterKPU::Simulator
+#     pybind11::headers
+# )
+# kpu_set_target_options(stillwater_kpu_native)
+# target_compile_definitions(stillwater_kpu_native PRIVATE 
+#     VERSION_INFO="${PROJECT_VERSION}"
+# )
+# set_target_properties(stillwater_kpu_native PROPERTIES
+#     FOLDER "Bindings"
+# )
+
+# Install Python modules
+install(TARGETS stillwater_toplevel
     DESTINATION .
     COMPONENT Python
 )
@@ -33,4 +49,3 @@ install(FILES __init__.py
     DESTINATION .
     COMPONENT Python
 )
-

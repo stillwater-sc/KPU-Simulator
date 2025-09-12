@@ -1,7 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
+# Suppress deprecation warnings from external dependencies globally
+# This must be set before any external dependencies are processed
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)
+
 # Set modern CMake policies
 cmake_policy(SET CMP0148 NEW)  # Use FindPython instead of FindPythonInterp/FindPythonLibs
+# Note: Deprecation warnings from external dependencies are suppressed globally above.
 
 project(kpu_simulator 
     VERSION 0.1.0
@@ -210,6 +215,9 @@ message(STATUS "  cmake -DKPU_BUILD_PYTHON_BINDINGS=ON ..")
 message(STATUS "  # Or, if pybind11 is not available, disable Python bindings :")
 message(STATUS " cmake -DKPU_BUILD_PYTHON_BINDINGS=OFF ..")
 message(STATUS "")
+# Re-enable deprecation warnings for project code after dependencies are processed
+set(CMAKE_WARN_DEPRECATED ON CACHE BOOL "" FORCE)
+
 message(STATUS "To run tests:")
 message(STATUS "  .\\${CMAKE_BUILD_TYPE}\\kpu_test.exe")
 message(STATUS "")

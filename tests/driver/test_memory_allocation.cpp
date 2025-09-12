@@ -9,6 +9,10 @@
 
 using namespace sw::driver;
 
+TEST_CASE("MemoryManager instantiation", "[memory]") {
+    REQUIRE_NOTHROW(MemoryManager());
+}
+
 #ifdef DRIVER
 
 TEST_CASE("Basic memory allocation", "[memory][allocation]") {

@@ -55,7 +55,7 @@ kpu_add_dependency(spdlog
 
 kpu_add_dependency(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.2
+    GIT_TAG v3.11.3  # Latest stable version
     TARGETS nlohmann_json
 )
 
@@ -66,10 +66,21 @@ kpu_add_dependency(fmt
 )
 
 if(KPU_BUILD_PYTHON_BINDINGS)
+    # Suppress pybind11's FindPython policy warnings by temporarily setting policy
+    if(POLICY CMP0148)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0148 OLD)  # Allow pybind11 to use old FindPython modules
+    endif()
+    
     kpu_add_dependency(pybind11
         GIT_REPOSITORY https://github.com/pybind/pybind11.git
-        GIT_TAG v2.11.1
+        GIT_TAG v2.13.6  # Latest stable with improved CMake support
         TARGETS pybind11 pybind11_headers
     )
+    
+    # Restore policy
+    if(POLICY CMP0148)
+        cmake_policy(POP)
+    endif()
 endif()
 

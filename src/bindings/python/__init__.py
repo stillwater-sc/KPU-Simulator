@@ -2,7 +2,17 @@
 Stillwater KPU Simulator Python Bindings
 """
 
-from .stillwater_kpu_native import *
+try:
+    # Try importing the TopLevelSimulator (clean orchestration API)
+    from .stillwater_toplevel import *
+    __all__ = ["TopLevelSimulator"]
+except ImportError:
+    # Fallback to empty if bindings not built
+    __all__ = []
+    pass
+
+# TODO: Re-enable when KPU components are implemented
+# from .stillwater_kpu_native import *
+# __all__.extend(["KpuSimulator", "MemoryManager", "MemoryPool"])
 
 __version__ = "0.1.0"
-__all__ = ["KpuSimulator", "MemoryManager", "MemoryPool"]
