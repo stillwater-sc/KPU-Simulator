@@ -9,8 +9,8 @@
     {
       "name": "default",
       "displayName": "Default Configuration",
-      "description": "Default build configuration",
-      "generator": "Ninja Multi-Config",
+      "description": "Default build configuration - platform specific",
+      "generator": "$penv{CMAKE_GENERATOR}",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -21,31 +21,35 @@
         "KPU_ENABLE_OPENMP": "ON"
       },
       "condition": {
-        "type": "anyOf",
+        "type": "allOf",
         "conditions": [
           {
             "type": "equals",
             "lhs": "${hostSystemName}",
             "rhs": "Linux"
-          },
-          {
-            "type": "equals", 
-            "lhs": "${hostSystemName}",
-            "rhs": "Darwin"
-          },
-          {
-            "type": "equals",
-            "lhs": "${hostSystemName}", 
-            "rhs": "Windows"
           }
         ]
+      }
+    },
+    {
+      "name": "default-fallback",
+      "displayName": "Default Fallback", 
+      "description": "Fallback configuration for unsupported platforms",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "KPU_BUILD_TESTS": "ON",
+        "KPU_BUILD_EXAMPLES": "ON",
+        "KPU_BUILD_TOOLS": "ON",
+        "KPU_BUILD_PYTHON_BINDINGS": "ON",
+        "KPU_ENABLE_OPENMP": "ON"
       }
     },
     {
       "name": "debug",
       "displayName": "Debug Configuration",
       "description": "Debug build with sanitizers and detailed logging",
-      "inherits": "default",
+      "inherits": ["windows-msvc", "default", "default-fallback"],
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "KPU_ENABLE_SANITIZERS": "ON",
@@ -89,17 +93,23 @@
       }
     },
     {
-      "name": "windows-msvc",
-      "displayName": "Windows MSVC",
-      "description": "Windows build using MSVC",
-      "inherits": "default",
+      "name": "windows-msvc", 
+      "displayName": "Windows MSVC (Default)",
+      "description": "Windows build using MSVC - default for Windows",
       "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build",
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
         "rhs": "Windows"
       },
       "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "KPU_BUILD_TESTS": "ON",
+        "KPU_BUILD_EXAMPLES": "ON",
+        "KPU_BUILD_TOOLS": "ON",
+        "KPU_BUILD_PYTHON_BINDINGS": "ON",
+        "KPU_ENABLE_OPENMP": "ON",
         "CMAKE_CXX_COMPILER": "cl",
         "CMAKE_C_COMPILER": "cl"
       },
