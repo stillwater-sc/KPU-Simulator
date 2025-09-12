@@ -12,6 +12,9 @@ find_package(Threads REQUIRED)
 add_library(kpu_system ${SYSTEM_SOURCES})
 add_library(StillwaterKPU::System ALIAS kpu_system)
 
+# Enable Position Independent Code for shared library compatibility
+set_target_properties(kpu_system PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 target_include_directories(kpu_system
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>

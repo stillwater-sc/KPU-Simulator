@@ -23,6 +23,7 @@ kpu_set_target_options(kpu_memory)
 set_target_properties(kpu_memory PROPERTIES
     EXPORT_NAME Memory
     FOLDER "Core"
+    POSITION_INDEPENDENT_CODE ON  # Enable PIC for shared library compatibility
 )
 
 # Don't export for now to avoid dependency chain issues

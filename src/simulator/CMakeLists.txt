@@ -45,6 +45,7 @@ set_target_properties(kpu_simulator PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
     FOLDER "Core"
+    POSITION_INDEPENDENT_CODE ON  # Enable PIC for shared library compatibility
 )
 
 # Installation

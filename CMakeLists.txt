@@ -20,6 +20,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Enable Position Independent Code by default for all targets
+# This is required when static libraries are linked into shared libraries (like Python modules)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Include CMake modules
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerOptions)
