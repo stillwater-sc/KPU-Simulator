@@ -8,16 +8,16 @@ namespace sw::sim {
  * This is the primary interface for the functional simulator,
  * creating and coordinating all constituent components of a computing system.
  */
-class TopLevelSimulator {
+class SystemSimulator {
 public:
-    TopLevelSimulator();
-    ~TopLevelSimulator() = default;
+    SystemSimulator();
+    ~SystemSimulator() = default;
     
     // Non-copyable, movable
-    TopLevelSimulator(const TopLevelSimulator&) = delete;
-    TopLevelSimulator& operator=(const TopLevelSimulator&) = delete;
-    TopLevelSimulator(TopLevelSimulator&&) = default;
-    TopLevelSimulator& operator=(TopLevelSimulator&&) = default;
+    SystemSimulator(const SystemSimulator&) = delete;
+    SystemSimulator& operator=(const SystemSimulator&) = delete;
+    SystemSimulator(SystemSimulator&&) = default;
+    SystemSimulator& operator=(SystemSimulator&&) = default;
     
     /**
      * @brief Initialize the simulator

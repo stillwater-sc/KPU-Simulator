@@ -15,6 +15,9 @@ project(kpu_simulator
     LANGUAGES CXX C
 )
 
+# Enable folder organization in IDEs (Visual Studio, etc.)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -124,22 +127,7 @@ function(kpu_set_target_options target_name)
     endif()
 endfunction()
 
-# Function to add tests (simplified version of what's expected)
-function(kpu_add_test)
-    set(options INTEGRATION)
-    set(oneValueArgs NAME)
-    set(multiValueArgs SOURCES LIBS)
-    cmake_parse_arguments(TEST "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
-    
-    add_executable(${TEST_NAME} ${TEST_SOURCES})
-    target_link_libraries(${TEST_NAME} PRIVATE ${TEST_LIBS} Catch2::Catch2WithMain)
-    
-    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    
-    if(TEST_INTEGRATION)
-        set_tests_properties(${TEST_NAME} PROPERTIES LABELS "integration")
-    endif()
-endfunction()
+# Note: kpu_add_test() function is defined in cmake/Testing.cmake
 
 # Global include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)

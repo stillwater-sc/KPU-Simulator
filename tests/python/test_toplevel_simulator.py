@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Test script for the TopLevelSimulator Python bindings
+Test script for the SystemSimulator Python bindings
 """
 
 import sys
 import traceback
 
 def test_basic_import():
-    """Test that we can import the TopLevelSimulator module"""
+    """Test that we can import the SystemSimulator module"""
     print("=== Testing Basic Import ===")
     try:
         import stillwater_toplevel as tl
@@ -25,8 +25,8 @@ def test_basic_functionality():
         import stillwater_toplevel as tl
         
         # Create simulator
-        simulator = tl.TopLevelSimulator()
-        print("✓ TopLevelSimulator created successfully")
+        simulator = tl.SystemSimulator()
+        print("✓ SystemSimulator created successfully")
         
         # Test initial state
         if not simulator.is_initialized():
@@ -78,7 +78,7 @@ def test_context_manager():
     try:
         import stillwater_toplevel as tl
         
-        with tl.TopLevelSimulator() as simulator:
+        with tl.SystemSimulator() as simulator:
             print("✓ Context manager entry successful")
             
             if simulator.is_initialized():
@@ -108,7 +108,7 @@ def test_error_conditions():
     try:
         import stillwater_toplevel as tl
         
-        simulator = tl.TopLevelSimulator()
+        simulator = tl.SystemSimulator()
         
         # Self test should fail when not initialized
         if not simulator.run_self_test():
@@ -150,7 +150,7 @@ def test_error_conditions():
 
 def main():
     """Run all tests"""
-    print("TopLevelSimulator Python Bindings Test Suite")
+    print("SystemSimulator Python Bindings Test Suite")
     print("=" * 70)
     
     tests = [
@@ -179,7 +179,7 @@ def main():
     print(f"Test Results: {passed}/{total} tests passed")
     
     if passed == total:
-        print("🎉 All tests passed! TopLevelSimulator Python bindings are working correctly.")
+        print("🎉 All tests passed! SystemSimulator Python bindings are working correctly.")
         return 0
     else:
         print(f"⚠️  {total - passed} test(s) failed.")

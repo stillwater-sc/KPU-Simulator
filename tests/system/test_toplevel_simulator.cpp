@@ -3,15 +3,15 @@
 
 using namespace sw::sim;
 
-TEST_CASE("TopLevelSimulator construction", "[system][toplevel]") {
+TEST_CASE("SystemSimulator construction", "[system][toplevel]") {
     SECTION("can be constructed") {
-        TopLevelSimulator simulator;
+        SystemSimulator simulator;
         REQUIRE_FALSE(simulator.is_initialized());
     }
 }
 
-TEST_CASE("TopLevelSimulator initialization lifecycle", "[system][toplevel]") {
-    TopLevelSimulator simulator;
+TEST_CASE("SystemSimulator initialization lifecycle", "[system][toplevel]") {
+    SystemSimulator simulator;
     
     SECTION("starts uninitialized") {
         REQUIRE_FALSE(simulator.is_initialized());
@@ -50,8 +50,8 @@ TEST_CASE("TopLevelSimulator initialization lifecycle", "[system][toplevel]") {
     }
 }
 
-TEST_CASE("TopLevelSimulator self test", "[system][toplevel]") {
-    TopLevelSimulator simulator;
+TEST_CASE("SystemSimulator self test", "[system][toplevel]") {
+    SystemSimulator simulator;
     
     SECTION("self test fails when not initialized") {
         REQUIRE_FALSE(simulator.run_self_test());
@@ -71,8 +71,8 @@ TEST_CASE("TopLevelSimulator self test", "[system][toplevel]") {
     }
 }
 
-TEST_CASE("TopLevelSimulator full lifecycle", "[system][toplevel]") {
-    TopLevelSimulator simulator;
+TEST_CASE("SystemSimulator full lifecycle", "[system][toplevel]") {
+    SystemSimulator simulator;
     
     // Complete lifecycle test
     REQUIRE_FALSE(simulator.is_initialized());

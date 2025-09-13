@@ -36,10 +36,16 @@ if(KPU_BUILD_TESTS)
             # Apply compiler options
             kpu_set_target_options(${TEST_TARGET})
             
-            # Set folder
-            set_target_properties(${TEST_TARGET} PROPERTIES
-                FOLDER "Tests"
-            )
+            # Set folder based on test type
+            if(TEST_INTEGRATION)
+                set_target_properties(${TEST_TARGET} PROPERTIES FOLDER "Tests/integration")
+            elseif(TEST_UNIT)
+                set_target_properties(${TEST_TARGET} PROPERTIES FOLDER "Tests/unit")
+            elseif(TEST_PERFORMANCE)
+                set_target_properties(${TEST_TARGET} PROPERTIES FOLDER "Tests/performance")
+            else()
+                set_target_properties(${TEST_TARGET} PROPERTIES FOLDER "Tests")
+            endif()
         endif()
         
         # Add to CTest

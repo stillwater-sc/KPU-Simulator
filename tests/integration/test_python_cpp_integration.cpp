@@ -4,7 +4,7 @@
 using namespace sw::sim;
 
 TEST_CASE("Python-C++ integration", "[integration][python_cpp]") {
-    TopLevelSimulator simulator;
+    SystemSimulator simulator;
     
     SECTION("Basic integration test") {
         // This test verifies that the C++ simulator works

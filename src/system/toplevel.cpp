@@ -3,17 +3,17 @@
 
 namespace sw::sim {
 
-TopLevelSimulator::TopLevelSimulator() {
-    std::cout << "[TopLevelSimulator] Constructor called\n";
+SystemSimulator::SystemSimulator() {
+    std::cout << "[SystemSimulator] Constructor called\n";
 }
 
-bool TopLevelSimulator::initialize() {
+bool SystemSimulator::initialize() {
     if (initialized_) {
-        std::cout << "[TopLevelSimulator] Already initialized\n";
+        std::cout << "[SystemSimulator] Already initialized\n";
         return true;
     }
     
-    std::cout << "[TopLevelSimulator] Initializing system components...\n";
+    std::cout << "[SystemSimulator] Initializing system components...\n";
     
     // TODO: Initialize subsystems in the future:
     // - External memory subsystem
@@ -25,38 +25,38 @@ bool TopLevelSimulator::initialize() {
     // - Compute fabrics
     
     initialized_ = true;
-    std::cout << "[TopLevelSimulator] Initialization complete\n";
+    std::cout << "[SystemSimulator] Initialization complete\n";
     return true;
 }
 
-void TopLevelSimulator::shutdown() {
+void SystemSimulator::shutdown() {
     if (!initialized_) {
-        std::cout << "[TopLevelSimulator] Already shut down\n";
+        std::cout << "[SystemSimulator] Already shut down\n";
         return;
     }
     
-    std::cout << "[TopLevelSimulator] Shutting down system components...\n";
+    std::cout << "[SystemSimulator] Shutting down system components...\n";
     
     // TODO: Shutdown subsystems in reverse order
     
     initialized_ = false;
-    std::cout << "[TopLevelSimulator] Shutdown complete\n";
+    std::cout << "[SystemSimulator] Shutdown complete\n";
 }
 
-bool TopLevelSimulator::run_self_test() {
+bool SystemSimulator::run_self_test() {
     if (!initialized_) {
-        std::cout << "[TopLevelSimulator] Cannot run self test - not initialized\n";
+        std::cout << "[SystemSimulator] Cannot run self test - not initialized\n";
         return false;
     }
     
-    std::cout << "[TopLevelSimulator] Running self test...\n";
+    std::cout << "[SystemSimulator] Running self test...\n";
     
     // Simple self test - just verify we can operate
     bool test_passed = true;
     
     // TODO: Add more comprehensive self tests when components are added
     
-    std::cout << "[TopLevelSimulator] Self test " 
+    std::cout << "[SystemSimulator] Self test " 
               << (test_passed ? "PASSED" : "FAILED") << "\n";
     return test_passed;
 }

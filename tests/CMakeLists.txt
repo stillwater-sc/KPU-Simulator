@@ -16,8 +16,8 @@ if(NOT Catch2_FOUND)
     FetchContent_MakeAvailable(Catch2)
 endif()
 
-# Helper function available to all test subdirectories
-function(add_kpu_test test_name test_category)
+# Helper function for KPU component tests - automatically links KPU libraries
+function(kpu_add_component_test test_name test_category)
     # Create the test executable
     add_executable(${test_name} ${ARGN})
     
@@ -28,6 +28,9 @@ function(add_kpu_test test_name test_category)
         kpu_memory 
         Catch2::Catch2WithMain
     )
+    
+    # Set folder organization in Solution Explorer
+    set_target_properties(${test_name} PROPERTIES FOLDER "Tests/${test_category}")
     
     # Add the test to CTest with category label
     add_test(NAME ${test_name} COMMAND ${test_name})
@@ -51,7 +54,7 @@ add_subdirectory(integration)
 #add_subdirectory(benchmarks)
 
 # Legacy test (in this directory)
-add_kpu_test(legacy_test_main "legacy" test_main.cpp)
+kpu_add_component_test(legacy_test_main "legacy" test_main.cpp)
 
 # Custom test targets for different categories
 # These targets are defined here because they orchestrate across all subdirectories
@@ -67,6 +70,7 @@ add_custom_target(test_system
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_system PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_driver 
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L driver
@@ -74,6 +78,7 @@ add_custom_target(test_driver
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_driver PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_memory 
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L memory
@@ -81,6 +86,7 @@ add_custom_target(test_memory
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_memory PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_dma
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L dma  
@@ -88,6 +94,7 @@ add_custom_target(test_dma
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_dma PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_block_mover
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L block_mover
@@ -95,6 +102,7 @@ add_custom_target(test_block_mover
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_block_mover PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_streamer
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L streamer
@@ -102,6 +110,7 @@ add_custom_target(test_streamer
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_streamer PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_integration
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L integration
@@ -109,6 +118,7 @@ add_custom_target(test_integration
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_integration PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_benchmarks
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L benchmark
@@ -116,6 +126,7 @@ add_custom_target(test_benchmarks
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_benchmarks PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_all_categories
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure
@@ -123,3 +134,4 @@ add_custom_target(test_all_categories
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
+set_target_properties(test_all_categories PROPERTIES FOLDER "Tests/Runners")

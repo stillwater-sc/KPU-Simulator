@@ -3,9 +3,9 @@ Stillwater KPU Simulator Python Bindings
 """
 
 try:
-    # Try importing the TopLevelSimulator (clean orchestration API)
+    # Try importing the SystemSimulator (clean orchestration API)
     from .stillwater_toplevel import *
-    __all__ = ["TopLevelSimulator"]
+    __all__ = ["SystemSimulator"]
 except ImportError:
     # Fallback to empty if bindings not built
     __all__ = []

@@ -4,7 +4,7 @@
 using namespace sw::sim;
 
 TEST_CASE("End-to-end simulator test", "[integration][end_to_end]") {
-    TopLevelSimulator simulator;
+    SystemSimulator simulator;
     
     SECTION("Complete workflow") {
         REQUIRE(simulator.initialize());
