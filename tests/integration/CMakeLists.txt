@@ -23,4 +23,31 @@ if(KPU_BUILD_PYTHON_BINDINGS)
         SOURCES test_python_cpp_integration.cpp
         LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
     )
+    
+    # Add Python embedding support for the integration test
+    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    target_link_libraries(test_python_cpp_integration 
+        PRIVATE 
+        Python::Python
+        pybind11::embed
+    )
+    
+    # Configure paths where Python modules are built  
+    set(PYTHON_MODULES_BUILD_DIR "${CMAKE_BINARY_DIR}/src/bindings/python")
+    set(PYTHON_MODULES_SOURCE_DIR "${CMAKE_SOURCE_DIR}/src/bindings/python")
+    # On multi-config generators (Visual Studio), modules go into config subdirectories
+    set(PYTHON_MODULES_BUILD_DIR_DEBUG "${CMAKE_BINARY_DIR}/src/bindings/python/Debug")
+    set(PYTHON_MODULES_BUILD_DIR_RELEASE "${CMAKE_BINARY_DIR}/src/bindings/python/Release")
+    
+    target_compile_definitions(test_python_cpp_integration 
+        PRIVATE 
+        KPU_BUILD_PYTHON_BINDINGS
+        PYTHON_MODULES_BUILD_DIR="${PYTHON_MODULES_BUILD_DIR}"
+        PYTHON_MODULES_SOURCE_DIR="${PYTHON_MODULES_SOURCE_DIR}"
+        PYTHON_MODULES_BUILD_DIR_DEBUG="${PYTHON_MODULES_BUILD_DIR_DEBUG}"
+        PYTHON_MODULES_BUILD_DIR_RELEASE="${PYTHON_MODULES_BUILD_DIR_RELEASE}"
+    )
+    
+    # Ensure Python module is built before running the test
+    add_dependencies(test_python_cpp_integration stillwater_toplevel)
 endif()
