@@ -62,63 +62,63 @@ add_kpu_test(legacy_test_main "legacy" test_main.cpp)
 # ctest -L "dma|memory"  # multiple labels
 # ctest -LE "benchmarks"  # exclude label
 add_custom_target(test_system 
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L system
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L system
     COMMENT "Running system orchestration tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_driver 
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L driver
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L driver
     COMMENT "Running resource manager driver tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_memory 
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L memory
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L memory
     COMMENT "Running memory tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_dma
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L dma  
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L dma  
     COMMENT "Running DMA tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_block_mover
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L block_mover
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L block_mover
     COMMENT "Running block mover tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_streamer
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L streamer
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L streamer
     COMMENT "Running streamer tests" 
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_integration
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L integration
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L integration
     COMMENT "Running integration tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_benchmarks
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -L benchmark
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L benchmark
     COMMENT "Running benchmark tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 
 add_custom_target(test_all_categories
-    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure
     COMMENT "Running all tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
