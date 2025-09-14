@@ -53,6 +53,7 @@ __pycache__/
 # virtual environment
 venv/
 kpu_venv/
+wsl_venv/
 
 # directories
 build/
