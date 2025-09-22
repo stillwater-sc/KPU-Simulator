@@ -26,6 +26,9 @@
 #include <sw/memory/external_memory.hpp>
 #include <sw/memory/scratchpad.hpp>
 #include <sw/memory/dma_engine.hpp>
+#include <sw/memory/l3_tile.hpp>
+#include <sw/memory/l2_bank.hpp>
+#include <sw/memory/block_mover.hpp>
 #include <sw/noc/compute_fabric.hpp>
 namespace sw::kpu {
 
@@ -40,11 +43,17 @@ public:
         Size scratchpad_capacity_kb;
         Size compute_tile_count;
         Size dma_engine_count;
+        Size l3_tile_count;
+        Size l3_tile_capacity_kb;
+        Size l2_bank_count;
+        Size l2_bank_capacity_kb;
+        Size block_mover_count;
 
         Config() : memory_bank_count(2), memory_bank_capacity_mb(1024),
                    memory_bandwidth_gbps(100), scratchpad_count(2),
                    scratchpad_capacity_kb(64), compute_tile_count(2),
-                   dma_engine_count(2) {}
+                   dma_engine_count(2), l3_tile_count(4), l3_tile_capacity_kb(128),
+                   l2_bank_count(8), l2_bank_capacity_kb(64), block_mover_count(4) {}
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
 		Config(Config&&) = default;
@@ -53,11 +62,13 @@ public:
 
         Config (Size mem_banks, Size mem_cap, Size mem_bw,
                 Size pads, Size pad_cap,
-                Size tiles, Size dmas)
+                Size tiles, Size dmas, Size l3_tiles = 4, Size l3_cap = 128,
+                Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4)
             : memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
               memory_bandwidth_gbps(mem_bw), scratchpad_count(pads),
               scratchpad_capacity_kb(pad_cap), compute_tile_count(tiles),
-			dma_engine_count(dmas) {
+              dma_engine_count(dmas), l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
+              l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap), block_mover_count(block_movers) {
 		}
     };
     
@@ -74,6 +85,9 @@ private:
     std::vector<Scratchpad> scratchpads;
     std::vector<DMAEngine> dma_engines;
     std::vector<ComputeFabric> compute_tiles;
+    std::vector<L3Tile> l3_tiles;
+    std::vector<L2Bank> l2_banks;
+    std::vector<BlockMover> block_movers;
     
     // Simulation state
     Cycle current_cycle;
@@ -104,7 +118,22 @@ public:
                                           std::function<void()> callback = nullptr);
 
     bool is_dma_busy(size_t dma_id);
-    
+
+    // BlockMover operations - L3 to L2 data movement with transformations
+    void start_block_transfer(size_t block_mover_id, size_t src_l3_tile_id, Address src_offset,
+                             size_t dst_l2_bank_id, Address dst_offset,
+                             Size block_height, Size block_width, Size element_size,
+                             BlockMover::TransformType transform = BlockMover::TransformType::IDENTITY,
+                             std::function<void()> callback = nullptr);
+
+    bool is_block_mover_busy(size_t block_mover_id);
+
+    // L3 and L2 memory operations
+    void read_l3_tile(size_t tile_id, Address addr, void* data, Size size);
+    void write_l3_tile(size_t tile_id, Address addr, const void* data, Size size);
+    void read_l2_bank(size_t bank_id, Address addr, void* data, Size size);
+    void write_l2_bank(size_t bank_id, Address addr, const void* data, Size size);
+
     // Compute operations
     void start_matmul(size_t tile_id, size_t scratchpad_id, Size m, Size n, Size k,
                      Address a_addr, Address b_addr, Address c_addr,
@@ -121,9 +150,14 @@ public:
     size_t get_scratchpad_count() const { return scratchpads.size(); }
     size_t get_compute_tile_count() const { return compute_tiles.size(); }
     size_t get_dma_engine_count() const { return dma_engines.size(); }
+    size_t get_l3_tile_count() const { return l3_tiles.size(); }
+    size_t get_l2_bank_count() const { return l2_banks.size(); }
+    size_t get_block_mover_count() const { return block_movers.size(); }
     
     Size get_memory_bank_capacity(size_t bank_id) const;
     Size get_scratchpad_capacity(size_t pad_id) const;
+    Size get_l3_tile_capacity(size_t tile_id) const;
+    Size get_l2_bank_capacity(size_t bank_id) const;
     
     // High-level test operations
     bool run_matmul_test(const MatMulTest& test, size_t memory_bank_id = 0, 
@@ -138,12 +172,17 @@ public:
     // Component status queries
     bool is_memory_bank_ready(size_t bank_id) const;
     bool is_scratchpad_ready(size_t pad_id) const;
+    bool is_l3_tile_ready(size_t tile_id) const;
+    bool is_l2_bank_ready(size_t bank_id) const;
     
 private:
     void validate_bank_id(size_t bank_id) const;
     void validate_scratchpad_id(size_t pad_id) const;
     void validate_dma_id(size_t dma_id) const;
     void validate_tile_id(size_t tile_id) const;
+    void validate_l3_tile_id(size_t tile_id) const;
+    void validate_l2_bank_id(size_t bank_id) const;
+    void validate_block_mover_id(size_t mover_id) const;
 };
 
 // Utility functions for test case generation
