@@ -27,43 +27,43 @@ namespace sw::kpu {
 // DMA Engine for data movement between memory hierarchies
 class KPU_API DMAEngine {
 public:
-    struct Transfer {
-        Address src_addr;
-        Address dst_addr;
-        Size size;
-        std::function<void()> completion_callback;
-    };
-    
     enum class MemoryType {
         EXTERNAL,
         SCRATCHPAD
     };
-    
+
+    struct Transfer {
+        MemoryType src_type;
+        size_t src_id;
+        Address src_addr;
+        MemoryType dst_type;
+        size_t dst_id;
+        Address dst_addr;
+        Size size;
+        std::function<void()> completion_callback;
+    };
+
 private:
     std::vector<Transfer> transfer_queue;  // Dynamically managed resource
     bool is_active;
-    MemoryType src_type;
-    MemoryType dst_type;
-    size_t src_id;  // Index into memory bank vector
-    size_t dst_id;  // Index into memory bank vector
-    
+    size_t engine_id;  // For debugging/identification
+
 public:
-    DMAEngine(MemoryType src_type, size_t src_id, MemoryType dst_type, size_t dst_id);
+    explicit DMAEngine(size_t engine_id = 0);
     ~DMAEngine() = default;
-    
-    // Transfer operations
-    void enqueue_transfer(Address src_addr, Address dst_addr, Size size, 
-                         std::function<void()> callback = nullptr);
-    bool process_transfers(std::vector<ExternalMemory>& memory_banks, 
+
+    // Transfer operations - now configured per-transfer
+    void enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
+                         MemoryType dst_type, size_t dst_id, Address dst_addr,
+                         Size size, std::function<void()> callback = nullptr);
+    bool process_transfers(std::vector<ExternalMemory>& memory_banks,
                           std::vector<Scratchpad>& scratchpads);
     bool is_busy() const { return is_active || !transfer_queue.empty(); }
     void reset();
-    
-    // Configuration
-    MemoryType get_src_type() const { return src_type; }
-    MemoryType get_dst_type() const { return dst_type; }
-    size_t get_src_id() const { return src_id; }
-    size_t get_dst_id() const { return dst_id; }
+
+    // Status and identification
+    size_t get_engine_id() const { return engine_id; }
+    size_t get_queue_size() const { return transfer_queue.size(); }
 };
 
 } // namespace sw::kpu

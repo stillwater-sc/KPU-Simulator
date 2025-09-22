@@ -67,66 +67,71 @@ void Scratchpad::reset() {
 }
 
 // DMAEngine implementation - manages its own transfer queue
-DMAEngine::DMAEngine(MemoryType src_type, size_t src_id, MemoryType dst_type, size_t dst_id)
-    : is_active(false), src_type(src_type), dst_type(dst_type), src_id(src_id), dst_id(dst_id) {
+DMAEngine::DMAEngine(size_t engine_id)
+    : is_active(false), engine_id(engine_id) {
 }
 
-void DMAEngine::enqueue_transfer(Address src_addr, Address dst_addr, Size size, 
-                                std::function<void()> callback) {
-    transfer_queue.emplace_back(Transfer{src_addr, dst_addr, size, std::move(callback)});
+void DMAEngine::enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
+                                MemoryType dst_type, size_t dst_id, Address dst_addr,
+                                Size size, std::function<void()> callback) {
+    transfer_queue.emplace_back(Transfer{
+        src_type, src_id, src_addr,
+        dst_type, dst_id, dst_addr,
+        size, std::move(callback)
+    });
 }
 
-bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks, 
+bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
                                  std::vector<Scratchpad>& scratchpads) {
     if (transfer_queue.empty()) {
         is_active = false;
         return false;
     }
-    
+
     is_active = true;
     auto& transfer = transfer_queue.front();
-    
+
     // Allocate temporary buffer for the transfer
     std::vector<std::uint8_t> buffer(transfer.size);
-    
+
     // Read from source
-    if (src_type == MemoryType::EXTERNAL) {
-        if (src_id >= memory_banks.size()) {
-            throw std::out_of_range("Invalid source memory bank ID");
+    if (transfer.src_type == MemoryType::EXTERNAL) {
+        if (transfer.src_id >= memory_banks.size()) {
+            throw std::out_of_range("Invalid source memory bank ID: " + std::to_string(transfer.src_id));
         }
-        memory_banks[src_id].read(transfer.src_addr, buffer.data(), transfer.size);
+        memory_banks[transfer.src_id].read(transfer.src_addr, buffer.data(), transfer.size);
     } else {
-        if (src_id >= scratchpads.size()) {
-            throw std::out_of_range("Invalid source scratchpad ID");
+        if (transfer.src_id >= scratchpads.size()) {
+            throw std::out_of_range("Invalid source scratchpad ID: " + std::to_string(transfer.src_id));
         }
-        scratchpads[src_id].read(transfer.src_addr, buffer.data(), transfer.size);
+        scratchpads[transfer.src_id].read(transfer.src_addr, buffer.data(), transfer.size);
     }
-    
+
     // Write to destination
-    if (dst_type == MemoryType::EXTERNAL) {
-        if (dst_id >= memory_banks.size()) {
-            throw std::out_of_range("Invalid destination memory bank ID");
+    if (transfer.dst_type == MemoryType::EXTERNAL) {
+        if (transfer.dst_id >= memory_banks.size()) {
+            throw std::out_of_range("Invalid destination memory bank ID: " + std::to_string(transfer.dst_id));
         }
-        memory_banks[dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
+        memory_banks[transfer.dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
     } else {
-        if (dst_id >= scratchpads.size()) {
-            throw std::out_of_range("Invalid destination scratchpad ID");
+        if (transfer.dst_id >= scratchpads.size()) {
+            throw std::out_of_range("Invalid destination scratchpad ID: " + std::to_string(transfer.dst_id));
         }
-        scratchpads[dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
+        scratchpads[transfer.dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
     }
-    
+
     // Call completion callback if provided
     if (transfer.completion_callback) {
         transfer.completion_callback();
     }
-    
+
     transfer_queue.erase(transfer_queue.begin());
-    
+
     bool completed = transfer_queue.empty();
     if (completed) {
         is_active = false;
     }
-    
+
     return completed;
 }
 
@@ -240,47 +245,10 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         compute_tiles.emplace_back(i);
     }
     
-    // Initialize DMA engines with better bank distribution
+    // Initialize DMA engines - now bidirectional, configured per-transfer
     dma_engines.reserve(config.dma_engine_count);
-    
-    // DMA 0: External bank 0 -> Scratchpad 0
-    if (config.dma_engine_count >= 1) {
-        dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, 0, 
-                                DMAEngine::MemoryType::SCRATCHPAD, 0);
-    }
-    
-    // DMA 1: Scratchpad 0 -> External bank 0  
-    if (config.dma_engine_count >= 2) {
-        dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, 0, 
-                                DMAEngine::MemoryType::EXTERNAL, 0);
-    }
-    
-    // DMA 2: External bank 1 -> Scratchpad 0 (if we have multiple banks)
-    if (config.dma_engine_count >= 3 && config.memory_bank_count > 1) {
-        dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, 1, 
-                                DMAEngine::MemoryType::SCRATCHPAD, 0);
-    }
-    
-    // DMA 3: Scratchpad 0 -> External bank 1
-    if (config.dma_engine_count >= 4 && config.memory_bank_count > 1) {
-        dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, 0, 
-                                DMAEngine::MemoryType::EXTERNAL, 1);
-    }
-    
-    // Additional DMA engines: distribute across available banks
-    for (size_t i = 4; i < config.dma_engine_count; ++i) {
-        size_t src_bank = (i / 2) % config.memory_bank_count;
-        size_t dst_bank = ((i / 2) + 1) % config.memory_bank_count;
-        
-        if (i % 2 == 0) {
-            // Even: External -> Scratchpad
-            dma_engines.emplace_back(DMAEngine::MemoryType::EXTERNAL, src_bank, 
-                                    DMAEngine::MemoryType::SCRATCHPAD, i % config.scratchpad_count);
-        } else {
-            // Odd: Scratchpad -> External  
-            dma_engines.emplace_back(DMAEngine::MemoryType::SCRATCHPAD, i % config.scratchpad_count,
-                                    DMAEngine::MemoryType::EXTERNAL, dst_bank);
-        }
+    for (size_t i = 0; i < config.dma_engine_count; ++i) {
+        dma_engines.emplace_back(i);  // Just pass engine ID for identification
     }
     
     sim_start_time = std::chrono::high_resolution_clock::now();
@@ -308,10 +276,30 @@ void KPUSimulator::write_scratchpad(size_t pad_id, Address addr, const void* dat
 }
 
 // DMA operations
-void KPUSimulator::start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr, 
+void KPUSimulator::start_dma_transfer(size_t dma_id,
+                                     DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
+                                     DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
                                      Size size, std::function<void()> callback) {
     validate_dma_id(dma_id);
-    dma_engines[dma_id].enqueue_transfer(src_addr, dst_addr, size, std::move(callback));
+    dma_engines[dma_id].enqueue_transfer(src_type, src_id, src_addr,
+                                        dst_type, dst_id, dst_addr,
+                                        size, std::move(callback));
+}
+
+void KPUSimulator::start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
+                                                    size_t pad_id, Address dst_addr, Size size,
+                                                    std::function<void()> callback) {
+    start_dma_transfer(dma_id, DMAEngine::MemoryType::EXTERNAL, bank_id, src_addr,
+                      DMAEngine::MemoryType::SCRATCHPAD, pad_id, dst_addr,
+                      size, std::move(callback));
+}
+
+void KPUSimulator::start_dma_scratchpad_to_external(size_t dma_id, size_t pad_id, Address src_addr,
+                                                    size_t bank_id, Address dst_addr, Size size,
+                                                    std::function<void()> callback) {
+    start_dma_transfer(dma_id, DMAEngine::MemoryType::SCRATCHPAD, pad_id, src_addr,
+                      DMAEngine::MemoryType::EXTERNAL, bank_id, dst_addr,
+                      size, std::move(callback));
 }
 
 bool KPUSimulator::is_dma_busy(size_t dma_id) {
@@ -431,10 +419,10 @@ bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id
         // Set up computation pipeline
         bool dma_a_complete = false, dma_b_complete = false, compute_complete = false;
         
-        // DMA A and B matrices to scratchpad (assuming we have at least 2 DMA engines)
-        start_dma_transfer(0, ext_a_addr, scratch_a_addr, a_size, 
+        // DMA A and B matrices to scratchpad using convenience methods
+        start_dma_external_to_scratchpad(0, memory_bank_id, ext_a_addr, scratchpad_id, scratch_a_addr, a_size,
             [&dma_a_complete]() { dma_a_complete = true; });
-        start_dma_transfer(0, ext_b_addr, scratch_b_addr, b_size, 
+        start_dma_external_to_scratchpad(0, memory_bank_id, ext_b_addr, scratchpad_id, scratch_b_addr, b_size,
             [&dma_b_complete]() { dma_b_complete = true; });
         
         // Wait for data to be loaded
@@ -452,16 +440,10 @@ bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id
             step();
         }
         
-        // DMA result back to external memory (assuming we have DMA engine 1 for scratch->ext)
+        // DMA result back to external memory using convenience method
         bool dma_c_complete = false;
-        if (dma_engines.size() > 1) {
-            start_dma_transfer(1, scratch_c_addr, ext_c_addr, c_size,
-                [&dma_c_complete]() { dma_c_complete = true; });
-        } else {
-            // Use same DMA engine if only one available
-            start_dma_transfer(0, scratch_c_addr, ext_c_addr, c_size,
-                [&dma_c_complete]() { dma_c_complete = true; });
-        }
+        start_dma_scratchpad_to_external(0, scratchpad_id, scratch_c_addr, memory_bank_id, ext_c_addr, c_size,
+            [&dma_c_complete]() { dma_c_complete = true; });
         
         // Wait for result transfer
         while (!dma_c_complete) {
@@ -517,11 +499,8 @@ void KPUSimulator::print_component_status() const {
     for (size_t i = 0; i < dma_engines.size(); ++i) {
         const auto& dma = dma_engines[i];
         std::cout << "  DMA[" << i << "]: ";
-        std::cout << (dma.get_src_type() == DMAEngine::MemoryType::EXTERNAL ? "EXT" : "PAD");
-        std::cout << "[" << dma.get_src_id() << "] -> ";
-        std::cout << (dma.get_dst_type() == DMAEngine::MemoryType::EXTERNAL ? "EXT" : "PAD");
-        std::cout << "[" << dma.get_dst_id() << "], ";
-        std::cout << "Busy: " << (dma.is_busy() ? "Yes" : "No") << std::endl;
+        std::cout << "Busy: " << (dma.is_busy() ? "Yes" : "No");
+        std::cout << ", Queue: " << dma.get_queue_size() << " transfers" << std::endl;
     }
     
     std::cout << "Compute Tiles:" << std::endl;

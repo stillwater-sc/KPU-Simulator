@@ -41,7 +41,10 @@ public:
         Size compute_tile_count;
         Size dma_engine_count;
 
-		Config() = default;
+        Config() : memory_bank_count(2), memory_bank_capacity_mb(1024),
+                   memory_bandwidth_gbps(100), scratchpad_count(2),
+                   scratchpad_capacity_kb(64), compute_tile_count(2),
+                   dma_engine_count(2) {}
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
 		Config(Config&&) = default;
@@ -86,9 +89,20 @@ public:
     void read_scratchpad(size_t pad_id, Address addr, void* data, Size size);
     void write_scratchpad(size_t pad_id, Address addr, const void* data, Size size);
     
-    // DMA operations
-    void start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr, 
+    // DMA operations - now bidirectional with per-transfer configuration
+    void start_dma_transfer(size_t dma_id,
+                           DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
+                           DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
                            Size size, std::function<void()> callback = nullptr);
+
+    // Convenience methods for common transfer patterns
+    void start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
+                                          size_t pad_id, Address dst_addr, Size size,
+                                          std::function<void()> callback = nullptr);
+    void start_dma_scratchpad_to_external(size_t dma_id, size_t pad_id, Address src_addr,
+                                          size_t bank_id, Address dst_addr, Size size,
+                                          std::function<void()> callback = nullptr);
+
     bool is_dma_busy(size_t dma_id);
     
     // Compute operations
