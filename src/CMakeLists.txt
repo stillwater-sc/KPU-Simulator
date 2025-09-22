@@ -2,15 +2,16 @@
 # src/CMakeLists.txt
 # Core simulator engine
 
+# Add component-based architecture
+add_subdirectory(components)
+
+# Add main simulator and system components
 add_subdirectory(system)
 add_subdirectory(simulator)
 add_subdirectory(driver)
-add_subdirectory(memory)
 
-# TODO: Add when implemented
-# add_subdirectory(dma)
-# add_subdirectory(block_mover) 
-# add_subdirectory(streamer)
+# Keep old memory directory for backward compatibility during transition
+# add_subdirectory(memory)  # Disabled - all components moved to src/components/
 
 if(KPU_BUILD_PYTHON_BINDINGS)
     add_subdirectory(bindings)

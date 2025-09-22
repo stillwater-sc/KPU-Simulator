@@ -1,1 +1,0 @@
-# Hardware component model libraries

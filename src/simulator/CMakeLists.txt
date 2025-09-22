@@ -30,7 +30,7 @@ target_include_directories(kpu_simulator
 
 target_link_libraries(kpu_simulator
     PUBLIC
-        StillwaterKPU::Memory
+        kpu_components          # New component-based architecture
     PRIVATE
         $<TARGET_NAME_IF_EXISTS:Threads::Threads>
         $<TARGET_NAME_IF_EXISTS:fmt::fmt>
@@ -44,7 +44,7 @@ set_target_properties(kpu_simulator PROPERTIES
     OUTPUT_NAME stillwater_kpu_simulator
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    FOLDER "Core"
+    FOLDER "src/Core"
     POSITION_INDEPENDENT_CODE ON  # Enable PIC for shared library compatibility
 )
 

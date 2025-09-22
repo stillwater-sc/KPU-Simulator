@@ -22,10 +22,9 @@ function(kpu_add_component_test test_name test_category)
     add_executable(${test_name} ${ARGN})
     
     # Link against our core library and Catch2
-    target_link_libraries(${test_name} 
-        PRIVATE 
-        kpu_simulator
-        kpu_memory 
+    target_link_libraries(${test_name}
+        PRIVATE
+        kpu_simulator       # Includes all component libraries
         Catch2::Catch2WithMain
     )
     

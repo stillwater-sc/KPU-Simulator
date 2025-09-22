@@ -20,7 +20,7 @@ target_compile_definitions(stillwater_toplevel PRIVATE
 )
 
 set_target_properties(stillwater_toplevel PROPERTIES
-    FOLDER "Bindings"
+    FOLDER "src/Bindings"
     # Put the Python module in the build directory, not source directory
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"

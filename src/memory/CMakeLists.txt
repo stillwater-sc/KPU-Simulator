@@ -1,7 +1,6 @@
 # Memory module - manages its own sources and targets
 
 set(MEMORY_SOURCES
-    scratchpad.cpp
     cache.cpp
 )
 
@@ -22,7 +21,7 @@ kpu_set_target_options(kpu_memory)
 
 set_target_properties(kpu_memory PROPERTIES
     EXPORT_NAME Memory
-    FOLDER "Core"
+    FOLDER "src/Core"
     POSITION_INDEPENDENT_CODE ON  # Enable PIC for shared library compatibility
 )
 

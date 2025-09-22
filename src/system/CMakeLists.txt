@@ -36,7 +36,7 @@ set_target_properties(kpu_system PROPERTIES
     OUTPUT_NAME stillwater_kpu_system
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    FOLDER "Core"
+    FOLDER "src/Core"
 )
 
 # Installation

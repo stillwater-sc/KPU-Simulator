@@ -1,3 +1,4 @@
+
 #include <algorithm>
 #include <random>
 #include <iostream>
@@ -5,8 +6,471 @@
 #include <cstring>
 
 #include "sw/kpu/kpu_simulator.hpp"
-
 namespace sw::kpu {
+
+// ExternalMemory implementation - manages its own memory model
+ExternalMemory::ExternalMemory(Size capacity_mb, Size bandwidth_gbps) 
+    : capacity(capacity_mb * 1024 * 1024), 
+      bandwidth_bytes_per_cycle(bandwidth_gbps * 1000000000 / 8 / 1000000000), // Assuming 1GHz clock
+      last_access_cycle(0) {
+    memory_model.resize(capacity);
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+void ExternalMemory::read(Address addr, void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("Memory read out of bounds");
+    }
+    std::memcpy(data, memory_model.data() + addr, size);
+}
+
+void ExternalMemory::write(Address addr, const void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("Memory write out of bounds");
+    }
+    std::memcpy(memory_model.data() + addr, data, size);
+}
+
+bool ExternalMemory::is_ready() const {
+    // Simplified: assume always ready for now
+    return true;
+}
+
+void ExternalMemory::reset() {
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+    last_access_cycle = 0;
+}
+
+// Scratchpad implementation - manages its own memory model
+Scratchpad::Scratchpad(Size capacity_kb) 
+    : capacity(capacity_kb * 1024) {
+    memory_model.resize(capacity);
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+void Scratchpad::read(Address addr, void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("Scratchpad read out of bounds");
+    }
+    std::memcpy(data, memory_model.data() + addr, size);
+}
+
+void Scratchpad::write(Address addr, const void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("Scratchpad write out of bounds");
+    }
+    std::memcpy(memory_model.data() + addr, data, size);
+}
+
+void Scratchpad::reset() {
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+// L3Tile implementation - distributed L3 cache tiles
+L3Tile::L3Tile(size_t tile_id, Size capacity_kb)
+    : capacity(capacity_kb * 1024), tile_id(tile_id) {
+    memory_model.resize(capacity);
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+void L3Tile::read(Address addr, void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("L3Tile read out of bounds");
+    }
+    std::memcpy(data, memory_model.data() + addr, size);
+}
+
+void L3Tile::write(Address addr, const void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("L3Tile write out of bounds");
+    }
+    std::memcpy(memory_model.data() + addr, data, size);
+}
+
+void L3Tile::read_block(Address base_addr, void* data,
+                       Size block_height, Size block_width, Size element_size,
+                       Size stride) {
+    if (stride == 0) {
+        stride = block_width * element_size; // Contiguous case
+    }
+
+    uint8_t* dst_ptr = static_cast<uint8_t*>(data);
+    for (Size row = 0; row < block_height; ++row) {
+        Address row_addr = base_addr + row * stride;
+        Size row_size = block_width * element_size;
+        read(row_addr, dst_ptr, row_size);
+        dst_ptr += row_size;
+    }
+}
+
+void L3Tile::write_block(Address base_addr, const void* data,
+                        Size block_height, Size block_width, Size element_size,
+                        Size stride) {
+    if (stride == 0) {
+        stride = block_width * element_size; // Contiguous case
+    }
+
+    const uint8_t* src_ptr = static_cast<const uint8_t*>(data);
+    for (Size row = 0; row < block_height; ++row) {
+        Address row_addr = base_addr + row * stride;
+        Size row_size = block_width * element_size;
+        write(row_addr, src_ptr, row_size);
+        src_ptr += row_size;
+    }
+}
+
+void L3Tile::reset() {
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+// L2Bank implementation - L2 cache banks
+L2Bank::L2Bank(size_t bank_id, Size capacity_kb)
+    : capacity(capacity_kb * 1024), bank_id(bank_id) {
+    memory_model.resize(capacity);
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+void L2Bank::read(Address addr, void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("L2Bank read out of bounds");
+    }
+    std::memcpy(data, memory_model.data() + addr, size);
+}
+
+void L2Bank::write(Address addr, const void* data, Size size) {
+    if (addr + size > capacity) {
+        throw std::out_of_range("L2Bank write out of bounds");
+    }
+    std::memcpy(memory_model.data() + addr, data, size);
+}
+
+void L2Bank::read_cache_line(Address addr, void* data, Size cache_line_size) {
+    read(addr, data, cache_line_size);
+}
+
+void L2Bank::write_cache_line(Address addr, const void* data, Size cache_line_size) {
+    write(addr, data, cache_line_size);
+}
+
+void L2Bank::read_block(Address base_addr, void* data,
+                       Size block_height, Size block_width, Size element_size,
+                       Size stride) {
+    if (stride == 0) {
+        stride = block_width * element_size; // Contiguous case
+    }
+
+    uint8_t* dst_ptr = static_cast<uint8_t*>(data);
+    for (Size row = 0; row < block_height; ++row) {
+        Address row_addr = base_addr + row * stride;
+        Size row_size = block_width * element_size;
+        read(row_addr, dst_ptr, row_size);
+        dst_ptr += row_size;
+    }
+}
+
+void L2Bank::write_block(Address base_addr, const void* data,
+                        Size block_height, Size block_width, Size element_size,
+                        Size stride) {
+    if (stride == 0) {
+        stride = block_width * element_size; // Contiguous case
+    }
+
+    const uint8_t* src_ptr = static_cast<const uint8_t*>(data);
+    for (Size row = 0; row < block_height; ++row) {
+        Address row_addr = base_addr + row * stride;
+        Size row_size = block_width * element_size;
+        write(row_addr, src_ptr, row_size);
+        src_ptr += row_size;
+    }
+}
+
+void L2Bank::reset() {
+    std::fill(memory_model.begin(), memory_model.end(), 0);
+}
+
+// DMAEngine implementation - manages its own transfer queue
+DMAEngine::DMAEngine(size_t engine_id)
+    : is_active(false), engine_id(engine_id) {
+}
+
+void DMAEngine::enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
+                                MemoryType dst_type, size_t dst_id, Address dst_addr,
+                                Size size, std::function<void()> callback) {
+    transfer_queue.emplace_back(Transfer{
+        src_type, src_id, src_addr,
+        dst_type, dst_id, dst_addr,
+        size, std::move(callback)
+    });
+}
+
+bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
+                                 std::vector<Scratchpad>& scratchpads) {
+    if (transfer_queue.empty()) {
+        is_active = false;
+        return false;
+    }
+
+    is_active = true;
+    auto& transfer = transfer_queue.front();
+
+    // Allocate temporary buffer for the transfer
+    std::vector<std::uint8_t> buffer(transfer.size);
+
+    // Read from source
+    if (transfer.src_type == MemoryType::EXTERNAL) {
+        if (transfer.src_id >= memory_banks.size()) {
+            throw std::out_of_range("Invalid source memory bank ID: " + std::to_string(transfer.src_id));
+        }
+        memory_banks[transfer.src_id].read(transfer.src_addr, buffer.data(), transfer.size);
+    } else {
+        if (transfer.src_id >= scratchpads.size()) {
+            throw std::out_of_range("Invalid source scratchpad ID: " + std::to_string(transfer.src_id));
+        }
+        scratchpads[transfer.src_id].read(transfer.src_addr, buffer.data(), transfer.size);
+    }
+
+    // Write to destination
+    if (transfer.dst_type == MemoryType::EXTERNAL) {
+        if (transfer.dst_id >= memory_banks.size()) {
+            throw std::out_of_range("Invalid destination memory bank ID: " + std::to_string(transfer.dst_id));
+        }
+        memory_banks[transfer.dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
+    } else {
+        if (transfer.dst_id >= scratchpads.size()) {
+            throw std::out_of_range("Invalid destination scratchpad ID: " + std::to_string(transfer.dst_id));
+        }
+        scratchpads[transfer.dst_id].write(transfer.dst_addr, buffer.data(), transfer.size);
+    }
+
+    // Call completion callback if provided
+    if (transfer.completion_callback) {
+        transfer.completion_callback();
+    }
+
+    transfer_queue.erase(transfer_queue.begin());
+
+    bool completed = transfer_queue.empty();
+    if (completed) {
+        is_active = false;
+    }
+
+    return completed;
+}
+
+void DMAEngine::reset() {
+    transfer_queue.clear();
+    is_active = false;
+}
+
+// BlockMover implementation - manages L3↔L2 data movement with transformations
+BlockMover::BlockMover(size_t engine_id, size_t associated_l3_tile_id)
+    : is_active(false), engine_id(engine_id), associated_l3_tile_id(associated_l3_tile_id) {
+}
+
+void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offset,
+                                       size_t dst_l2_bank_id, Address dst_offset,
+                                       Size block_height, Size block_width, Size element_size,
+                                       TransformType transform,
+                                       std::function<void()> callback) {
+    transfer_queue.emplace_back(BlockTransfer{
+        src_l3_tile_id, src_offset,
+        dst_l2_bank_id, dst_offset,
+        block_height, block_width, element_size,
+        transform, std::move(callback)
+    });
+}
+
+bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
+                                  std::vector<L2Bank>& l2_banks) {
+    if (transfer_queue.empty()) {
+        is_active = false;
+        return false;
+    }
+
+    is_active = true;
+    auto& transfer = transfer_queue.front();
+
+    // Validate indices
+    if (transfer.src_l3_tile_id >= l3_tiles.size()) {
+        throw std::out_of_range("Invalid L3 tile ID: " + std::to_string(transfer.src_l3_tile_id));
+    }
+    if (transfer.dst_l2_bank_id >= l2_banks.size()) {
+        throw std::out_of_range("Invalid L2 bank ID: " + std::to_string(transfer.dst_l2_bank_id));
+    }
+
+    // Calculate total block size
+    Size block_size = transfer.block_height * transfer.block_width * transfer.element_size;
+
+    // Allocate buffers for the transfer
+    std::vector<std::uint8_t> src_buffer(block_size);
+    std::vector<std::uint8_t> dst_buffer(block_size);
+
+    // Read block from L3 tile
+    l3_tiles[transfer.src_l3_tile_id].read_block(
+        transfer.src_offset, src_buffer.data(),
+        transfer.block_height, transfer.block_width, transfer.element_size
+    );
+
+    // Apply transformation
+    apply_transform(src_buffer, dst_buffer, transfer);
+
+    // Write transformed block to L2 bank
+    l2_banks[transfer.dst_l2_bank_id].write_block(
+        transfer.dst_offset, dst_buffer.data(),
+        transfer.block_height, transfer.block_width, transfer.element_size
+    );
+
+    // Call completion callback if provided
+    if (transfer.completion_callback) {
+        transfer.completion_callback();
+    }
+
+    transfer_queue.erase(transfer_queue.begin());
+
+    bool completed = transfer_queue.empty();
+    if (completed) {
+        is_active = false;
+    }
+
+    return completed;
+}
+
+void BlockMover::apply_transform(const std::vector<uint8_t>& src_data,
+                                std::vector<uint8_t>& dst_data,
+                                const BlockTransfer& transfer) {
+    switch (transfer.transform) {
+        case TransformType::IDENTITY:
+            identity_copy(src_data, dst_data);
+            break;
+
+        case TransformType::TRANSPOSE:
+            transpose_block(src_data, dst_data,
+                          transfer.block_height, transfer.block_width, transfer.element_size);
+            break;
+
+        case TransformType::BLOCK_RESHAPE:
+        case TransformType::SHUFFLE_PATTERN:
+            // For now, fall back to identity copy
+            // These will be implemented in future iterations
+            identity_copy(src_data, dst_data);
+            break;
+
+        default:
+            throw std::runtime_error("Unknown transform type");
+    }
+}
+
+void BlockMover::identity_copy(const std::vector<uint8_t>& src,
+                              std::vector<uint8_t>& dst) {
+    std::copy(src.begin(), src.end(), dst.begin());
+}
+
+void BlockMover::transpose_block(const std::vector<uint8_t>& src,
+                                std::vector<uint8_t>& dst,
+                                Size height, Size width, Size element_size) {
+    // Transpose a 2D block: (i,j) -> (j,i)
+    for (Size row = 0; row < height; ++row) {
+        for (Size col = 0; col < width; ++col) {
+            Size src_offset = (row * width + col) * element_size;
+            Size dst_offset = (col * height + row) * element_size;
+
+            // Copy element from (row,col) to (col,row)
+            std::memcpy(dst.data() + dst_offset,
+                       src.data() + src_offset,
+                       element_size);
+        }
+    }
+}
+
+void BlockMover::reset() {
+    transfer_queue.clear();
+    is_active = false;
+}
+
+// ComputeFabric implementation
+ComputeFabric::ComputeFabric(size_t tile_id)
+    : is_computing(false), compute_start_cycle(0), tile_id(tile_id) {
+}
+
+void ComputeFabric::start_matmul(const MatMulConfig& config) {
+    if (is_computing) {
+        throw std::runtime_error("ComputeFabric is already busy");
+    }
+    
+    current_op = config;
+    is_computing = true;
+    compute_start_cycle = 0; // Will be set by the caller
+}
+
+bool ComputeFabric::update(Cycle current_cycle, std::vector<Scratchpad>& scratchpads) {
+    if (!is_computing) {
+        return false;
+    }
+    
+    if (compute_start_cycle == 0) {
+        compute_start_cycle = current_cycle;
+    }
+    
+    Cycle required_cycles = estimate_cycles(current_op.m, current_op.n, current_op.k);
+    
+    if (current_cycle - compute_start_cycle >= required_cycles) {
+        // Operation completed
+        execute_matmul(scratchpads);
+        
+        if (current_op.completion_callback) {
+            current_op.completion_callback();
+        }
+        
+        is_computing = false;
+        return true;
+    }
+    
+    return false;
+}
+
+void ComputeFabric::execute_matmul(std::vector<Scratchpad>& scratchpads) {
+    if (current_op.scratchpad_id >= scratchpads.size()) {
+        throw std::out_of_range("Invalid scratchpad ID for matmul operation");
+    }
+    
+    auto& scratchpad = scratchpads[current_op.scratchpad_id];
+    
+    // Read matrices from scratchpad
+    Size a_size = current_op.m * current_op.k * sizeof(float);
+    Size b_size = current_op.k * current_op.n * sizeof(float);
+    Size c_size = current_op.m * current_op.n * sizeof(float);
+    
+    std::vector<float> a(current_op.m * current_op.k);
+    std::vector<float> b(current_op.k * current_op.n);
+    std::vector<float> c(current_op.m * current_op.n, 0.0f);
+    
+    scratchpad.read(current_op.a_addr, a.data(), a_size);
+    scratchpad.read(current_op.b_addr, b.data(), b_size);
+    
+    // Perform matrix multiplication: C = A * B
+    for (Size i = 0; i < current_op.m; ++i) {
+        for (Size j = 0; j < current_op.n; ++j) {
+            float sum = 0.0f;
+            for (Size k = 0; k < current_op.k; ++k) {
+                sum += a[i * current_op.k + k] * b[k * current_op.n + j];
+            }
+            c[i * current_op.n + j] = sum;
+        }
+    }
+    
+    // Write result back to scratchpad
+    scratchpad.write(current_op.c_addr, c.data(), c_size);
+}
+
+Cycle ComputeFabric::estimate_cycles(Size m, Size n, Size k) const {
+    // Simplified model: assume 1 cycle per MAC operation
+    return m * n * k;
+}
+
+void ComputeFabric::reset() {
+    is_computing = false;
+    compute_start_cycle = 0;
+}
 
 // KPUSimulator implementation - clean delegation-based API
 KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
@@ -15,19 +479,19 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
     for (size_t i = 0; i < config.memory_bank_count; ++i) {
         memory_banks.emplace_back(config.memory_bank_capacity_mb, config.memory_bandwidth_gbps);
     }
-
+    
     // Initialize scratchpads
     scratchpads.reserve(config.scratchpad_count);
     for (size_t i = 0; i < config.scratchpad_count; ++i) {
         scratchpads.emplace_back(config.scratchpad_capacity_kb);
     }
-
+    
     // Initialize compute tiles
     compute_tiles.reserve(config.compute_tile_count);
     for (size_t i = 0; i < config.compute_tile_count; ++i) {
         compute_tiles.emplace_back(i);
     }
-
+    
     // Initialize DMA engines - now bidirectional, configured per-transfer
     dma_engines.reserve(config.dma_engine_count);
     for (size_t i = 0; i < config.dma_engine_count; ++i) {
@@ -158,14 +622,14 @@ void KPUSimulator::start_matmul(size_t tile_id, size_t scratchpad_id, Size m, Si
                                std::function<void()> callback) {
     validate_tile_id(tile_id);
     validate_scratchpad_id(scratchpad_id);
-
+    
     ComputeFabric::MatMulConfig config{
         .m = m, .n = n, .k = k,
         .a_addr = a_addr, .b_addr = b_addr, .c_addr = c_addr,
         .scratchpad_id = scratchpad_id,
         .completion_callback = std::move(callback)
     };
-
+    
     compute_tiles[tile_id].start_matmul(config);
 }
 
@@ -266,68 +730,68 @@ Size KPUSimulator::get_l2_bank_capacity(size_t bank_id) const {
 }
 
 // High-level test operation
-bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id,
+bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id, 
                                   size_t scratchpad_id, size_t compute_tile_id) {
     reset();
-
+    
     Size a_size = test.m * test.k * sizeof(float);
     Size b_size = test.k * test.n * sizeof(float);
     Size c_size = test.m * test.n * sizeof(float);
-
+    
     // Addresses in external memory
     Address ext_a_addr = 0;
     Address ext_b_addr = a_size;
     Address ext_c_addr = ext_b_addr + b_size;
-
+    
     // Addresses in scratchpad
     Address scratch_a_addr = 0;
     Address scratch_b_addr = a_size;
     Address scratch_c_addr = scratch_b_addr + b_size;
-
+    
     try {
         // Load test data into external memory
         write_memory_bank(memory_bank_id, ext_a_addr, test.matrix_a.data(), a_size);
         write_memory_bank(memory_bank_id, ext_b_addr, test.matrix_b.data(), b_size);
-
+        
         // Set up computation pipeline
         bool dma_a_complete = false, dma_b_complete = false, compute_complete = false;
-
+        
         // DMA A and B matrices to scratchpad using convenience methods
         start_dma_external_to_scratchpad(0, memory_bank_id, ext_a_addr, scratchpad_id, scratch_a_addr, a_size,
             [&dma_a_complete]() { dma_a_complete = true; });
         start_dma_external_to_scratchpad(0, memory_bank_id, ext_b_addr, scratchpad_id, scratch_b_addr, b_size,
             [&dma_b_complete]() { dma_b_complete = true; });
-
+        
         // Wait for data to be loaded
         while (!dma_a_complete || !dma_b_complete) {
             step();
         }
-
+        
         // Start matrix multiplication
         start_matmul(compute_tile_id, scratchpad_id, test.m, test.n, test.k,
                     scratch_a_addr, scratch_b_addr, scratch_c_addr,
                     [&compute_complete]() { compute_complete = true; });
-
+        
         // Wait for computation to complete
         while (!compute_complete) {
             step();
         }
-
+        
         // DMA result back to external memory using convenience method
         bool dma_c_complete = false;
         start_dma_scratchpad_to_external(0, scratchpad_id, scratch_c_addr, memory_bank_id, ext_c_addr, c_size,
             [&dma_c_complete]() { dma_c_complete = true; });
-
+        
         // Wait for result transfer
         while (!dma_c_complete) {
             step();
         }
-
+        
         // Verify result
         std::vector<float> result_c(test.m * test.n);
         read_memory_bank(memory_bank_id, ext_c_addr, result_c.data(), c_size);
-
-        return test_utils::verify_matmul_result(test.matrix_a, test.matrix_b, result_c,
+        
+        return test_utils::verify_matmul_result(test.matrix_a, test.matrix_b, result_c, 
                                                test.m, test.n, test.k);
     }
     catch (const std::exception& e) {
@@ -358,19 +822,19 @@ void KPUSimulator::print_stats() const {
 
 void KPUSimulator::print_component_status() const {
     std::cout << "=== Component Status ===" << std::endl;
-
+    
     std::cout << "Memory Banks:" << std::endl;
     for (size_t i = 0; i < memory_banks.size(); ++i) {
-        std::cout << "  Bank[" << i << "]: " << memory_banks[i].get_capacity() / (1024*1024)
+        std::cout << "  Bank[" << i << "]: " << memory_banks[i].get_capacity() / (1024*1024) 
                   << " MB, Ready: " << (memory_banks[i].is_ready() ? "Yes" : "No") << std::endl;
     }
-
+    
     std::cout << "Scratchpads:" << std::endl;
     for (size_t i = 0; i < scratchpads.size(); ++i) {
-        std::cout << "  Pad[" << i << "]: " << scratchpads[i].get_capacity() / 1024
+        std::cout << "  Pad[" << i << "]: " << scratchpads[i].get_capacity() / 1024 
                   << " KB, Ready: " << (scratchpads[i].is_ready() ? "Yes" : "No") << std::endl;
     }
-
+    
     std::cout << "DMA Engines:" << std::endl;
     for (size_t i = 0; i < dma_engines.size(); ++i) {
         const auto& dma = dma_engines[i];
@@ -378,7 +842,7 @@ void KPUSimulator::print_component_status() const {
         std::cout << "Busy: " << (dma.is_busy() ? "Yes" : "No");
         std::cout << ", Queue: " << dma.get_queue_size() << " transfers" << std::endl;
     }
-
+    
     std::cout << "L3 Tiles:" << std::endl;
     for (size_t i = 0; i < l3_tiles.size(); ++i) {
         std::cout << "  L3Tile[" << i << "]: " << l3_tiles[i].get_capacity() / 1024
@@ -477,12 +941,12 @@ namespace test_utils {
 KPUSimulator::MatMulTest generate_simple_matmul_test(Size m, Size n, Size k) {
     KPUSimulator::MatMulTest test;
     test.m = m;
-    test.n = n;
+    test.n = n; 
     test.k = k;
-
+    
     test.matrix_a = generate_random_matrix(m, k, -2.0f, 2.0f);
     test.matrix_b = generate_random_matrix(k, n, -2.0f, 2.0f);
-
+    
     // Compute expected result
     test.expected_c.resize(m * n);
     for (Size i = 0; i < m; ++i) {
@@ -494,7 +958,7 @@ KPUSimulator::MatMulTest generate_simple_matmul_test(Size m, Size n, Size k) {
             test.expected_c[i * n + j] = sum;
         }
     }
-
+    
     return test;
 }
 
@@ -503,12 +967,12 @@ std::vector<float> generate_random_matrix(Size rows, Size cols, float min_val, f
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(min_val, max_val);
-
+    
     std::generate(matrix.begin(), matrix.end(), [&]() { return dis(gen); });
     return matrix;
 }
 
-bool verify_matmul_result(const std::vector<float>& a, const std::vector<float>& b,
+bool verify_matmul_result(const std::vector<float>& a, const std::vector<float>& b, 
                          const std::vector<float>& c, Size m, Size n, Size k, float tolerance) {
     for (Size i = 0; i < m; ++i) {
         for (Size j = 0; j < n; ++j) {
@@ -516,10 +980,10 @@ bool verify_matmul_result(const std::vector<float>& a, const std::vector<float>&
             for (Size ki = 0; ki < k; ++ki) {
                 expected += a[i * k + ki] * b[ki * n + j];
             }
-
+            
             float actual = c[i * n + j];
             if (std::abs(actual - expected) > tolerance) {
-                std::cerr << "Mismatch at (" << i << "," << j << "): expected "
+                std::cerr << "Mismatch at (" << i << "," << j << "): expected " 
                          << expected << ", got " << actual << std::endl;
                 return false;
             }
@@ -532,7 +996,7 @@ KPUSimulator::Config generate_multi_bank_config(size_t num_banks, size_t num_til
     KPUSimulator::Config config;
     config.memory_bank_count = num_banks;
     config.memory_bank_capacity_mb = 512; // Smaller banks for multi-bank setup
-    config.memory_bandwidth_gbps = 16; // Higher bandwidth per bank
+	config.memory_bandwidth_gbps = 16; // Higher bandwidth per bank
     config.scratchpad_count = num_tiles; // One scratchpad per tile
     config.scratchpad_capacity_kb = 256;
     config.compute_tile_count = num_tiles;
@@ -543,27 +1007,27 @@ KPUSimulator::Config generate_multi_bank_config(size_t num_banks, size_t num_til
 bool run_distributed_matmul_test(KPUSimulator& sim, Size matrix_size) {
     // Generate test case
     auto test = generate_simple_matmul_test(matrix_size, matrix_size, matrix_size);
-
+    
     // Use multiple banks and tiles if available
     size_t num_banks = sim.get_memory_bank_count();
     size_t num_tiles = sim.get_compute_tile_count();
-
+    
     if (num_banks < 2 || num_tiles < 1) {
         std::cout << "Warning: Not enough banks/tiles for distributed test, using defaults" << std::endl;
         return sim.run_matmul_test(test);
     }
-
-    std::cout << "Running distributed matmul test with " << num_banks
+    
+    std::cout << "Running distributed matmul test with " << num_banks 
               << " banks and " << num_tiles << " tiles..." << std::endl;
-
+    
     // For now, just use the first bank and tile (can be extended for true distribution)
     bool result = sim.run_matmul_test(test, 0, 0, 0);
-
+    
     if (result) {
         std::cout << "Distributed test passed!" << std::endl;
         sim.print_component_status();
     }
-
+    
     return result;
 }
 

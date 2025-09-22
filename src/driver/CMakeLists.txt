@@ -21,7 +21,7 @@ kpu_set_target_options(driver)
 
 set_target_properties(driver PROPERTIES
     EXPORT_NAME Driver
-    FOLDER "Core"
+    FOLDER "src/Core"
     POSITION_INDEPENDENT_CODE ON  # Enable PIC for shared library compatibility
 )
 

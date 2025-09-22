@@ -32,7 +32,7 @@ set_target_properties(kpu_c_api PROPERTIES
     OUTPUT_NAME stillwater_kpu_c_api
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    FOLDER "Bindings"
+    FOLDER "src/Bindings"
     PUBLIC_HEADER "${KPU_C_API_HEADERS}"
 )
 
