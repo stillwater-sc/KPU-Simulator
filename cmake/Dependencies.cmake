@@ -53,6 +53,27 @@ kpu_add_dependency(spdlog
     TARGETS spdlog spdlog_header_only
 )
 
+# Configure spdlog to suppress MSVC warnings about deprecated iterators
+# _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING - Specifically silences the stdext::checked_array_iterator deprecation warnings
+# _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS - Silences all Microsoft extension deprecation warnings as a broader catch-all
+#
+#  These definitions are applied to both the spdlog and spdlog_header_only targets, using PRIVATE for the compiled
+#  library and INTERFACE for the header-only version to ensure the definitions propagate to consuming targets.
+
+if(TARGET spdlog AND MSVC)
+    target_compile_definitions(spdlog PRIVATE
+        _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+        _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS
+    )
+endif()
+
+if(TARGET spdlog_header_only AND MSVC)
+    target_compile_definitions(spdlog_header_only INTERFACE
+        _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+        _SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS
+    )
+endif()
+
 kpu_add_dependency(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.3  # Latest stable version
