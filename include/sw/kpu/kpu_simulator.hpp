@@ -29,6 +29,7 @@
 #include <sw/kpu/components/l3_tile.hpp>
 #include <sw/kpu/components/l2_bank.hpp>
 #include <sw/kpu/components/block_mover.hpp>
+#include <sw/kpu/components/streamer.hpp>
 #include <sw/kpu/components/compute_fabric.hpp>
 namespace sw::kpu {
 
@@ -48,12 +49,14 @@ public:
         Size l2_bank_count;
         Size l2_bank_capacity_kb;
         Size block_mover_count;
+        Size streamer_count;
 
         Config() : memory_bank_count(2), memory_bank_capacity_mb(1024),
                    memory_bandwidth_gbps(100), scratchpad_count(2),
                    scratchpad_capacity_kb(64), compute_tile_count(2),
                    dma_engine_count(2), l3_tile_count(4), l3_tile_capacity_kb(128),
-                   l2_bank_count(8), l2_bank_capacity_kb(64), block_mover_count(4) {}
+                   l2_bank_count(8), l2_bank_capacity_kb(64), block_mover_count(4),
+                   streamer_count(8) {}
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
 		Config(Config&&) = default;
@@ -63,12 +66,13 @@ public:
         Config (Size mem_banks, Size mem_cap, Size mem_bw,
                 Size pads, Size pad_cap,
                 Size tiles, Size dmas, Size l3_tiles = 4, Size l3_cap = 128,
-                Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4)
+                Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4, Size streamers = 8)
             : memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
               memory_bandwidth_gbps(mem_bw), scratchpad_count(pads),
               scratchpad_capacity_kb(pad_cap), compute_tile_count(tiles),
               dma_engine_count(dmas), l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
-              l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap), block_mover_count(block_movers) {
+              l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap), block_mover_count(block_movers),
+              streamer_count(streamers) {
 		}
     };
     
@@ -88,6 +92,7 @@ private:
     std::vector<L3Tile> l3_tiles;
     std::vector<L2Bank> l2_banks;
     std::vector<BlockMover> block_movers;
+    std::vector<Streamer> streamers;
     
     // Simulation state
     Cycle current_cycle;
@@ -128,6 +133,21 @@ public:
 
     bool is_block_mover_busy(size_t block_mover_id);
 
+    // Streamer operations - L2 to L1 data movement for systolic arrays
+    void start_row_stream(size_t streamer_id, size_t l2_bank_id, size_t l1_scratchpad_id,
+                         Address l2_base_addr, Address l1_base_addr,
+                         Size matrix_height, Size matrix_width, Size element_size, Size compute_fabric_size,
+                         Streamer::StreamDirection direction = Streamer::StreamDirection::L2_TO_L1,
+                         std::function<void()> callback = nullptr);
+
+    void start_column_stream(size_t streamer_id, size_t l2_bank_id, size_t l1_scratchpad_id,
+                            Address l2_base_addr, Address l1_base_addr,
+                            Size matrix_height, Size matrix_width, Size element_size, Size compute_fabric_size,
+                            Streamer::StreamDirection direction = Streamer::StreamDirection::L2_TO_L1,
+                            std::function<void()> callback = nullptr);
+
+    bool is_streamer_busy(size_t streamer_id);
+
     // L3 and L2 memory operations
     void read_l3_tile(size_t tile_id, Address addr, void* data, Size size);
     void write_l3_tile(size_t tile_id, Address addr, const void* data, Size size);
@@ -153,6 +173,7 @@ public:
     size_t get_l3_tile_count() const { return l3_tiles.size(); }
     size_t get_l2_bank_count() const { return l2_banks.size(); }
     size_t get_block_mover_count() const { return block_movers.size(); }
+    size_t get_streamer_count() const { return streamers.size(); }
     
     Size get_memory_bank_capacity(size_t bank_id) const;
     Size get_scratchpad_capacity(size_t pad_id) const;
@@ -183,6 +204,7 @@ private:
     void validate_l3_tile_id(size_t tile_id) const;
     void validate_l2_bank_id(size_t bank_id) const;
     void validate_block_mover_id(size_t mover_id) const;
+    void validate_streamer_id(size_t streamer_id) const;
 };
 
 // Utility functions for test case generation

@@ -54,6 +54,12 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         block_movers.emplace_back(i, associated_l3_tile);
     }
 
+    // Initialize Streamers - L2↔L1 data movement for systolic arrays
+    streamers.reserve(config.streamer_count);
+    for (size_t i = 0; i < config.streamer_count; ++i) {
+        streamers.emplace_back(i);
+    }
+
     sim_start_time = std::chrono::high_resolution_clock::now();
 }
 
@@ -152,6 +158,66 @@ bool KPUSimulator::is_block_mover_busy(size_t block_mover_id) {
     return block_movers[block_mover_id].is_busy();
 }
 
+// Streamer operations
+void KPUSimulator::start_row_stream(size_t streamer_id, size_t l2_bank_id, size_t l1_scratchpad_id,
+                                   Address l2_base_addr, Address l1_base_addr,
+                                   Size matrix_height, Size matrix_width, Size element_size, Size compute_fabric_size,
+                                   Streamer::StreamDirection direction,
+                                   std::function<void()> callback) {
+    validate_streamer_id(streamer_id);
+    validate_l2_bank_id(l2_bank_id);
+    validate_scratchpad_id(l1_scratchpad_id);
+
+    Streamer::StreamConfig config{
+        .l2_bank_id = l2_bank_id,
+        .l1_scratchpad_id = l1_scratchpad_id,
+        .l2_base_addr = l2_base_addr,
+        .l1_base_addr = l1_base_addr,
+        .matrix_height = matrix_height,
+        .matrix_width = matrix_width,
+        .element_size = element_size,
+        .compute_fabric_size = compute_fabric_size,
+        .direction = direction,
+        .stream_type = Streamer::StreamType::ROW_STREAM,
+        .cache_line_size = 64, // Default cache line size
+        .completion_callback = std::move(callback)
+    };
+
+    streamers[streamer_id].enqueue_stream(config);
+}
+
+void KPUSimulator::start_column_stream(size_t streamer_id, size_t l2_bank_id, size_t l1_scratchpad_id,
+                                      Address l2_base_addr, Address l1_base_addr,
+                                      Size matrix_height, Size matrix_width, Size element_size, Size compute_fabric_size,
+                                      Streamer::StreamDirection direction,
+                                      std::function<void()> callback) {
+    validate_streamer_id(streamer_id);
+    validate_l2_bank_id(l2_bank_id);
+    validate_scratchpad_id(l1_scratchpad_id);
+
+    Streamer::StreamConfig config{
+        .l2_bank_id = l2_bank_id,
+        .l1_scratchpad_id = l1_scratchpad_id,
+        .l2_base_addr = l2_base_addr,
+        .l1_base_addr = l1_base_addr,
+        .matrix_height = matrix_height,
+        .matrix_width = matrix_width,
+        .element_size = element_size,
+        .compute_fabric_size = compute_fabric_size,
+        .direction = direction,
+        .stream_type = Streamer::StreamType::COLUMN_STREAM,
+        .cache_line_size = 64, // Default cache line size
+        .completion_callback = std::move(callback)
+    };
+
+    streamers[streamer_id].enqueue_stream(config);
+}
+
+bool KPUSimulator::is_streamer_busy(size_t streamer_id) {
+    validate_streamer_id(streamer_id);
+    return streamers[streamer_id].is_busy();
+}
+
 // Compute operations
 void KPUSimulator::start_matmul(size_t tile_id, size_t scratchpad_id, Size m, Size n, Size k,
                                Address a_addr, Address b_addr, Address c_addr,
@@ -197,6 +263,9 @@ void KPUSimulator::reset() {
     for (auto& block_mover : block_movers) {
         block_mover.reset();
     }
+    for (auto& streamer : streamers) {
+        streamer.reset();
+    }
     current_cycle = 0;
     sim_start_time = std::chrono::high_resolution_clock::now();
 }
@@ -210,6 +279,9 @@ void KPUSimulator::step() {
     }
     for (auto& block_mover : block_movers) {
         block_mover.process_transfers(l3_tiles, l2_banks);
+    }
+    for (auto& streamer : streamers) {
+        streamer.update(current_cycle, l2_banks, scratchpads);
     }
     for (auto& tile : compute_tiles) {
         tile.update(current_cycle, scratchpads);
@@ -228,6 +300,12 @@ void KPUSimulator::run_until_idle() {
         }
         for (const auto& block_mover : block_movers) {
             if (block_mover.is_busy()) {
+                any_busy = true;
+                break;
+            }
+        }
+        for (const auto& streamer : streamers) {
+            if (streamer.is_busy()) {
                 any_busy = true;
                 break;
             }
@@ -468,6 +546,12 @@ void KPUSimulator::validate_l2_bank_id(size_t bank_id) const {
 void KPUSimulator::validate_block_mover_id(size_t mover_id) const {
     if (mover_id >= block_movers.size()) {
         throw std::out_of_range("Invalid block mover ID: " + std::to_string(mover_id));
+    }
+}
+
+void KPUSimulator::validate_streamer_id(size_t streamer_id) const {
+    if (streamer_id >= streamers.size()) {
+        throw std::out_of_range("Invalid streamer ID: " + std::to_string(streamer_id));
     }
 }
 

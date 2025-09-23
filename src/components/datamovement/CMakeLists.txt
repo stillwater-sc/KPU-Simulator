@@ -4,6 +4,7 @@
 set(DATAMOVEMENT_COMPONENT_SOURCES
     dma_engine.cpp
     block_mover.cpp
+    streamer.cpp
 )
 
 # Create the data_movement components library
