@@ -23,7 +23,7 @@
 #endif
 
 #include <sw/concepts.hpp>
-#include <sw/memory/scratchpad.hpp>
+#include <sw/kpu/scratchpad.hpp>
 
 namespace sw::kpu {
 
