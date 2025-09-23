@@ -24,12 +24,12 @@
 
 #include <sw/concepts.hpp>
 #include <sw/memory/external_memory.hpp>
-#include <sw/kpu/scratchpad.hpp>
-#include <sw/kpu/dma_engine.hpp>
-#include <sw/kpu/l3_tile.hpp>
-#include <sw/kpu/l2_bank.hpp>
-#include <sw/kpu/block_mover.hpp>
-#include <sw/kpu/compute_fabric.hpp>
+#include <sw/kpu/components/scratchpad.hpp>
+#include <sw/kpu/components/dma_engine.hpp>
+#include <sw/kpu/components/l3_tile.hpp>
+#include <sw/kpu/components/l2_bank.hpp>
+#include <sw/kpu/components/block_mover.hpp>
+#include <sw/kpu/components/compute_fabric.hpp>
 namespace sw::kpu {
 
 // Main KPU Simulator class - clean delegation-based API

@@ -3,9 +3,9 @@
 #include <string>
 #include <cstdint>
 
-#include <sw/kpu/dma_engine.hpp>
 #include <sw/memory/external_memory.hpp>
-#include <sw/kpu/scratchpad.hpp>
+#include <sw/kpu/components/dma_engine.hpp>
+#include <sw/kpu/components/scratchpad.hpp>
 
 namespace sw::kpu {
 

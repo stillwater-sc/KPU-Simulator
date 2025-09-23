@@ -1,8 +1,8 @@
 #include <stdexcept>
 #include <vector>
 
-#include <sw/kpu/compute_fabric.hpp>
-#include <sw/kpu/scratchpad.hpp>
+#include <sw/kpu/components/compute_fabric.hpp>
+#include <sw/kpu/components/scratchpad.hpp>
 
 namespace sw::kpu {
 

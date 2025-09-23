@@ -3,7 +3,7 @@
 
 # Add component subdirectories in dependency order
 add_subdirectory(memory)        # Base memory components
-add_subdirectory(interconnect)  # Depends on memory components
+add_subdirectory(datamovement)  # Depends on memory components
 add_subdirectory(compute)       # Depends on memory components
 # add_subdirectory(control)     # Future: control and management components
 
@@ -14,7 +14,7 @@ add_library(kpu_components INTERFACE)
 target_link_libraries(kpu_components
     INTERFACE
         kpu_memory_components
-        kpu_interconnect_components
+        kpu_datamovement_components
         kpu_compute_components
 )
 

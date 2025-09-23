@@ -5,9 +5,9 @@
 #include <algorithm>
 #include <cstring>
 
-#include <sw/kpu/block_mover.hpp>
-#include <sw/kpu/l3_tile.hpp>
-#include <sw/kpu/l2_bank.hpp>
+#include <sw/kpu/components/block_mover.hpp>
+#include <sw/kpu/components/l3_tile.hpp>
+#include <sw/kpu/components/l2_bank.hpp>
 
 namespace sw::kpu {
 

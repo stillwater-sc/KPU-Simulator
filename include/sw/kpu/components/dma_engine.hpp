@@ -20,7 +20,7 @@
 
 #include <sw/concepts.hpp>
 #include <sw/memory/external_memory.hpp>
-#include <sw/kpu/scratchpad.hpp>
+#include <sw/kpu/components/scratchpad.hpp>
 
 namespace sw::kpu {
     
