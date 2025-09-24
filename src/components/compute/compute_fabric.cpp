@@ -7,8 +7,41 @@
 namespace sw::kpu {
 
 // ComputeFabric implementation
-ComputeFabric::ComputeFabric(size_t tile_id)
-    : is_computing(false), compute_start_cycle(0), tile_id(tile_id) {
+ComputeFabric::ComputeFabric(size_t tile_id, ComputeType type, Size systolic_rows, Size systolic_cols)
+    : is_computing(false), compute_start_cycle(0), tile_id(tile_id), compute_type(type) {
+
+    // Initialize systolic array if selected
+    if (compute_type == ComputeType::SYSTOLIC_ARRAY) {
+        systolic_array = std::make_unique<SystolicArray>(systolic_rows, systolic_cols);
+    }
+}
+
+ComputeFabric::ComputeFabric(const ComputeFabric& other)
+    : is_computing(other.is_computing), compute_start_cycle(other.compute_start_cycle),
+      current_op(other.current_op), tile_id(other.tile_id), compute_type(other.compute_type) {
+
+    // Deep copy systolic array if it exists
+    if (other.systolic_array) {
+        systolic_array = std::make_unique<SystolicArray>(*other.systolic_array);
+    }
+}
+
+ComputeFabric& ComputeFabric::operator=(const ComputeFabric& other) {
+    if (this != &other) {
+        is_computing = other.is_computing;
+        compute_start_cycle = other.compute_start_cycle;
+        current_op = other.current_op;
+        tile_id = other.tile_id;
+        compute_type = other.compute_type;
+
+        // Deep copy systolic array if it exists
+        if (other.systolic_array) {
+            systolic_array = std::make_unique<SystolicArray>(*other.systolic_array);
+        } else {
+            systolic_array.reset();
+        }
+    }
+    return *this;
 }
 
 void ComputeFabric::start_matmul(const MatMulConfig& config) {
@@ -19,6 +52,21 @@ void ComputeFabric::start_matmul(const MatMulConfig& config) {
     current_op = config;
     is_computing = true;
     compute_start_cycle = 0; // Will be set by the caller
+
+    // Route to appropriate implementation
+    if (compute_type == ComputeType::SYSTOLIC_ARRAY && systolic_array) {
+        SystolicArray::MatMulConfig systolic_config;
+        systolic_config.m = config.m;
+        systolic_config.n = config.n;
+        systolic_config.k = config.k;
+        systolic_config.a_addr = config.a_addr;
+        systolic_config.b_addr = config.b_addr;
+        systolic_config.c_addr = config.c_addr;
+        systolic_config.scratchpad_id = config.scratchpad_id;
+        systolic_config.completion_callback = config.completion_callback;
+
+        systolic_array->start_matmul(systolic_config);
+    }
 }
 
 bool ComputeFabric::update(Cycle current_cycle, std::vector<Scratchpad>& scratchpads) {
@@ -30,21 +78,32 @@ bool ComputeFabric::update(Cycle current_cycle, std::vector<Scratchpad>& scratch
         compute_start_cycle = current_cycle;
     }
 
-    Cycle required_cycles = estimate_cycles(current_op.m, current_op.n, current_op.k);
+    // Route to appropriate implementation
+    if (compute_type == ComputeType::SYSTOLIC_ARRAY && systolic_array) {
+        bool completed = systolic_array->update(current_cycle, scratchpads);
+        if (completed) {
+            is_computing = false;
+            return true;
+        }
+        return false;
+    } else {
+        // Basic matrix multiplication implementation
+        Cycle required_cycles = estimate_cycles(current_op.m, current_op.n, current_op.k);
 
-    if (current_cycle - compute_start_cycle >= required_cycles) {
-        // Operation completed
-        execute_matmul(scratchpads);
+        if (current_cycle - compute_start_cycle >= required_cycles) {
+            // Operation completed
+            execute_matmul(scratchpads);
 
-        if (current_op.completion_callback) {
-            current_op.completion_callback();
+            if (current_op.completion_callback) {
+                current_op.completion_callback();
+            }
+
+            is_computing = false;
+            return true;
         }
 
-        is_computing = false;
-        return true;
+        return false;
     }
-
-    return false;
 }
 
 void ComputeFabric::execute_matmul(std::vector<Scratchpad>& scratchpads) {
@@ -82,13 +141,35 @@ void ComputeFabric::execute_matmul(std::vector<Scratchpad>& scratchpads) {
 }
 
 Cycle ComputeFabric::estimate_cycles(Size m, Size n, Size k) const {
-    // Simplified model: assume 1 cycle per MAC operation
-    return m * n * k;
+    if (compute_type == ComputeType::SYSTOLIC_ARRAY && systolic_array) {
+        return systolic_array->estimate_cycles(m, n, k);
+    } else {
+        // Simplified model: assume 1 cycle per MAC operation
+        return m * n * k;
+    }
+}
+
+Size ComputeFabric::get_systolic_rows() const {
+    if (systolic_array) {
+        return systolic_array->get_rows();
+    }
+    return 0;
+}
+
+Size ComputeFabric::get_systolic_cols() const {
+    if (systolic_array) {
+        return systolic_array->get_cols();
+    }
+    return 0;
 }
 
 void ComputeFabric::reset() {
     is_computing = false;
     compute_start_cycle = 0;
+
+    if (systolic_array) {
+        systolic_array->reset();
+    }
 }
 
 } // namespace sw::kpu

@@ -22,10 +22,16 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         scratchpads.emplace_back(config.scratchpad_capacity_kb);
     }
 
-    // Initialize compute tiles
+    // Initialize compute tiles with systolic array configuration
     compute_tiles.reserve(config.compute_tile_count);
     for (size_t i = 0; i < config.compute_tile_count; ++i) {
-        compute_tiles.emplace_back(i);
+        ComputeFabric::ComputeType compute_type = config.use_systolic_arrays ?
+            ComputeFabric::ComputeType::SYSTOLIC_ARRAY :
+            ComputeFabric::ComputeType::BASIC_MATMUL;
+
+        compute_tiles.emplace_back(i, compute_type,
+                                  config.systolic_array_rows,
+                                  config.systolic_array_cols);
     }
 
     // Initialize DMA engines - now bidirectional, configured per-transfer
@@ -652,5 +658,32 @@ bool run_distributed_matmul_test(KPUSimulator& sim, Size matrix_size) {
 }
 
 } // namespace test_utils
+
+// KPUSimulator systolic array methods (must be in sw::kpu namespace)
+bool KPUSimulator::is_using_systolic_arrays() const {
+    return !compute_tiles.empty() &&
+           compute_tiles[0].get_compute_type() == ComputeFabric::ComputeType::SYSTOLIC_ARRAY;
+}
+
+Size KPUSimulator::get_systolic_array_rows(size_t tile_id) const {
+    if (tile_id >= compute_tiles.size()) {
+        throw std::out_of_range("Invalid compute tile ID");
+    }
+    return compute_tiles[tile_id].get_systolic_rows();
+}
+
+Size KPUSimulator::get_systolic_array_cols(size_t tile_id) const {
+    if (tile_id >= compute_tiles.size()) {
+        throw std::out_of_range("Invalid compute tile ID");
+    }
+    return compute_tiles[tile_id].get_systolic_cols();
+}
+
+Size KPUSimulator::get_systolic_array_total_pes(size_t tile_id) const {
+    if (tile_id >= compute_tiles.size()) {
+        throw std::out_of_range("Invalid compute tile ID");
+    }
+    return get_systolic_array_rows(tile_id) * get_systolic_array_cols(tile_id);
+}
 
 } // namespace sw::kpu

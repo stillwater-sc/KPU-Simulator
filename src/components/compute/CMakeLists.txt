@@ -4,6 +4,7 @@
 # Compute component sources
 set(COMPUTE_COMPONENT_SOURCES
     compute_fabric.cpp
+    systolic_array.cpp
 )
 
 # Create the compute components library

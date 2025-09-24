@@ -24,28 +24,47 @@
 
 #include <sw/concepts.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
+#include <sw/kpu/components/systolic_array.hpp>
 
 namespace sw::kpu {
 
 // Compute fabric for matrix operations
 class KPU_API ComputeFabric {
 public:
+    // Configuration options for compute fabric
+    enum class ComputeType {
+        BASIC_MATMUL,    // Simple triple-loop matrix multiplication
+        SYSTOLIC_ARRAY   // Hardware systolic array implementation
+    };
+
     struct MatMulConfig {
         Size m, n, k; // Matrix dimensions: C[m,n] = A[m,k] * B[k,n]
         Address a_addr, b_addr, c_addr; // Addresses in scratchpad
         size_t scratchpad_id; // Which scratchpad to use
         std::function<void()> completion_callback;
     };
-    
+
 private:
     bool is_computing;
     Cycle compute_start_cycle;
     MatMulConfig current_op;
     size_t tile_id;  // Which compute tile this fabric represents
-    
+    ComputeType compute_type;
+
+    // Systolic array (when enabled)
+    std::unique_ptr<SystolicArray> systolic_array;
+
 public:
-    explicit ComputeFabric(size_t tile_id);
+    explicit ComputeFabric(size_t tile_id, ComputeType type = ComputeType::SYSTOLIC_ARRAY,
+                          Size systolic_rows = SystolicArray::DEFAULT_ROWS,
+                          Size systolic_cols = SystolicArray::DEFAULT_COLS);
     ~ComputeFabric() = default;
+
+    // Custom copy and move semantics for std::vector compatibility
+    ComputeFabric(const ComputeFabric& other);
+    ComputeFabric& operator=(const ComputeFabric& other);
+    ComputeFabric(ComputeFabric&&) = default;
+    ComputeFabric& operator=(ComputeFabric&&) = default;
     
     // Compute operations
     void start_matmul(const MatMulConfig& config);
@@ -55,9 +74,16 @@ public:
     
     // Configuration
     size_t get_tile_id() const { return tile_id; }
-    
+    ComputeType get_compute_type() const { return compute_type; }
+
+    // Systolic array access (when available)
+    SystolicArray* get_systolic_array() const { return systolic_array.get(); }
+    Size get_systolic_rows() const;
+    Size get_systolic_cols() const;
+
 private:
     void execute_matmul(std::vector<Scratchpad>& scratchpads);
+    void execute_systolic_matmul(std::vector<Scratchpad>& scratchpads);
     Cycle estimate_cycles(Size m, Size n, Size k) const;
 };
 

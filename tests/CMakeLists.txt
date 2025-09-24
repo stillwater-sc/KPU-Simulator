@@ -49,6 +49,7 @@ add_subdirectory(memory)
 add_subdirectory(dma)
 add_subdirectory(block_mover)
 add_subdirectory(streamer)
+add_subdirectory(systolic_array)
 add_subdirectory(integration)
 #add_subdirectory(benchmarks)
 
@@ -105,11 +106,19 @@ set_target_properties(test_block_mover PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_streamer
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L streamer
-    COMMENT "Running streamer tests" 
+    COMMENT "Running streamer tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
 set_target_properties(test_streamer PROPERTIES FOLDER "Tests/Runners")
+
+add_custom_target(test_systolic_array
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L systolic_array
+    COMMENT "Running systolic array tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+set_target_properties(test_systolic_array PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_integration
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L integration

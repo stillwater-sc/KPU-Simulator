@@ -51,12 +51,18 @@ public:
         Size block_mover_count;
         Size streamer_count;
 
+        // Systolic array configuration
+        Size systolic_array_rows;
+        Size systolic_array_cols;
+        bool use_systolic_arrays;
+
         Config() : memory_bank_count(2), memory_bank_capacity_mb(1024),
                    memory_bandwidth_gbps(100), scratchpad_count(2),
                    scratchpad_capacity_kb(64), compute_tile_count(2),
                    dma_engine_count(2), l3_tile_count(4), l3_tile_capacity_kb(128),
                    l2_bank_count(8), l2_bank_capacity_kb(64), block_mover_count(4),
-                   streamer_count(8) {}
+                   streamer_count(8), systolic_array_rows(16), systolic_array_cols(16),
+                   use_systolic_arrays(true) {}
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
 		Config(Config&&) = default;
@@ -66,13 +72,15 @@ public:
         Config (Size mem_banks, Size mem_cap, Size mem_bw,
                 Size pads, Size pad_cap,
                 Size tiles, Size dmas, Size l3_tiles = 4, Size l3_cap = 128,
-                Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4, Size streamers = 8)
+                Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4, Size streamers = 8,
+                Size systolic_rows = 16, Size systolic_cols = 16, bool use_systolic = true)
             : memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
               memory_bandwidth_gbps(mem_bw), scratchpad_count(pads),
               scratchpad_capacity_kb(pad_cap), compute_tile_count(tiles),
               dma_engine_count(dmas), l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
               l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap), block_mover_count(block_movers),
-              streamer_count(streamers) {
+              streamer_count(streamers), systolic_array_rows(systolic_rows),
+              systolic_array_cols(systolic_cols), use_systolic_arrays(use_systolic) {
 		}
     };
     
@@ -159,6 +167,12 @@ public:
                      Address a_addr, Address b_addr, Address c_addr,
                      std::function<void()> callback = nullptr);
     bool is_compute_busy(size_t tile_id);
+
+    // Systolic array information
+    bool is_using_systolic_arrays() const;
+    Size get_systolic_array_rows(size_t tile_id = 0) const;
+    Size get_systolic_array_cols(size_t tile_id = 0) const;
+    Size get_systolic_array_total_pes(size_t tile_id = 0) const;
     
     // Simulation control
     void reset();
