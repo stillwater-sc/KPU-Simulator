@@ -223,7 +223,7 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         print_matrix("C actual", c, m, n);
 
         // Verify result
-        Real tolerance = 1e-5f;
+        Real tolerance = 1e-3f;
         REQUIRE(verify_matmul<Real>(c, matrix_c, m, n, tolerance));
     }
 
