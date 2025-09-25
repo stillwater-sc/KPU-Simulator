@@ -201,9 +201,10 @@ else()
 endif()
 if(MSVC)
     message(STATUS "MSVC Version     : ${MSVC_VERSION}")
-    message(STATUS "CXX Flags        : ${CMAKE_CXX_FLAGS}")
-    message(STATUS "Build Type Flags : ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
 endif()
+message(STATUS "CXX Flags        : ${CMAKE_CXX_FLAGS}")
+message(STATUS "Build Type Flags : ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+
 message(STATUS "======================================================")
 message(STATUS "")
 
