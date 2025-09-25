@@ -1,8 +1,8 @@
-# Buffet Tests - EDDO and multi-bank buffer memory
+# MemoryOrchestrator Tests - EDDO and multi-bank buffer memory
 
-# Basic buffet functionality tests
-kpu_add_component_test(buffet_basic_test "buffet"
-    test_buffet_basic.cpp
+# Basic memory orchestrator functionality tests
+kpu_add_component_test(memory_orchestrator_basic_test "memory_orchestrator"
+    test_orchestrator_basic.cpp
 )
 
 # EDDO workflow tests
@@ -11,6 +11,6 @@ kpu_add_component_test(eddo_workflow_test "eddo"
 )
 
 # Performance and benchmarking tests
-kpu_add_component_test(buffet_performance_test "benchmark"
-    test_buffet_performance.cpp
+kpu_add_component_test(memory_orchestrator_performance_test "benchmark"
+    test_orchestrator_performance.cpp
 )

@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
-#include <sw/kpu/components/buffet.hpp>
+#include <sw/kpu/components/memory_orchestrator.hpp>
 #include <vector>
 #include <algorithm>
 #include <numeric>
@@ -12,26 +12,26 @@
 using namespace sw::kpu;
 
 // Performance test fixture
-class BuffetPerformanceFixture {
+class MemoryOrchestratorPerformanceFixture {
 public:
     static constexpr size_t NUM_BANKS = 8;
     static constexpr size_t BANK_SIZE_KB = 256;
     static constexpr size_t LARGE_DATA_SIZE = 64 * 1024; // 64KB
 
-    Buffet::BankConfig performance_config{
+    MemoryOrchestrator::BankConfig performance_config{
         .bank_size_kb = BANK_SIZE_KB,
         .cache_line_size = 64,
         .num_ports = 4,
-        .access_pattern = Buffet::AccessPattern::SEQUENTIAL,
+        .access_pattern = MemoryOrchestrator::AccessPattern::SEQUENTIAL,
         .enable_prefetch = true
     };
 
-    std::unique_ptr<Buffet> buffet;
+    std::unique_ptr<MemoryOrchestrator> orchestrator;
     std::vector<uint8_t> large_test_data;
     std::mt19937 rng;
 
-    BuffetPerformanceFixture() : rng(std::random_device{}()) {
-        buffet = std::make_unique<Buffet>(0, NUM_BANKS, performance_config);
+    MemoryOrchestratorPerformanceFixture() : rng(std::random_device{}()) {
+        orchestrator = std::make_unique<MemoryOrchestrator>(0, NUM_BANKS, performance_config);
 
         // Generate large test dataset
         large_test_data.resize(LARGE_DATA_SIZE);
@@ -54,7 +54,7 @@ public:
     }
 };
 
-TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Performance Benchmarks", "[buffet][performance][!benchmark]") {
+TEST_CASE_METHOD(MemoryOrchestratorPerformanceFixture, "MemoryOrchestrator Performance Benchmarks", "[memory_orchestrator][performance][!benchmark]") {
 
     SECTION("Sequential read/write performance") {
         constexpr size_t NUM_OPERATIONS = 100;
@@ -64,7 +64,7 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Performance Benchmarks", "[bu
             for (size_t i = 0; i < NUM_OPERATIONS; ++i) {
                 size_t bank_id = i % NUM_BANKS;
                 Address addr = (i * OPERATION_SIZE) % (BANK_SIZE_KB * 1024 - OPERATION_SIZE);
-                buffet->write(bank_id, addr, large_test_data.data(), OPERATION_SIZE);
+                orchestrator->write(bank_id, addr, large_test_data.data(), OPERATION_SIZE);
             }
         };
 
@@ -73,7 +73,7 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Performance Benchmarks", "[bu
             for (size_t i = 0; i < NUM_OPERATIONS; ++i) {
                 size_t bank_id = i % NUM_BANKS;
                 Address addr = (i * OPERATION_SIZE) % (BANK_SIZE_KB * 1024 - OPERATION_SIZE);
-                buffet->read(bank_id, addr, read_buffer.data(), OPERATION_SIZE);
+                orchestrator->read(bank_id, addr, read_buffer.data(), OPERATION_SIZE);
             }
         };
     }
@@ -86,51 +86,51 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Performance Benchmarks", "[bu
 
         BENCHMARK("Random write operations") {
             for (const auto& [bank_id, addr] : random_accesses) {
-                buffet->write(bank_id, addr, large_test_data.data(), RANDOM_OPERATION_SIZE);
+                orchestrator->write(bank_id, addr, large_test_data.data(), RANDOM_OPERATION_SIZE);
             }
         };
 
         BENCHMARK("Random read operations") {
             std::vector<uint8_t> read_buffer(RANDOM_OPERATION_SIZE);
             for (const auto& [bank_id, addr] : random_accesses) {
-                buffet->read(bank_id, addr, read_buffer.data(), RANDOM_OPERATION_SIZE);
+                orchestrator->read(bank_id, addr, read_buffer.data(), RANDOM_OPERATION_SIZE);
             }
         };
     }
 }
 
-TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO Performance Benchmarks", "[buffet][eddo][performance][!benchmark]") {
+TEST_CASE_METHOD(MemoryOrchestratorPerformanceFixture, "EDDO Performance Benchmarks", "[memory_orchestrator][eddo][performance][!benchmark]") {
 
     SECTION("EDDO command processing throughput") {
         constexpr size_t NUM_COMMANDS = 1000;
 
         // Pre-generate EDDO commands
-        std::vector<Buffet::EDDOCommand> commands;
+        std::vector<MemoryOrchestrator::EDDOCommand> commands;
         commands.reserve(NUM_COMMANDS);
 
         for (size_t i = 0; i < NUM_COMMANDS; ++i) {
-            commands.push_back(Buffet::EDDOCommand{
-                .phase = Buffet::EDDOPhase::COMPUTE,
+            commands.push_back(MemoryOrchestrator::EDDOCommand{
+                .phase = MemoryOrchestrator::EDDOPhase::COMPUTE,
                 .bank_id = i % NUM_BANKS,
                 .sequence_id = i + 1
             });
         }
 
         BENCHMARK("EDDO command enqueuing") {
-            buffet->reset(); // Start fresh
+            orchestrator->reset(); // Start fresh
             for (const auto& cmd : commands) {
-                buffet->enqueue_eddo_command(cmd);
+                orchestrator->enqueue_eddo_command(cmd);
             }
         };
 
         BENCHMARK("EDDO command processing") {
-            buffet->reset();
+            orchestrator->reset();
             for (const auto& cmd : commands) {
-                buffet->enqueue_eddo_command(cmd);
+                orchestrator->enqueue_eddo_command(cmd);
             }
 
-            while (buffet->is_busy()) {
-                buffet->process_eddo_commands();
+            while (orchestrator->is_busy()) {
+                orchestrator->process_eddo_commands();
             }
         };
     }
@@ -140,7 +140,7 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO Performance Benchmarks", "[buff
         constexpr size_t MATRIX_BYTES = MATRIX_SIZE * MATRIX_SIZE * sizeof(float);
 
         BENCHMARK("Matrix multiplication EDDO workflow") {
-            buffet->reset();
+            orchestrator->reset();
 
             std::atomic<bool> compute_done{false};
 
@@ -154,17 +154,17 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO Performance Benchmarks", "[buff
                    })
                    .writeback(2, 0, 0x30000, MATRIX_BYTES)
                    .sync()
-                   .execute_on(*buffet);
+                   .execute_on(*orchestrator);
 
-            while (buffet->is_busy()) {
-                buffet->process_eddo_commands();
+            while (orchestrator->is_busy()) {
+                orchestrator->process_eddo_commands();
                 std::this_thread::sleep_for(std::chrono::microseconds(10));
             }
         };
     }
 }
 
-TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet][scalability][performance]") {
+TEST_CASE_METHOD(MemoryOrchestratorPerformanceFixture, "MemoryOrchestrator Scalability Tests", "[memory_orchestrator][scalability][performance]") {
 
     SECTION("Bank contention under load") {
         constexpr size_t NUM_THREADS = 4;
@@ -179,10 +179,10 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet]
                 Address addr = i * OPERATION_SIZE;
 
                 try {
-                    buffet->write(bank_id, addr, thread_data.data(), OPERATION_SIZE);
+                    orchestrator->write(bank_id, addr, thread_data.data(), OPERATION_SIZE);
 
                     std::vector<uint8_t> read_back(OPERATION_SIZE);
-                    buffet->read(bank_id, addr, read_back.data(), OPERATION_SIZE);
+                    orchestrator->read(bank_id, addr, read_back.data(), OPERATION_SIZE);
                 } catch (const std::exception&) {
                     // Handle bank contention gracefully
                 }
@@ -206,7 +206,7 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet]
         REQUIRE(duration.count() < 5000); // Should complete within 5 seconds
 
         // Check performance metrics
-        auto metrics = buffet->get_performance_metrics();
+        auto metrics = orchestrator->get_performance_metrics();
         REQUIRE(metrics.total_read_accesses > 0);
         REQUIRE(metrics.total_write_accesses > 0);
     }
@@ -218,21 +218,21 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet]
 
         for (size_t num_banks : bank_counts) {
             for (size_t bank_size : bank_sizes_kb) {
-                Buffet::BankConfig config{
+                MemoryOrchestrator::BankConfig config{
                     .bank_size_kb = bank_size,
                     .cache_line_size = 64,
                     .num_ports = 2,
-                    .access_pattern = Buffet::AccessPattern::SEQUENTIAL,
+                    .access_pattern = MemoryOrchestrator::AccessPattern::SEQUENTIAL,
                     .enable_prefetch = true
                 };
 
-                auto test_buffet = std::make_unique<Buffet>(1, num_banks, config);
+                auto test_orchestrator = std::make_unique<MemoryOrchestrator>(1, num_banks, config);
 
                 // Verify configuration
-                REQUIRE(test_buffet->get_num_banks() == num_banks);
+                REQUIRE(test_orchestrator->get_num_banks() == num_banks);
 
                 for (size_t i = 0; i < num_banks; ++i) {
-                    REQUIRE(test_buffet->get_bank_capacity(i) == bank_size * 1024);
+                    REQUIRE(test_orchestrator->get_bank_capacity(i) == bank_size * 1024);
                 }
 
                 // Test basic operations
@@ -240,10 +240,10 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet]
                 std::vector<uint8_t> test_data(TEST_SIZE, 0xCC);
 
                 if (bank_size * 1024 >= TEST_SIZE) {
-                    REQUIRE_NOTHROW(test_buffet->write(0, 0, test_data.data(), TEST_SIZE));
+                    REQUIRE_NOTHROW(test_orchestrator->write(0, 0, test_data.data(), TEST_SIZE));
 
                     std::vector<uint8_t> read_data(TEST_SIZE);
-                    REQUIRE_NOTHROW(test_buffet->read(0, 0, read_data.data(), TEST_SIZE));
+                    REQUIRE_NOTHROW(test_orchestrator->read(0, 0, read_data.data(), TEST_SIZE));
 
                     REQUIRE(test_data == read_data);
                 }
@@ -252,7 +252,7 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "Buffet Scalability Tests", "[buffet]
     }
 }
 
-TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO vs Direct Access Performance", "[buffet][comparison][performance]") {
+TEST_CASE_METHOD(MemoryOrchestratorPerformanceFixture, "EDDO vs Direct Access Performance", "[memory_orchestrator][comparison][performance]") {
 
     SECTION("Compare EDDO orchestrated vs direct memory access") {
         constexpr size_t OPERATION_COUNT = 100;
@@ -267,17 +267,17 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO vs Direct Access Performance", 
             size_t bank_id = i % NUM_BANKS;
             Address addr = (i * 128) % (BANK_SIZE_KB * 1024 - DATA_SIZE);
 
-            buffet->write(bank_id, addr, test_data.data(), DATA_SIZE);
+            orchestrator->write(bank_id, addr, test_data.data(), DATA_SIZE);
 
             std::vector<uint8_t> read_buffer(DATA_SIZE);
-            buffet->read(bank_id, addr, read_buffer.data(), DATA_SIZE);
+            orchestrator->read(bank_id, addr, read_buffer.data(), DATA_SIZE);
         }
         auto direct_end = std::chrono::high_resolution_clock::now();
         auto direct_duration = std::chrono::duration_cast<std::chrono::microseconds>(
             direct_end - direct_start);
 
         // Benchmark EDDO orchestrated access
-        buffet->reset();
+        orchestrator->reset();
 
         std::atomic<size_t> eddo_operations_completed{0};
 
@@ -285,19 +285,19 @@ TEST_CASE_METHOD(BuffetPerformanceFixture, "EDDO vs Direct Access Performance", 
         for (size_t i = 0; i < OPERATION_COUNT; ++i) {
             size_t bank_id = i % NUM_BANKS;
 
-            Buffet::EDDOCommand cmd{
-                .phase = Buffet::EDDOPhase::COMPUTE,
+            MemoryOrchestrator::EDDOCommand cmd{
+                .phase = MemoryOrchestrator::EDDOPhase::COMPUTE,
                 .bank_id = bank_id,
                 .sequence_id = i + 1,
-                .completion_callback = [&eddo_operations_completed](const Buffet::EDDOCommand&) {
+                .completion_callback = [&eddo_operations_completed](const MemoryOrchestrator::EDDOCommand&) {
                     eddo_operations_completed.fetch_add(1);
                 }
             };
-            buffet->enqueue_eddo_command(cmd);
+            orchestrator->enqueue_eddo_command(cmd);
         }
 
-        while (buffet->is_busy()) {
-            buffet->process_eddo_commands();
+        while (orchestrator->is_busy()) {
+            orchestrator->process_eddo_commands();
         }
         auto eddo_end = std::chrono::high_resolution_clock::now();
         auto eddo_duration = std::chrono::duration_cast<std::chrono::microseconds>(

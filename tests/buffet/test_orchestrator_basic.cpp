@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
-#include <sw/kpu/components/buffet.hpp>
+#include <sw/kpu/components/memory_orchestrator.hpp>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -9,24 +9,24 @@
 
 using namespace sw::kpu;
 
-// Test fixture for Buffet tests
-class BuffetTestFixture {
+// Test fixture for MemoryOrchestrator tests
+class MemoryOrchestratorTestFixture {
 public:
     static constexpr size_t NUM_BANKS = 4;
     static constexpr size_t BANK_SIZE_KB = 64;
 
-    Buffet::BankConfig default_config{
+    MemoryOrchestrator::BankConfig default_config{
         .bank_size_kb = BANK_SIZE_KB,
         .cache_line_size = 64,
         .num_ports = 2,
-        .access_pattern = Buffet::AccessPattern::SEQUENTIAL,
+        .access_pattern = MemoryOrchestrator::AccessPattern::SEQUENTIAL,
         .enable_prefetch = true
     };
 
-    std::unique_ptr<Buffet> buffet;
+    std::unique_ptr<MemoryOrchestrator> orchestrator;
 
-    BuffetTestFixture() {
-        buffet = std::make_unique<Buffet>(0, NUM_BANKS, default_config);
+    MemoryOrchestratorTestFixture() {
+        orchestrator = std::make_unique<MemoryOrchestrator>(0, NUM_BANKS, default_config);
     }
 
     // Helper to generate test data
@@ -46,18 +46,18 @@ public:
     }
 };
 
-TEST_CASE_METHOD(BuffetTestFixture, "Buffet Basic Functionality", "[buffet][basic]") {
+TEST_CASE_METHOD(MemoryOrchestratorTestFixture, "MemoryOrchestrator Basic Functionality", "[memory_orchestrator][basic]") {
 
-    SECTION("Buffet initialization") {
-        REQUIRE(buffet->get_num_banks() == NUM_BANKS);
-        REQUIRE(buffet->get_buffet_id() == 0);
+    SECTION("MemoryOrchestrator initialization") {
+        REQUIRE(orchestrator->get_num_banks() == NUM_BANKS);
+        REQUIRE(orchestrator->get_orchestrator_id() == 0);
 
         for (size_t i = 0; i < NUM_BANKS; ++i) {
-            REQUIRE(buffet->get_bank_capacity(i) == BANK_SIZE_KB * 1024);
-            REQUIRE(buffet->get_bank_occupancy(i) == 0);
-            REQUIRE(buffet->is_ready(i));
-            REQUIRE_FALSE(buffet->is_bank_busy(i));
-            REQUIRE(buffet->get_bank_phase(i) == Buffet::EDDOPhase::SYNC);
+            REQUIRE(orchestrator->get_bank_capacity(i) == BANK_SIZE_KB * 1024);
+            REQUIRE(orchestrator->get_bank_occupancy(i) == 0);
+            REQUIRE(orchestrator->is_ready(i));
+            REQUIRE_FALSE(orchestrator->is_bank_busy(i));
+            REQUIRE(orchestrator->get_bank_phase(i) == MemoryOrchestrator::EDDOPhase::SYNC);
         }
     }
 
@@ -67,11 +67,11 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Basic Functionality", "[buffet][basi
         std::vector<uint8_t> read_buffer(TEST_SIZE);
 
         // Write data to bank 0
-        REQUIRE_NOTHROW(buffet->write(0, 0, test_data.data(), TEST_SIZE));
-        REQUIRE(buffet->get_bank_occupancy(0) == TEST_SIZE);
+        REQUIRE_NOTHROW(orchestrator->write(0, 0, test_data.data(), TEST_SIZE));
+        REQUIRE(orchestrator->get_bank_occupancy(0) == TEST_SIZE);
 
         // Read data back from bank 0
-        REQUIRE_NOTHROW(buffet->read(0, 0, read_buffer.data(), TEST_SIZE));
+        REQUIRE_NOTHROW(orchestrator->read(0, 0, read_buffer.data(), TEST_SIZE));
         REQUIRE(verify_data(test_data, read_buffer));
     }
 
@@ -81,8 +81,8 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Basic Functionality", "[buffet][basi
         for (size_t bank_id = 0; bank_id < NUM_BANKS; ++bank_id) {
             auto test_data = generate_test_data(TEST_SIZE, static_cast<uint8_t>(bank_id));
 
-            REQUIRE_NOTHROW(buffet->write(bank_id, 0, test_data.data(), TEST_SIZE));
-            REQUIRE(buffet->get_bank_occupancy(bank_id) == TEST_SIZE);
+            REQUIRE_NOTHROW(orchestrator->write(bank_id, 0, test_data.data(), TEST_SIZE));
+            REQUIRE(orchestrator->get_bank_occupancy(bank_id) == TEST_SIZE);
         }
 
         // Verify each bank contains correct data
@@ -90,22 +90,22 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Basic Functionality", "[buffet][basi
             auto expected_data = generate_test_data(TEST_SIZE, static_cast<uint8_t>(bank_id));
             std::vector<uint8_t> read_buffer(TEST_SIZE);
 
-            REQUIRE_NOTHROW(buffet->read(bank_id, 0, read_buffer.data(), TEST_SIZE));
+            REQUIRE_NOTHROW(orchestrator->read(bank_id, 0, read_buffer.data(), TEST_SIZE));
             REQUIRE(verify_data(expected_data, read_buffer));
         }
     }
 
     SECTION("Bank configuration") {
-        Buffet::BankConfig custom_config{
+        MemoryOrchestrator::BankConfig custom_config{
             .bank_size_kb = 128,
             .cache_line_size = 128,
             .num_ports = 4,
-            .access_pattern = Buffet::AccessPattern::RANDOM,
+            .access_pattern = MemoryOrchestrator::AccessPattern::RANDOM,
             .enable_prefetch = false
         };
 
-        REQUIRE_NOTHROW(buffet->configure_bank(0, custom_config));
-        REQUIRE(buffet->get_bank_capacity(0) == 128 * 1024);
+        REQUIRE_NOTHROW(orchestrator->configure_bank(0, custom_config));
+        REQUIRE(orchestrator->get_bank_capacity(0) == 128 * 1024);
     }
 
     SECTION("Error handling") {
@@ -114,18 +114,18 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Basic Functionality", "[buffet][basi
         auto test_data = generate_test_data(TEST_SIZE);
 
         // Invalid bank ID
-        REQUIRE_THROWS(buffet->write(INVALID_BANK, 0, test_data.data(), TEST_SIZE));
-        REQUIRE_THROWS(buffet->read(INVALID_BANK, 0, test_data.data(), TEST_SIZE));
-        REQUIRE_FALSE(buffet->is_ready(INVALID_BANK));
+        REQUIRE_THROWS(orchestrator->write(INVALID_BANK, 0, test_data.data(), TEST_SIZE));
+        REQUIRE_THROWS(orchestrator->read(INVALID_BANK, 0, test_data.data(), TEST_SIZE));
+        REQUIRE_FALSE(orchestrator->is_ready(INVALID_BANK));
 
         // Address out of bounds
-        Size bank_capacity = buffet->get_bank_capacity(0);
-        REQUIRE_THROWS(buffet->write(0, bank_capacity, test_data.data(), TEST_SIZE));
-        REQUIRE_THROWS(buffet->read(0, bank_capacity, test_data.data(), TEST_SIZE));
+        Size bank_capacity = orchestrator->get_bank_capacity(0);
+        REQUIRE_THROWS(orchestrator->write(0, bank_capacity, test_data.data(), TEST_SIZE));
+        REQUIRE_THROWS(orchestrator->read(0, bank_capacity, test_data.data(), TEST_SIZE));
     }
 }
 
-TEST_CASE_METHOD(BuffetTestFixture, "Buffet Reset and Cleanup", "[buffet][cleanup]") {
+TEST_CASE_METHOD(MemoryOrchestratorTestFixture, "MemoryOrchestrator Reset and Cleanup", "[memory_orchestrator][cleanup]") {
 
     SECTION("Reset functionality") {
         constexpr size_t TEST_SIZE = 512;
@@ -133,22 +133,22 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Reset and Cleanup", "[buffet][cleanu
 
         // Write data to all banks
         for (size_t bank_id = 0; bank_id < NUM_BANKS; ++bank_id) {
-            buffet->write(bank_id, 0, test_data.data(), TEST_SIZE);
+            orchestrator->write(bank_id, 0, test_data.data(), TEST_SIZE);
         }
 
         // Verify data is written
         for (size_t bank_id = 0; bank_id < NUM_BANKS; ++bank_id) {
-            REQUIRE(buffet->get_bank_occupancy(bank_id) == TEST_SIZE);
+            REQUIRE(orchestrator->get_bank_occupancy(bank_id) == TEST_SIZE);
         }
 
-        // Reset buffet
-        buffet->reset();
+        // Reset orchestrator
+        orchestrator->reset();
 
         // Verify all banks are reset
         for (size_t bank_id = 0; bank_id < NUM_BANKS; ++bank_id) {
-            REQUIRE(buffet->get_bank_occupancy(bank_id) == 0);
-            REQUIRE(buffet->is_ready(bank_id));
-            REQUIRE(buffet->get_bank_phase(bank_id) == Buffet::EDDOPhase::SYNC);
+            REQUIRE(orchestrator->get_bank_occupancy(bank_id) == 0);
+            REQUIRE(orchestrator->is_ready(bank_id));
+            REQUIRE(orchestrator->get_bank_phase(bank_id) == MemoryOrchestrator::EDDOPhase::SYNC);
         }
     }
 
@@ -157,23 +157,23 @@ TEST_CASE_METHOD(BuffetTestFixture, "Buffet Reset and Cleanup", "[buffet][cleanu
         auto test_data = generate_test_data(TEST_SIZE);
 
         // Write data to banks
-        buffet->write(0, 0, test_data.data(), TEST_SIZE);
-        buffet->write(1, 100, test_data.data(), TEST_SIZE);
+        orchestrator->write(0, 0, test_data.data(), TEST_SIZE);
+        orchestrator->write(1, 100, test_data.data(), TEST_SIZE);
 
-        REQUIRE(buffet->get_bank_occupancy(0) == TEST_SIZE);
-        REQUIRE(buffet->get_bank_occupancy(1) == 356); // 100 + 256
+        REQUIRE(orchestrator->get_bank_occupancy(0) == TEST_SIZE);
+        REQUIRE(orchestrator->get_bank_occupancy(1) == 356); // 100 + 256
 
         // Flush all banks
-        buffet->flush_all_banks();
+        orchestrator->flush_all_banks();
 
         // Verify banks are flushed
         for (size_t bank_id = 0; bank_id < NUM_BANKS; ++bank_id) {
-            REQUIRE(buffet->get_bank_occupancy(bank_id) == 0);
+            REQUIRE(orchestrator->get_bank_occupancy(bank_id) == 0);
         }
     }
 }
 
-TEST_CASE_METHOD(BuffetTestFixture, "Performance Metrics", "[buffet][metrics]") {
+TEST_CASE_METHOD(MemoryOrchestratorTestFixture, "Performance Metrics", "[memory_orchestrator][metrics]") {
 
     SECTION("Basic performance tracking") {
         constexpr size_t TEST_SIZE = 512;
@@ -183,11 +183,11 @@ TEST_CASE_METHOD(BuffetTestFixture, "Performance Metrics", "[buffet][metrics]") 
 
         // Perform multiple read/write operations
         for (size_t i = 0; i < NUM_OPERATIONS; ++i) {
-            buffet->write(0, i * 64, test_data.data(), TEST_SIZE);
-            buffet->read(0, i * 64, read_buffer.data(), TEST_SIZE);
+            orchestrator->write(0, i * 64, test_data.data(), TEST_SIZE);
+            orchestrator->read(0, i * 64, read_buffer.data(), TEST_SIZE);
         }
 
-        auto metrics = buffet->get_performance_metrics();
+        auto metrics = orchestrator->get_performance_metrics();
 
         REQUIRE(metrics.total_write_accesses >= NUM_OPERATIONS);
         REQUIRE(metrics.total_read_accesses >= NUM_OPERATIONS);

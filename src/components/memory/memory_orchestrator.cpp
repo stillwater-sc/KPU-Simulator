@@ -1,4 +1,4 @@
-#include <sw/kpu/components/buffet.hpp>
+#include <sw/kpu/components/memory_orchestrator.hpp>
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 #include <algorithm>
@@ -7,9 +7,9 @@
 
 namespace sw::kpu {
 
-// Buffet Implementation
-Buffet::Buffet(size_t buffet_id, size_t num_banks, const BankConfig& default_config)
-    : num_banks(num_banks), buffet_id(buffet_id), next_sequence_id(1) {
+// MemoryOrchestrator Implementation
+MemoryOrchestrator::MemoryOrchestrator(size_t orchestrator_id, size_t num_banks, const BankConfig& default_config)
+    : num_banks(num_banks), orchestrator_id(orchestrator_id), next_sequence_id(1) {
 
     bank_configs.resize(num_banks, default_config);
     bank_states.reserve(num_banks);
@@ -33,9 +33,9 @@ Buffet::Buffet(size_t buffet_id, size_t num_banks, const BankConfig& default_con
     }
 }
 
-Buffet::Buffet(const Buffet& other)
+MemoryOrchestrator::MemoryOrchestrator(const MemoryOrchestrator& other)
     : num_banks(other.num_banks)
-    , buffet_id(other.buffet_id)
+    , orchestrator_id(other.orchestrator_id)
     , bank_configs(other.bank_configs)
     , next_sequence_id(1) {
 
@@ -63,10 +63,10 @@ Buffet::Buffet(const Buffet& other)
     // Note: We don't copy active commands or dependencies as they're runtime state
 }
 
-Buffet& Buffet::operator=(const Buffet& other) {
+MemoryOrchestrator& MemoryOrchestrator::operator=(const MemoryOrchestrator& other) {
     if (this != &other) {
         num_banks = other.num_banks;
-        buffet_id = other.buffet_id;
+        orchestrator_id = other.orchestrator_id;
         bank_configs = other.bank_configs;
 
         bank_states.clear();
@@ -100,7 +100,7 @@ Buffet& Buffet::operator=(const Buffet& other) {
     return *this;
 }
 
-void Buffet::configure_bank(size_t bank_id, const BankConfig& config) {
+void MemoryOrchestrator::configure_bank(size_t bank_id, const BankConfig& config) {
     if (bank_id >= num_banks) {
         throw std::out_of_range("Bank ID out of range");
     }
@@ -118,19 +118,19 @@ void Buffet::configure_bank(size_t bank_id, const BankConfig& config) {
     }
 }
 
-void Buffet::register_block_mover(BlockMover* mover) {
+void MemoryOrchestrator::register_block_mover(BlockMover* mover) {
     if (mover != nullptr) {
         block_movers.push_back(mover);
     }
 }
 
-void Buffet::register_streamer(Streamer* streamer) {
+void MemoryOrchestrator::register_streamer(Streamer* streamer) {
     if (streamer != nullptr) {
         streamers.push_back(streamer);
     }
 }
 
-void Buffet::read(size_t bank_id, Address addr, void* data, Size size) {
+void MemoryOrchestrator::read(size_t bank_id, Address addr, void* data, Size size) {
     if (!validate_bank_access(bank_id, addr, size)) {
         throw std::out_of_range("Invalid bank read access");
     }
@@ -146,7 +146,7 @@ void Buffet::read(size_t bank_id, Address addr, void* data, Size size) {
     bank.is_reading = false;
 }
 
-void Buffet::write(size_t bank_id, Address addr, const void* data, Size size) {
+void MemoryOrchestrator::write(size_t bank_id, Address addr, const void* data, Size size) {
     if (!validate_bank_access(bank_id, addr, size)) {
         throw std::out_of_range("Invalid bank write access");
     }
@@ -168,7 +168,7 @@ void Buffet::write(size_t bank_id, Address addr, const void* data, Size size) {
     bank.is_writing = false;
 }
 
-bool Buffet::is_ready(size_t bank_id) const {
+bool MemoryOrchestrator::is_ready(size_t bank_id) const {
     if (bank_id >= num_banks) return false;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
@@ -176,12 +176,12 @@ bool Buffet::is_ready(size_t bank_id) const {
     return !bank.is_reading && !bank.is_writing;
 }
 
-void Buffet::enqueue_eddo_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::enqueue_eddo_command(const EDDOCommand& cmd) {
     std::lock_guard<std::mutex> lock(command_mutex);
     command_queue.push(cmd);
 }
 
-bool Buffet::process_eddo_commands() {
+bool MemoryOrchestrator::process_eddo_commands() {
     std::lock_guard<std::mutex> lock(command_mutex);
 
     if (command_queue.empty()) {
@@ -226,7 +226,7 @@ bool Buffet::process_eddo_commands() {
     return executed_any;
 }
 
-bool Buffet::can_execute_command(const EDDOCommand& cmd) const {
+bool MemoryOrchestrator::can_execute_command(const EDDOCommand& cmd) const {
     // Check if bank is available for this phase
     if (!is_bank_available(cmd.bank_id, cmd.phase)) {
         return false;
@@ -242,7 +242,7 @@ bool Buffet::can_execute_command(const EDDOCommand& cmd) const {
     return true;
 }
 
-void Buffet::execute_prefetch_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::execute_prefetch_command(const EDDOCommand& cmd) {
     // Mark bank as transitioning to prefetch phase
     transition_bank_phase(cmd.bank_id, EDDOPhase::PREFETCH, cmd.sequence_id);
 
@@ -254,7 +254,7 @@ void Buffet::execute_prefetch_command(const EDDOCommand& cmd) {
     // Don't add to active_commands since we're completing immediately
 }
 
-void Buffet::execute_compute_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::execute_compute_command(const EDDOCommand& cmd) {
     transition_bank_phase(cmd.bank_id, EDDOPhase::COMPUTE, cmd.sequence_id);
 
     // Simulate compute completion immediately for testing
@@ -262,7 +262,7 @@ void Buffet::execute_compute_command(const EDDOCommand& cmd) {
     // Don't add to active_commands since we're completing immediately
 }
 
-void Buffet::execute_writeback_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::execute_writeback_command(const EDDOCommand& cmd) {
     transition_bank_phase(cmd.bank_id, EDDOPhase::WRITEBACK, cmd.sequence_id);
 
     // Simulate writeback completion immediately for testing
@@ -270,7 +270,7 @@ void Buffet::execute_writeback_command(const EDDOCommand& cmd) {
     // Don't add to active_commands since we're completing immediately
 }
 
-void Buffet::execute_sync_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::execute_sync_command(const EDDOCommand& cmd) {
     // Sync commands ensure all previous operations complete
     // Reset bank to sync phase
     transition_bank_phase(cmd.bank_id, EDDOPhase::SYNC, cmd.sequence_id);
@@ -278,7 +278,7 @@ void Buffet::execute_sync_command(const EDDOCommand& cmd) {
     // Sync completes immediately - it's just a coordination point
 }
 
-void Buffet::complete_command(const EDDOCommand& cmd) {
+void MemoryOrchestrator::complete_command(const EDDOCommand& cmd) {
     // Remove from active commands
     active_commands.erase(cmd.sequence_id);
 
@@ -291,7 +291,7 @@ void Buffet::complete_command(const EDDOCommand& cmd) {
     }
 }
 
-void Buffet::update_dependencies(size_t completed_sequence_id) {
+void MemoryOrchestrator::update_dependencies(size_t completed_sequence_id) {
     // Remove completed command from all dependency lists
     for (auto& [seq_id, dependents] : dependency_graph) {
         dependents.erase(
@@ -300,7 +300,7 @@ void Buffet::update_dependencies(size_t completed_sequence_id) {
     }
 }
 
-bool Buffet::is_bank_available(size_t bank_id, EDDOPhase phase) const {
+bool MemoryOrchestrator::is_bank_available(size_t bank_id, EDDOPhase phase) const {
     if (bank_id >= num_banks) return false;
 
     const auto& bank = *bank_states[bank_id];
@@ -321,7 +321,7 @@ bool Buffet::is_bank_available(size_t bank_id, EDDOPhase phase) const {
     return false;
 }
 
-void Buffet::transition_bank_phase(size_t bank_id, EDDOPhase new_phase, size_t sequence_id) {
+void MemoryOrchestrator::transition_bank_phase(size_t bank_id, EDDOPhase new_phase, size_t sequence_id) {
     if (bank_id >= num_banks) return;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
@@ -330,19 +330,19 @@ void Buffet::transition_bank_phase(size_t bank_id, EDDOPhase new_phase, size_t s
     bank.active_sequence_id = sequence_id;
 }
 
-bool Buffet::validate_bank_access(size_t bank_id, Address addr, Size size) const {
+bool MemoryOrchestrator::validate_bank_access(size_t bank_id, Address addr, Size size) const {
     if (bank_id >= num_banks) return false;
 
     // Check if the access would exceed bank capacity
     return (addr + size) <= bank_states[bank_id]->capacity;
 }
 
-Address Buffet::map_to_bank_address(size_t bank_id, Address global_addr) const {
+Address MemoryOrchestrator::map_to_bank_address(size_t bank_id, Address global_addr) const {
     // Simple mapping - in practice this could be more sophisticated
     return global_addr % bank_states[bank_id]->capacity;
 }
 
-void Buffet::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
+void MemoryOrchestrator::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
                                      Address src_addr, Size transfer_size) {
     EDDOCommand prefetch_a{
         .phase = EDDOPhase::PREFETCH,
@@ -374,7 +374,7 @@ void Buffet::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
     enqueue_eddo_command(prefetch_b);
 }
 
-void Buffet::orchestrate_pipeline_stage(size_t input_bank, size_t output_bank,
+void MemoryOrchestrator::orchestrate_pipeline_stage(size_t input_bank, size_t output_bank,
                                        const std::function<void()>& compute_func) {
     EDDOCommand compute_cmd{
         .phase = EDDOPhase::COMPUTE,
@@ -406,17 +406,17 @@ void Buffet::orchestrate_pipeline_stage(size_t input_bank, size_t output_bank,
     enqueue_eddo_command(writeback_cmd);
 }
 
-size_t Buffet::get_pending_commands() const {
+size_t MemoryOrchestrator::get_pending_commands() const {
     std::lock_guard<std::mutex> lock(command_mutex);
     return command_queue.size();
 }
 
-bool Buffet::is_busy() const {
+bool MemoryOrchestrator::is_busy() const {
     std::lock_guard<std::mutex> lock(command_mutex);
     return !command_queue.empty() || !active_commands.empty();
 }
 
-bool Buffet::is_bank_busy(size_t bank_id) const {
+bool MemoryOrchestrator::is_bank_busy(size_t bank_id) const {
     if (bank_id >= num_banks) return false;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
@@ -424,14 +424,14 @@ bool Buffet::is_bank_busy(size_t bank_id) const {
     return bank.is_reading || bank.is_writing || bank.current_phase != EDDOPhase::SYNC;
 }
 
-Buffet::EDDOPhase Buffet::get_bank_phase(size_t bank_id) const {
+MemoryOrchestrator::EDDOPhase MemoryOrchestrator::get_bank_phase(size_t bank_id) const {
     if (bank_id >= num_banks) return EDDOPhase::SYNC;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
     return bank_states[bank_id]->current_phase;
 }
 
-Buffet::PerformanceMetrics Buffet::get_performance_metrics() const {
+MemoryOrchestrator::PerformanceMetrics MemoryOrchestrator::get_performance_metrics() const {
     std::lock_guard<std::mutex> lock(bank_mutex);
 
     PerformanceMetrics metrics{};
@@ -454,17 +454,17 @@ Buffet::PerformanceMetrics Buffet::get_performance_metrics() const {
     return metrics;
 }
 
-Size Buffet::get_bank_capacity(size_t bank_id) const {
+Size MemoryOrchestrator::get_bank_capacity(size_t bank_id) const {
     if (bank_id >= num_banks) return 0;
     return bank_states[bank_id]->capacity;
 }
 
-Size Buffet::get_bank_occupancy(size_t bank_id) const {
+Size MemoryOrchestrator::get_bank_occupancy(size_t bank_id) const {
     if (bank_id >= num_banks) return 0;
     return bank_states[bank_id]->current_occupancy;
 }
 
-void Buffet::reset() {
+void MemoryOrchestrator::reset() {
     std::lock_guard<std::mutex> cmd_lock(command_mutex);
     std::lock_guard<std::mutex> bank_lock(bank_mutex);
 
@@ -488,7 +488,7 @@ void Buffet::reset() {
     }
 }
 
-void Buffet::flush_all_banks() {
+void MemoryOrchestrator::flush_all_banks() {
     std::lock_guard<std::mutex> lock(bank_mutex);
     for (auto& bank : bank_states) {
         bank->current_occupancy = 0;
@@ -496,7 +496,7 @@ void Buffet::flush_all_banks() {
     }
 }
 
-void Buffet::abort_pending_commands() {
+void MemoryOrchestrator::abort_pending_commands() {
     std::lock_guard<std::mutex> lock(command_mutex);
     command_queue = std::queue<EDDOCommand>();
     active_commands.clear();
@@ -506,8 +506,8 @@ void Buffet::abort_pending_commands() {
 // EDDOWorkflowBuilder Implementation
 EDDOWorkflowBuilder& EDDOWorkflowBuilder::prefetch(size_t bank_id, Address src_addr,
                                                  Address dest_addr, Size size) {
-    Buffet::EDDOCommand cmd{
-        .phase = Buffet::EDDOPhase::PREFETCH,
+    MemoryOrchestrator::EDDOCommand cmd{
+        .phase = MemoryOrchestrator::EDDOPhase::PREFETCH,
         .bank_id = bank_id,
         .source_addr = src_addr,
         .dest_addr = dest_addr,
@@ -522,11 +522,11 @@ EDDOWorkflowBuilder& EDDOWorkflowBuilder::prefetch(size_t bank_id, Address src_a
 
 EDDOWorkflowBuilder& EDDOWorkflowBuilder::compute(size_t bank_id,
                                                 const std::function<void()>& compute_func) {
-    Buffet::EDDOCommand cmd{
-        .phase = Buffet::EDDOPhase::COMPUTE,
+    MemoryOrchestrator::EDDOCommand cmd{
+        .phase = MemoryOrchestrator::EDDOPhase::COMPUTE,
         .bank_id = bank_id,
         .sequence_id = next_sequence_id++,
-        .completion_callback = [compute_func](const Buffet::EDDOCommand&) { compute_func(); }
+        .completion_callback = [compute_func](const MemoryOrchestrator::EDDOCommand&) { compute_func(); }
     };
     commands.push_back(cmd);
     return *this;
@@ -534,8 +534,8 @@ EDDOWorkflowBuilder& EDDOWorkflowBuilder::compute(size_t bank_id,
 
 EDDOWorkflowBuilder& EDDOWorkflowBuilder::writeback(size_t bank_id, Address src_addr,
                                                   Address dest_addr, Size size) {
-    Buffet::EDDOCommand cmd{
-        .phase = Buffet::EDDOPhase::WRITEBACK,
+    MemoryOrchestrator::EDDOCommand cmd{
+        .phase = MemoryOrchestrator::EDDOPhase::WRITEBACK,
         .bank_id = bank_id,
         .source_addr = src_addr,
         .dest_addr = dest_addr,
@@ -549,8 +549,8 @@ EDDOWorkflowBuilder& EDDOWorkflowBuilder::writeback(size_t bank_id, Address src_
 }
 
 EDDOWorkflowBuilder& EDDOWorkflowBuilder::sync() {
-    Buffet::EDDOCommand cmd{
-        .phase = Buffet::EDDOPhase::SYNC,
+    MemoryOrchestrator::EDDOCommand cmd{
+        .phase = MemoryOrchestrator::EDDOPhase::SYNC,
         .bank_id = 0, // Sync applies to all banks
         .sequence_id = next_sequence_id++
     };
@@ -565,13 +565,13 @@ EDDOWorkflowBuilder& EDDOWorkflowBuilder::depend_on(size_t dependency_sequence_i
     return *this;
 }
 
-std::vector<Buffet::EDDOCommand> EDDOWorkflowBuilder::build() {
+std::vector<MemoryOrchestrator::EDDOCommand> EDDOWorkflowBuilder::build() {
     return commands;
 }
 
-void EDDOWorkflowBuilder::execute_on(Buffet& buffet) {
+void EDDOWorkflowBuilder::execute_on(MemoryOrchestrator& orchestrator) {
     for (const auto& cmd : commands) {
-        buffet.enqueue_eddo_command(cmd);
+        orchestrator.enqueue_eddo_command(cmd);
     }
 }
 

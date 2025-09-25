@@ -8,8 +8,8 @@ set(MEMORY_COMPONENT_SOURCES
     l3_tile.cpp
     l2_bank.cpp
     cache.cpp
-    buffet.cpp
-    buffet_integration.cpp
+    memory_orchestrator.cpp
+    memory_orchestrator_integration.cpp
 )
 
 # Create the memory components library

@@ -31,9 +31,21 @@ namespace sw::kpu {
 class BlockMover;
 class Streamer;
 
-// Buffet: Multi-bank buffer memory supporting EDDO (Explicit Decoupled Data Orchestration)
-// EDDO separates control flow from data flow for efficient pipelining and overlap
-class KPU_API Buffet {
+/**
+ * MemoryOrchestrator: Multi-bank buffer memory supporting EDDO (Explicit Decoupled Data Orchestration)
+ *
+ * NOTE: This is NOT the original "Buffet" from Google's paper, which uses Fill/Read/Update/Shrink
+ * for sparse tensor operations. This is a dense memory orchestrator using Prefetch/Compute/Writeback/Sync
+ * phases for general-purpose memory hierarchy coordination.
+ *
+ * EDDO separates control flow from data flow for efficient pipelining and overlap of:
+ * - Dense matrix operations (matrix multiplication, convolution)
+ * - Multi-stage pipeline coordination
+ * - Cross-component workflow orchestration
+ *
+ * For sparse tensor operations, see SparseBuffet which implements the true Buffet FSM.
+ */
+class KPU_API MemoryOrchestrator {
 public:
     // EDDO Operation Types
     enum class EDDOPhase {
@@ -43,7 +55,7 @@ public:
         SYNC          // Synchronization barrier between phases
     };
 
-    // Buffer Bank Access Patterns for EDDO
+    // Memory Bank Access Patterns for EDDO
     enum class AccessPattern {
         SEQUENTIAL,    // Sequential access within bank
         STRIDED,       // Strided access pattern
@@ -51,7 +63,7 @@ public:
         BROADCAST      // One-to-many distribution
     };
 
-    // Buffet Bank Configuration
+    // Memory Bank Configuration
     struct BankConfig {
         Size bank_size_kb;          // Size per bank in KB
         Size cache_line_size;       // Cache line size (typically 64 bytes)
@@ -108,7 +120,7 @@ private:
     size_t num_banks;
     std::vector<BankConfig> bank_configs;
     std::vector<std::unique_ptr<BankState>> bank_states;
-    size_t buffet_id;
+    size_t orchestrator_id;
 
     // EDDO command orchestration
     std::queue<EDDOCommand> command_queue;
@@ -144,15 +156,15 @@ private:
     Address map_to_bank_address(size_t bank_id, Address global_addr) const;
 
 public:
-    explicit Buffet(size_t buffet_id, size_t num_banks = 4,
+    explicit MemoryOrchestrator(size_t orchestrator_id, size_t num_banks = 4,
                    const BankConfig& default_config = {64, 64, 2, AccessPattern::SEQUENTIAL, true});
-    ~Buffet() = default;
+    ~MemoryOrchestrator() = default;
 
     // Custom copy/move for vector compatibility
-    Buffet(const Buffet& other);
-    Buffet& operator=(const Buffet& other);
-    Buffet(Buffet&&) = delete;
-    Buffet& operator=(Buffet&&) = delete;
+    MemoryOrchestrator(const MemoryOrchestrator& other);
+    MemoryOrchestrator& operator=(const MemoryOrchestrator& other);
+    MemoryOrchestrator(MemoryOrchestrator&&) = delete;
+    MemoryOrchestrator& operator=(MemoryOrchestrator&&) = delete;
 
     // Configuration and initialization
     void configure_bank(size_t bank_id, const BankConfig& config);
@@ -192,7 +204,7 @@ public:
     PerformanceMetrics get_performance_metrics() const;
 
     // Configuration queries
-    size_t get_buffet_id() const { return buffet_id; }
+    size_t get_orchestrator_id() const { return orchestrator_id; }
     size_t get_num_banks() const { return num_banks; }
     Size get_bank_capacity(size_t bank_id) const;
     Size get_bank_occupancy(size_t bank_id) const;
@@ -206,7 +218,7 @@ public:
 // Helper class for EDDO workflow construction
 class KPU_API EDDOWorkflowBuilder {
 private:
-    std::vector<Buffet::EDDOCommand> commands;
+    std::vector<MemoryOrchestrator::EDDOCommand> commands;
     size_t next_sequence_id;
 
 public:
@@ -220,8 +232,8 @@ public:
     EDDOWorkflowBuilder& depend_on(size_t dependency_sequence_id);
 
     // Build and execute
-    std::vector<Buffet::EDDOCommand> build();
-    void execute_on(Buffet& buffet);
+    std::vector<MemoryOrchestrator::EDDOCommand> build();
+    void execute_on(MemoryOrchestrator& orchestrator);
 };
 
 } // namespace sw::kpu

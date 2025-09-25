@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sw/kpu/components/buffet.hpp>
+#include <sw/kpu/components/memory_orchestrator.hpp>
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 
@@ -19,18 +19,18 @@
 
 namespace sw::kpu {
 
-// Integration layer for BlockMover to use Buffet with EDDO
-class KPU_API BuffetBlockMoverAdapter {
+// Integration layer for BlockMover to use MemoryOrchestrator with EDDO
+class KPU_API MemoryOrchestratorBlockMoverAdapter {
 private:
-    Buffet* buffet;
+    MemoryOrchestrator* orchestrator;
     size_t adapter_id;
 
 public:
-    explicit BuffetBlockMoverAdapter(Buffet* buffet, size_t adapter_id);
+    explicit MemoryOrchestratorBlockMoverAdapter(MemoryOrchestrator* orchestrator, size_t adapter_id);
 
     // Enhanced block transfer with EDDO orchestration
     void orchestrated_block_transfer(size_t src_l3_tile_id, Address src_offset,
-                                   size_t dst_buffet_bank, Address dst_offset,
+                                   size_t dst_orchestrator_bank, Address dst_offset,
                                    Size block_height, Size block_width, Size element_size,
                                    BlockMover::TransformType transform = BlockMover::TransformType::IDENTITY,
                                    std::function<void()> completion_callback = nullptr);
@@ -50,21 +50,21 @@ public:
     void reset();
 };
 
-// Integration layer for Streamer to use Buffet with EDDO
-class KPU_API BuffetStreamerAdapter {
+// Integration layer for Streamer to use MemoryOrchestrator with EDDO
+class KPU_API MemoryOrchestratorStreamerAdapter {
 private:
-    Buffet* buffet;
+    MemoryOrchestrator* orchestrator;
     size_t adapter_id;
 
 public:
-    explicit BuffetStreamerAdapter(Buffet* buffet, size_t adapter_id);
+    explicit MemoryOrchestratorStreamerAdapter(MemoryOrchestrator* orchestrator, size_t adapter_id);
 
     // EDDO-enhanced streaming configuration
     struct EDDOStreamConfig {
         // Standard streaming parameters
-        size_t buffet_bank_id;
+        size_t orchestrator_bank_id;
         size_t l1_scratchpad_id;
-        Address buffet_base_addr;
+        Address orchestrator_base_addr;
         Address l1_base_addr;
 
         // Matrix dimensions for streaming
@@ -102,13 +102,13 @@ public:
 // High-level EDDO coordination for matrix operations
 class KPU_API EDDOMatrixOrchestrator {
 private:
-    Buffet* buffet;
-    std::vector<BuffetBlockMoverAdapter> block_adapters;
-    std::vector<BuffetStreamerAdapter> stream_adapters;
+    MemoryOrchestrator* orchestrator;
+    std::vector<MemoryOrchestratorBlockMoverAdapter> block_adapters;
+    std::vector<MemoryOrchestratorStreamerAdapter> stream_adapters;
     size_t orchestrator_id;
 
 public:
-    explicit EDDOMatrixOrchestrator(Buffet* buffet, size_t orchestrator_id);
+    explicit EDDOMatrixOrchestrator(MemoryOrchestrator* orchestrator, size_t orchestrator_id);
 
     // Register data movement components
     void register_block_mover(BlockMover* mover);
