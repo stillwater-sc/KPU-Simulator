@@ -28,13 +28,14 @@ namespace sw::kpu {
 class Streamer;
 
 // Processing Element (PE) for systolic array
+template<typename Scalar>
 class KPU_API ProcessingElement {
 public:
-    ProcessingElement(size_t row, size_t col);
+    ProcessingElement(size_t row, size_t col) : row_id(row), col_id(col) {}
 
     // Data inputs
-    void set_a_input(float value) { a_input = value; }
-    void set_b_input(float value) { b_input = value; }
+    void set_a_input(Scalar value) { a_input = value; }
+    void set_b_input(Scalar value) { b_input = value; }
 
     // Data outputs (for propagation)
     float get_a_output() const { return a_output; }
@@ -42,10 +43,30 @@ public:
     float get_c_output() const { return c_accumulator; }
 
     // Process one cycle
-    void cycle();
+    void cycle() {
+        // Output-stationary: accumulate A*B into C, propagate A and B
+        if (a_input != 0.0f || b_input != 0.0f) {
+            c_accumulator += a_input * b_input;
+            accumulating = true;
+        }
+
+        // Propagate data for systolic flow
+        a_output = a_input; // Pass A data horizontally (left to right)
+        b_output = b_input; // Pass B data vertically (top to bottom)
+
+        // Clear inputs for next cycle
+        a_input = 0.0f;
+        b_input = 0.0f;
+    }
 
     // Reset PE state
-    void reset();
+    void reset() {
+        a_input = a_output = 0.0f;
+        b_input = b_output = 0.0f;
+        c_accumulator = 0.0f;
+        accumulating = false;
+        last_valid_cycle = 0;
+    }
 
     // Configuration
     size_t get_row() const { return row_id; }
@@ -55,9 +76,9 @@ private:
     size_t row_id, col_id;
 
     // Data registers
-    float a_input, a_output;
-    float b_input, b_output;
-    float c_accumulator;
+    Scalar a_input, a_output;
+    Scalar b_input, b_output;
+    Scalar c_accumulator;
 
     // Control state
     bool accumulating;
@@ -67,6 +88,7 @@ private:
 // Systolic Array for matrix multiplication using output-stationary schedule
 class KPU_API SystolicArray {
 public:
+    using Scalar = float;
     static constexpr Size DEFAULT_ROWS = 16;
     static constexpr Size DEFAULT_COLS = 16;
 
@@ -89,7 +111,7 @@ private:
     Size num_rows, num_cols;
 
     // Processing elements
-    std::vector<std::vector<std::unique_ptr<ProcessingElement>>> pe_array;
+    std::vector<std::vector<std::unique_ptr< ProcessingElement<Scalar> >>> pe_array;
 
     // Data buses for systolic flow
     std::vector<std::queue<float>> horizontal_bus; // A data (one per row)
@@ -133,9 +155,9 @@ public:
     Size get_total_pes() const { return num_rows * num_cols; }
 
     // Streaming interface for integration with Streamer components
-    void stream_a_data(const std::vector<float>& data, Size row_offset);
-    void stream_b_data(const std::vector<float>& data, Size col_offset);
-    std::vector<float> evacuate_c_data(Size max_elements);
+    void stream_a_data(const std::vector<Scalar>& data, Size row_offset);
+    void stream_b_data(const std::vector<Scalar>& data, Size col_offset);
+    std::vector<Scalar> evacuate_c_data(Size max_elements);
 
     // Performance metrics
     Cycle estimate_cycles(Size m, Size n, Size k) const;
@@ -159,9 +181,9 @@ private:
     Size calculate_stagger_delay(Size position) const;
 
     // Data loading helpers
-    void load_matrix_a_tile(const std::vector<float>& matrix_a, Size tile_row, Size tile_col);
-    void load_matrix_b_tile(const std::vector<float>& matrix_b, Size tile_row, Size tile_col);
-    void store_matrix_c_tile(std::vector<float>& matrix_c, Size tile_row, Size tile_col);
+    void load_matrix_a_tile(const std::vector<Scalar>& matrix_a, Size tile_row, Size tile_col);
+    void load_matrix_b_tile(const std::vector<Scalar>& matrix_b, Size tile_row, Size tile_col);
+    void store_matrix_c_tile(std::vector<Scalar>& matrix_c, Size tile_row, Size tile_col);
 
     // Address calculation
     Address calculate_matrix_address(Address base_addr, Size row, Size col, Size width, Size element_size) const;

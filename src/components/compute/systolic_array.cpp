@@ -6,37 +6,6 @@
 
 namespace sw::kpu {
 
-// ProcessingElement implementation
-ProcessingElement::ProcessingElement(size_t row, size_t col)
-    : row_id(row), col_id(col), a_input(0.0f), a_output(0.0f),
-      b_input(0.0f), b_output(0.0f), c_accumulator(0.0f),
-      accumulating(false), last_valid_cycle(0) {
-}
-
-void ProcessingElement::cycle() {
-    // Output-stationary: accumulate A*B into C, propagate A and B
-    if (a_input != 0.0f || b_input != 0.0f) {
-        c_accumulator += a_input * b_input;
-        accumulating = true;
-    }
-
-    // Propagate data for systolic flow
-    a_output = a_input; // Pass A data horizontally (left to right)
-    b_output = b_input; // Pass B data vertically (top to bottom)
-
-    // Clear inputs for next cycle
-    a_input = 0.0f;
-    b_input = 0.0f;
-}
-
-void ProcessingElement::reset() {
-    a_input = a_output = 0.0f;
-    b_input = b_output = 0.0f;
-    c_accumulator = 0.0f;
-    accumulating = false;
-    last_valid_cycle = 0;
-}
-
 // SystolicArray implementation
 SystolicArray::SystolicArray(Size rows, Size cols)
     : num_rows(rows), num_cols(cols), is_computing(false), compute_start_cycle(0),
@@ -48,7 +17,7 @@ SystolicArray::SystolicArray(Size rows, Size cols)
     for (Size row = 0; row < num_rows; ++row) {
         pe_array[row].resize(num_cols);
         for (Size col = 0; col < num_cols; ++col) {
-            pe_array[row][col] = std::make_unique<ProcessingElement>(row, col);
+            pe_array[row][col] = std::make_unique<ProcessingElement<Scalar>>(row, col);
         }
     }
 
@@ -76,7 +45,7 @@ SystolicArray::SystolicArray(const SystolicArray& other)
     for (Size row = 0; row < num_rows; ++row) {
         pe_array[row].resize(num_cols);
         for (Size col = 0; col < num_cols; ++col) {
-            pe_array[row][col] = std::make_unique<ProcessingElement>(*other.pe_array[row][col]);
+            pe_array[row][col] = std::make_unique<ProcessingElement<Scalar>>(*other.pe_array[row][col]);
         }
     }
 
@@ -108,7 +77,7 @@ SystolicArray& SystolicArray::operator=(const SystolicArray& other) {
         for (Size row = 0; row < num_rows; ++row) {
             pe_array[row].resize(num_cols);
             for (Size col = 0; col < num_cols; ++col) {
-                pe_array[row][col] = std::make_unique<ProcessingElement>(*other.pe_array[row][col]);
+                pe_array[row][col] = std::make_unique<ProcessingElement<Scalar>>(*other.pe_array[row][col]);
             }
         }
 

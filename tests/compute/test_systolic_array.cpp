@@ -41,20 +41,22 @@ public:
     }
 
     // Helper to generate test matrix data
-    std::vector<float> generate_matrix(size_t rows, size_t cols, float start_value = 1.0f) {
-        std::vector<float> matrix(rows * cols);
+    template<typename Real>
+    std::vector<Real> generate_matrix(size_t rows, size_t cols, Real start_value = 1.0f) {
+        std::vector<Real> matrix(rows * cols);
         for (size_t i = 0; i < rows * cols; ++i) {
-            matrix[i] = start_value + static_cast<float>(i);
+            matrix[i] = start_value + static_cast<Real>(i);
         }
         return matrix;
     }
 
     // Helper to verify matrix multiplication result
-    std::vector<float> generate_matmul(const std::vector<float>& a, const std::vector<float>& b, size_t m, size_t n, size_t k) {
-		std::vector<float> c(m * n, 0.0f);
+    template<typename Real>
+    std::vector<Real> generate_matmul(const std::vector<Real>& a, const std::vector<Real>& b, size_t m, size_t n, size_t k) {
+		std::vector<Real> c(m * n, 0.0f);
         for (size_t i = 0; i < m; ++i) {
             for (size_t j = 0; j < n; ++j) {
-                float dot = 0.0f;
+                Real dot = 0.0f;
                 for (size_t ki = 0; ki < k; ++ki) {
                     dot += a[i * k + ki] * b[ki * n + j];
                 }
@@ -64,7 +66,8 @@ public:
         return c;
     }
 
-    void print_matrix(const std::string& label, const std::vector<float>& a, size_t m, size_t n) {
+    template<typename Real>
+    void print_matrix(const std::string& label, const std::vector<Real>& a, size_t m, size_t n) {
         std::cout << label << '\n';
         for (size_t i = 0; i < m; ++i) {
             std::cout << "[ ";
@@ -76,15 +79,16 @@ public:
     }
 
     // Helper to verify matrix multiplication result
-    bool verify_matmul(const std::vector<float>& c, const std::vector<float>& reference, 
-                       size_t m, size_t n, float tolerance = 1e-5f) {
+    template<typename Real>
+    bool verify_matmul(const std::vector<Real>& c, const std::vector<Real>& reference,
+                       size_t m, size_t n, Real tolerance = 1e-5f) {
 		std::cout << "Verifying result:\n";
 		bool success = true;
         for (size_t i = 0; i < m; ++i) {
             for (size_t j = 0; j < n; ++j) {
-                float actual = c[i * n + j];
-				float expected = reference[i * n + j];
-				float delta = actual - expected;
+                Real actual = c[i * n + j];
+				Real expected = reference[i * n + j];
+				Real delta = actual - expected;
                 if (std::abs(delta) > tolerance) {
                     std::cout << "FAIL (" << delta << ") ";
                     success = false;
@@ -123,14 +127,15 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Configuration", "[sys
 TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication", "[systolic][matmul]") {
     SECTION("Can perform small matrix multiplication") {
         // Test parameters
+        using Real = float;
         const size_t m = 2, n = 2, k = 2;
-        const size_t element_size = sizeof(float);
+        const size_t element_size = sizeof(Real);
 
         // Generate test matrices
-        auto matrix_a = generate_matrix(m, k, 1.0f);  // [[1,2], [3,4]]
-        auto matrix_b = generate_matrix(k, n, 5.0f);  // [[5,6], [7,8]]
-		auto matrix_c = generate_matmul(matrix_a, matrix_b, m, n, k);
-        std::vector<float> c(m * n, 0.0f);
+        auto matrix_a = generate_matrix<Real>(m, k, 1.0f);  // [[1,2], [3,4]]
+        auto matrix_b = generate_matrix<Real>(k, n, 5.0f);  // [[5,6], [7,8]]
+		auto matrix_c = generate_matmul<Real>(matrix_a, matrix_b, m, n, k);
+        std::vector<Real> c(m * n, 0.0f);
 
         // report test matrices
         print_matrix("A", matrix_a, m, k);
@@ -165,7 +170,7 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         print_matrix("C actual", c, m, n);
 
         // Verify result
-        REQUIRE(verify_matmul(c, matrix_c, m, n, k));
+        REQUIRE(verify_matmul<Real>(c, matrix_c, m, n, k));
 
         // Check specific values
         REQUIRE(matrix_c[0] == Catch::Approx(19.0f)); // (1*5 + 2*7)
@@ -177,13 +182,14 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
     SECTION("Can handle larger matrices") {
         // Test parameters - larger than systolic array size
         const size_t m = 8, n = 8, k = 8;
-        const size_t element_size = sizeof(float);
+        using Real = float;
+        const size_t element_size = sizeof(Real);
 
         // Generate test matrices
-        auto matrix_a = generate_matrix(m, k, 1.0f);
-        auto matrix_b = generate_matrix(k, n, 0.1f);
-		auto matrix_c = generate_matmul(matrix_a, matrix_b, m, n, k);
-        std::vector<float> c(m * n, 0.0f);
+        auto matrix_a = generate_matrix<Real>(m, k, 1.0f);
+        auto matrix_b = generate_matrix<Real>(k, n, 0.1f);
+		auto matrix_c = generate_matmul<Real>(matrix_a, matrix_b, m, n, k);
+        std::vector<Real> c(m * n, 0.0f);
 
         // report test matrices
         print_matrix("A", matrix_a, m, k);
@@ -217,20 +223,21 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         print_matrix("C actual", c, m, n);
 
         // Verify result
-		float tolerance = 1e-3f;
-        REQUIRE(verify_matmul(matrix_c, c, m, n, tolerance));
+        Real tolerance = 1e-5f;
+        REQUIRE(verify_matmul<Real>(c, matrix_c, m, n, tolerance));
     }
 
     SECTION("Systolic array is faster than basic implementation") {
         // This test is more about ensuring the systolic array works
         // Performance comparison would need cycle counting
         const size_t m = 4, n = 4, k = 4;
-        const size_t element_size = sizeof(float);
+        using Real = float;
+        const size_t element_size = sizeof(Real);
 
-        auto matrix_a = generate_matrix(m, k, 1.0f);
-        auto matrix_b = generate_matrix(k, n, 1.0f);
-		auto matrix_c = generate_matmul(matrix_a, matrix_b, m, n, k);
-        std::vector<float> c(m * n, 0.0f);
+        auto matrix_a = generate_matrix<Real>(m, k, 1.0f);
+        auto matrix_b = generate_matrix<Real>(k, n, 1.0f);
+		auto matrix_c = generate_matmul<Real>(matrix_a, matrix_b, m, n, k);
+        std::vector<Real> c(m * n, 0.0f);
 
         // report test matrices
         print_matrix("A", matrix_a, m, k);
@@ -259,7 +266,7 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         // Read and verify result
         sim->read_scratchpad(scratchpad_id, c_addr, c.data(), c.size() * element_size);
         print_matrix("C actual", c, m, n);
-        REQUIRE(verify_matmul(c, matrix_c, m, n, k));
+        REQUIRE(verify_matmul<Real>(c, matrix_c, m, n, k));
 
         // Systolic array should complete in reasonable time
         // (actual cycles depend on implementation details)
@@ -278,8 +285,9 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Error Handling", "[sy
 
     SECTION("Cannot start multiple operations on same tile") {
         const size_t m = 2, n = 2, k = 2;
-        auto matrix_a = generate_matrix(m, k, 1.0f);
-        auto matrix_b = generate_matrix(k, n, 1.0f);
+        using Real = double;
+        auto matrix_a = generate_matrix<Real>(m, k, 1.0f);
+        auto matrix_b = generate_matrix<Real>(k, n, 1.0f);
 
         const size_t scratchpad_id = 0;
         const Address a_addr = 0;
