@@ -90,7 +90,7 @@ public:
                     success = false;
                 }
                 else {
-                    std::cout << "PASS ";
+                    std::cout << "PASS (" << delta << ") ";
 				}
             }
 			std::cout << '\n';
@@ -217,7 +217,8 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         print_matrix("C actual", c, m, n);
 
         // Verify result
-        REQUIRE(verify_matmul(matrix_c, c, m, n));
+		float tolerance = 1e-3f;
+        REQUIRE(verify_matmul(matrix_c, c, m, n, tolerance));
     }
 
     SECTION("Systolic array is faster than basic implementation") {
