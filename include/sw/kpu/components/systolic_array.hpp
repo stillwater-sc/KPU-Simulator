@@ -88,7 +88,7 @@ private:
 // Systolic Array for matrix multiplication using output-stationary schedule
 class KPU_API SystolicArray {
 public:
-    using Scalar = float;
+    using Scalar = double;
     static constexpr Size DEFAULT_ROWS = 16;
     static constexpr Size DEFAULT_COLS = 16;
 
@@ -157,6 +157,7 @@ public:
     // Streaming interface for integration with Streamer components
     void stream_a_data(const std::vector<Scalar>& data, Size row_offset);
     void stream_b_data(const std::vector<Scalar>& data, Size col_offset);
+    template<typename Scalar>
     std::vector<Scalar> evacuate_c_data(Size max_elements);
 
     // Performance metrics

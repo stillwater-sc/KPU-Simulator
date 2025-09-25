@@ -335,7 +335,7 @@ Size SystolicArray::calculate_throughput() const {
     return num_rows * num_cols;
 }
 
-void SystolicArray::stream_a_data(const std::vector<float>& data, Size row_offset) {
+void SystolicArray::stream_a_data(const std::vector<Scalar>& data, Size row_offset) {
     // Interface for external streaming of A matrix data
     for (Size i = 0; i < std::min(data.size(), static_cast<size_t>(num_rows - row_offset)); ++i) {
         if (row_offset + i < horizontal_bus.size()) {
@@ -344,7 +344,7 @@ void SystolicArray::stream_a_data(const std::vector<float>& data, Size row_offse
     }
 }
 
-void SystolicArray::stream_b_data(const std::vector<float>& data, Size col_offset) {
+void SystolicArray::stream_b_data(const std::vector<Scalar>& data, Size col_offset) {
     // Interface for external streaming of B matrix data
     for (Size i = 0; i < std::min(data.size(), static_cast<size_t>(num_cols - col_offset)); ++i) {
         if (col_offset + i < vertical_bus.size()) {
@@ -353,9 +353,10 @@ void SystolicArray::stream_b_data(const std::vector<float>& data, Size col_offse
     }
 }
 
-std::vector<float> SystolicArray::evacuate_c_data(Size max_elements) {
+template<typename Scalar>
+std::vector<Scalar> SystolicArray::evacuate_c_data(Size max_elements) {
     // Interface for external evacuation of C matrix results
-    std::vector<float> results;
+    std::vector<Scalar> results;
     results.reserve(max_elements);
 
     for (auto& bus : diagonal_bus) {
