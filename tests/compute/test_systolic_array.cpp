@@ -1,3 +1,4 @@
+#include <iostream>
 #include <vector>
 #include <algorithm>
 #include <numeric>
@@ -48,10 +49,22 @@ public:
         return matrix;
     }
 
+    void print_matrix(const std::string& label, const std::vector<float>& a, size_t m, size_t n) {
+        std::cout << label << '\n';
+        for (size_t i = 0; i < m; ++i) {
+            std::cout << "[ ";
+            for (size_t j = 0; j < n; ++j) {
+                std::cout << a[i * n + j] << ' ';
+            }
+            std::cout << "]\n";
+        }
+    }
+
     // Helper to verify matrix multiplication result
     bool verify_matmul(const std::vector<float>& a, const std::vector<float>& b,
                       const std::vector<float>& c, size_t m, size_t n, size_t k,
                       float tolerance = 1e-5f) {
+		bool success = true;
         for (size_t i = 0; i < m; ++i) {
             for (size_t j = 0; j < n; ++j) {
                 float expected = 0.0f;
@@ -60,11 +73,16 @@ public:
                 }
                 float actual = c[i * n + j];
                 if (std::abs(actual - expected) > tolerance) {
-                    return false;
+                    std::cout << "FAIL ";
+                    success = false;
                 }
+                else {
+                    std::cout << "PASS ";
+				}
             }
+			std::cout << '\n';
         }
-        return true;
+        return success;
     }
 };
 
@@ -145,6 +163,10 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
         auto matrix_b = generate_matrix(k, n, 0.1f);
         std::vector<float> matrix_c(m * n, 0.0f);
 
+        // report test matrices
+        print_matrix("A", matrix_a, m, k);
+        print_matrix("B", matrix_b, k, n);
+
         // Write matrices to scratchpad
         const size_t scratchpad_id = 0;
         const Address a_addr = 0;
@@ -167,6 +189,8 @@ TEST_CASE_METHOD(SystolicArrayTestFixture, "Systolic Array Matrix Multiplication
 
         // Read result
         sim->read_scratchpad(scratchpad_id, c_addr, matrix_c.data(), matrix_c.size() * element_size);
+
+        print_matrix("C", matrix_c, m, n);
 
         // Verify result
         REQUIRE(verify_matmul(matrix_a, matrix_b, matrix_c, m, n, k));
