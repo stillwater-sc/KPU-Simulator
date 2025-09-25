@@ -49,7 +49,8 @@ add_subdirectory(memory)
 add_subdirectory(dma)
 add_subdirectory(block_mover)
 add_subdirectory(streamer)
-add_subdirectory(systolic_array)
+add_subdirectory(compute)
+add_subdirectory(buffet)
 add_subdirectory(integration)
 #add_subdirectory(benchmarks)
 
@@ -111,6 +112,30 @@ add_custom_target(test_streamer
     VERBATIM
 )
 set_target_properties(test_streamer PROPERTIES FOLDER "Tests/Runners")
+
+add_custom_target(test_compute
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L compute
+    COMMENT "Running compute engine tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+set_target_properties(test_compute PROPERTIES FOLDER "Tests/Runners")
+
+add_custom_target(test_buffet
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L buffet
+    COMMENT "Running buffet and EDDO tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+set_target_properties(test_buffet PROPERTIES FOLDER "Tests/Runners")
+
+add_custom_target(test_eddo
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L eddo
+    COMMENT "Running EDDO workflow tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+set_target_properties(test_eddo PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_systolic_array
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L systolic_array

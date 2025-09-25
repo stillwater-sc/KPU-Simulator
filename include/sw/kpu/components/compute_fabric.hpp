@@ -28,7 +28,7 @@
 
 namespace sw::kpu {
 
-// Compute fabric for matrix operations
+// Compute fabric
 class KPU_API ComputeFabric {
 public:
     // Configuration options for compute fabric

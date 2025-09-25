@@ -16,13 +16,28 @@ bool SystemSimulator::initialize() {
     std::cout << "[SystemSimulator] Initializing system components...\n";
     
     // TODO: Initialize subsystems in the future:
+    // - Host CPU
     // - External memory subsystem
-    // - Memory pool manager  
+    //    - DDR
+    //    - LPDDR
+    //    - GDDR
+    //    - HBM
+	// - DRAM controller
+	// - Flash/SSD
     // - PCIe bridge
-    // - KPU compute engine
+    // - Hardware accelerators
+    //    - GPU compute engines
+    //    - NPU compute engines
+    //    - KPU compute engine
     // - Caches
     // - DMA engines
-    // - Compute fabrics
+    // - Network fabrics
+    //    - AMBA
+    //    - NoC
+    //    - Ethernet/NVLink
+    // - Driver and OS Functionality
+    //    - Memory pool manager
+	//    - Interrupt controller
     
     initialized_ = true;
     std::cout << "[SystemSimulator] Initialization complete\n";

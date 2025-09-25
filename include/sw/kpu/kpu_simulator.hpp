@@ -31,6 +31,7 @@
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 #include <sw/kpu/components/compute_fabric.hpp>
+
 namespace sw::kpu {
 
 // Main KPU Simulator class - clean delegation-based API
@@ -85,6 +86,7 @@ public:
     };
     
     struct MatMulTest {
+		MatMulTest() : m(0), n(0), k(0) {}
         Size m, n, k;
         std::vector<float> matrix_a;
         std::vector<float> matrix_b;
