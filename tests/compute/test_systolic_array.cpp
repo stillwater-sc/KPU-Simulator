@@ -84,8 +84,9 @@ public:
             for (size_t j = 0; j < n; ++j) {
                 float actual = c[i * n + j];
 				float expected = reference[i * n + j];
-                if (std::abs(actual - expected) > tolerance) {
-                    std::cout << "FAIL ";
+				float delta = actual - expected;
+                if (std::abs(delta) > tolerance) {
+                    std::cout << "FAIL (" << delta << ") ";
                     success = false;
                 }
                 else {
