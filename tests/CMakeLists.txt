@@ -50,7 +50,7 @@ add_subdirectory(dma)
 add_subdirectory(block_mover)
 add_subdirectory(streamer)
 add_subdirectory(compute)
-add_subdirectory(buffet)
+add_subdirectory(storage)
 add_subdirectory(integration)
 #add_subdirectory(benchmarks)
 
@@ -121,13 +121,13 @@ add_custom_target(test_compute
 )
 set_target_properties(test_compute PROPERTIES FOLDER "Tests/Runners")
 
-add_custom_target(test_buffet
-    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L buffet
-    COMMENT "Running buffet and EDDO tests"
+add_custom_target(test_storage_scheduler
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L storage_scheduler
+    COMMENT "Running storage scheduler tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
-set_target_properties(test_buffet PROPERTIES FOLDER "Tests/Runners")
+set_target_properties(test_storage_scheduler PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_eddo
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L eddo
