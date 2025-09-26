@@ -121,13 +121,13 @@ add_custom_target(test_compute
 )
 set_target_properties(test_compute PROPERTIES FOLDER "Tests/Runners")
 
-add_custom_target(test_storage_scheduler
-    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L storage_scheduler
-    COMMENT "Running storage scheduler tests"
+add_custom_target(test_iddo
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L iddo
+    COMMENT "Running IDDO workflow tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
-set_target_properties(test_storage_scheduler PROPERTIES FOLDER "Tests/Runners")
+set_target_properties(test_iddo PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_eddo
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L eddo
@@ -137,13 +137,13 @@ add_custom_target(test_eddo
 )
 set_target_properties(test_eddo PROPERTIES FOLDER "Tests/Runners")
 
-add_custom_target(test_systolic_array
-    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L systolic_array
-    COMMENT "Running systolic array tests"
+add_custom_target(test_fabric
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L fabric
+    COMMENT "Running compute fabric tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM
 )
-set_target_properties(test_systolic_array PROPERTIES FOLDER "Tests/Runners")
+set_target_properties(test_fabric PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_integration
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L integration
@@ -153,13 +153,13 @@ add_custom_target(test_integration
 )
 set_target_properties(test_integration PROPERTIES FOLDER "Tests/Runners")
 
-add_custom_target(test_benchmarks
-    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L benchmark
-    COMMENT "Running benchmark tests"
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    VERBATIM
-)
-set_target_properties(test_benchmarks PROPERTIES FOLDER "Tests/Runners")
+#add_custom_target(test_benchmarks
+#    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L benchmark
+#    COMMENT "Running benchmark tests"
+#    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+#    VERBATIM
+#)
+#set_target_properties(test_benchmarks PROPERTIES FOLDER "Tests/Runners")
 
 add_custom_target(test_all_categories
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure

@@ -11,7 +11,7 @@
 using namespace sw::kpu;
 
 // Test fixture for Storage workflow tests
-class StorageWorkflowTestFixture {
+class EDDOWorkflowTestFixture {
 public:
     static constexpr size_t NUM_BANKS = 4;
     static constexpr size_t BANK_SIZE_KB = 64;
@@ -26,7 +26,7 @@ public:
 
     std::unique_ptr<StorageScheduler> scheduler;
 
-    StorageWorkflowTestFixture() {
+    EDDOWorkflowTestFixture() {
         scheduler = std::make_unique<StorageScheduler>(0, NUM_BANKS, storage_config);
     }
 
@@ -55,7 +55,7 @@ public:
     }
 };
 
-TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Basic Command Processing", "[scheduler][eddo][basic]") {
+TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Basic Command Processing", "[scheduler][eddo][basic]") {
 
     SECTION("Single EDDO command execution") {
         std::atomic<bool> prefetch_completed{false};
@@ -149,7 +149,7 @@ TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Basic Command Processing", "[
     }
 }
 
-TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Workflow Builder", "[scheduler][eddo][workflow]") {
+TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Workflow Builder", "[scheduler][eddo][workflow]") {
 
     SECTION("Workflow builder basic functionality") {
         std::atomic<int> step_counter{0};
@@ -189,7 +189,7 @@ TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Workflow Builder", "[schedule
     }
 }
 
-TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Advanced Patterns", "[scheduler][eddo][advanced]") {
+TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Advanced Patterns", "[scheduler][eddo][advanced]") {
 
     SECTION("Double buffering pattern") {
         constexpr size_t TRANSFER_SIZE = 1024;
@@ -234,7 +234,7 @@ TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Advanced Patterns", "[schedul
     }
 }
 
-TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Matrix Multiplication Workflow", "[scheduler][eddo][matmul]") {
+TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Matrix Multiplication Workflow", "[scheduler][eddo][matmul]") {
 
     SECTION("Complete matrix multiplication EDDO workflow") {
         constexpr size_t MATRIX_DIM = 16;
@@ -310,7 +310,7 @@ TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Matrix Multiplication Workflo
     }
 }
 
-TEST_CASE_METHOD(StorageWorkflowTestFixture, "EDDO Performance and Concurrency", "[scheduler][eddo][performance]") {
+TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Performance and Concurrency", "[scheduler][eddo][performance]") {
 
     SECTION("Concurrent EDDO command processing") {
         constexpr size_t NUM_CONCURRENT_COMMANDS = 16;
