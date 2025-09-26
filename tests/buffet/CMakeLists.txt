@@ -1,16 +1,16 @@
-# MemoryOrchestrator Tests - EDDO and multi-bank buffer memory
+# StorageScheduler Tests - Autonomous storage scheduling and multi-bank buffer memory
 
-# Basic memory orchestrator functionality tests
-kpu_add_component_test(memory_orchestrator_basic_test "memory_orchestrator"
+# Basic storage scheduler functionality tests
+kpu_add_component_test(storage_scheduler_basic_test "storage_scheduler"
     test_orchestrator_basic.cpp
 )
 
-# EDDO workflow tests
-kpu_add_component_test(eddo_workflow_test "eddo"
+# Storage workflow tests
+kpu_add_component_test(storage_workflow_test "storage_workflow"
     test_eddo_workflow.cpp
 )
 
 # Performance and benchmarking tests
-kpu_add_component_test(memory_orchestrator_performance_test "benchmark"
+kpu_add_component_test(storage_scheduler_performance_test "benchmark"
     test_orchestrator_performance.cpp
 )

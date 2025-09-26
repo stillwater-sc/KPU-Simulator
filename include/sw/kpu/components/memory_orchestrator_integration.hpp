@@ -1,6 +1,6 @@
 #pragma once
 
-#include <sw/kpu/components/memory_orchestrator.hpp>
+#include <sw/kpu/components/storage_scheduler.hpp>
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 
@@ -19,14 +19,14 @@
 
 namespace sw::kpu {
 
-// Integration layer for BlockMover to use MemoryOrchestrator with EDDO
-class KPU_API MemoryOrchestratorBlockMoverAdapter {
+// Integration layer for BlockMover to use StorageScheduler with EDDO
+class KPU_API StorageSchedulerBlockMoverAdapter {
 private:
-    MemoryOrchestrator* orchestrator;
+    StorageScheduler* orchestrator;
     size_t adapter_id;
 
 public:
-    explicit MemoryOrchestratorBlockMoverAdapter(MemoryOrchestrator* orchestrator, size_t adapter_id);
+    explicit StorageSchedulerBlockMoverAdapter(StorageScheduler* orchestrator, size_t adapter_id);
 
     // Enhanced block transfer with EDDO orchestration
     void orchestrated_block_transfer(size_t src_l3_tile_id, Address src_offset,
@@ -50,14 +50,14 @@ public:
     void reset();
 };
 
-// Integration layer for Streamer to use MemoryOrchestrator with EDDO
-class KPU_API MemoryOrchestratorStreamerAdapter {
+// Integration layer for Streamer to use StorageScheduler with EDDO
+class KPU_API StorageSchedulerStreamerAdapter {
 private:
-    MemoryOrchestrator* orchestrator;
+    StorageScheduler* orchestrator;
     size_t adapter_id;
 
 public:
-    explicit MemoryOrchestratorStreamerAdapter(MemoryOrchestrator* orchestrator, size_t adapter_id);
+    explicit StorageSchedulerStreamerAdapter(StorageScheduler* orchestrator, size_t adapter_id);
 
     // EDDO-enhanced streaming configuration
     struct EDDOStreamConfig {
@@ -102,13 +102,13 @@ public:
 // High-level EDDO coordination for matrix operations
 class KPU_API EDDOMatrixOrchestrator {
 private:
-    MemoryOrchestrator* orchestrator;
-    std::vector<MemoryOrchestratorBlockMoverAdapter> block_adapters;
-    std::vector<MemoryOrchestratorStreamerAdapter> stream_adapters;
+    StorageScheduler* orchestrator;
+    std::vector<StorageSchedulerBlockMoverAdapter> block_adapters;
+    std::vector<StorageSchedulerStreamerAdapter> stream_adapters;
     size_t orchestrator_id;
 
 public:
-    explicit EDDOMatrixOrchestrator(MemoryOrchestrator* orchestrator, size_t orchestrator_id);
+    explicit EDDOMatrixOrchestrator(StorageScheduler* orchestrator, size_t orchestrator_id);
 
     // Register data movement components
     void register_block_mover(BlockMover* mover);

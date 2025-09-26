@@ -1,4 +1,4 @@
-#include <sw/kpu/components/memory_orchestrator.hpp>
+#include <sw/kpu/components/storage_scheduler.hpp>
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 #include <algorithm>
@@ -7,9 +7,9 @@
 
 namespace sw::kpu {
 
-// MemoryOrchestrator Implementation
-MemoryOrchestrator::MemoryOrchestrator(size_t orchestrator_id, size_t num_banks, const BankConfig& default_config)
-    : num_banks(num_banks), orchestrator_id(orchestrator_id), next_sequence_id(1) {
+// StorageScheduler Implementation
+StorageScheduler::StorageScheduler(size_t scheduler_id, size_t num_banks, const BankConfig& default_config)
+    : num_banks(num_banks), scheduler_id(scheduler_id), next_sequence_id(1) {
 
     bank_configs.resize(num_banks, default_config);
     bank_states.reserve(num_banks);
@@ -22,7 +22,7 @@ MemoryOrchestrator::MemoryOrchestrator(size_t orchestrator_id, size_t num_banks,
         bank_state->current_occupancy = 0;
         bank_state->is_reading = false;
         bank_state->is_writing = false;
-        bank_state->current_phase = EDDOPhase::SYNC;
+        bank_state->current_operation = StorageOperation::BARRIER;
         bank_state->active_sequence_id = 0;
         bank_state->read_accesses = 0;
         bank_state->write_accesses = 0;
@@ -33,10 +33,10 @@ MemoryOrchestrator::MemoryOrchestrator(size_t orchestrator_id, size_t num_banks,
     }
 }
 
-MemoryOrchestrator::MemoryOrchestrator(const MemoryOrchestrator& other)
+StorageScheduler::StorageScheduler(const StorageScheduler& other)
     : num_banks(other.num_banks)
-    , orchestrator_id(other.orchestrator_id)
     , bank_configs(other.bank_configs)
+    , scheduler_id(other.scheduler_id)
     , next_sequence_id(1) {
 
     // Deep copy bank states (manual copy due to atomic members)
@@ -50,7 +50,7 @@ MemoryOrchestrator::MemoryOrchestrator(const MemoryOrchestrator& other)
         bank_state->current_occupancy = other_bank.current_occupancy;
         bank_state->is_reading = other_bank.is_reading.load();
         bank_state->is_writing = other_bank.is_writing.load();
-        bank_state->current_phase = other_bank.current_phase;
+        bank_state->current_operation = other_bank.current_operation;
         bank_state->active_sequence_id = other_bank.active_sequence_id;
         bank_state->read_accesses = other_bank.read_accesses.load();
         bank_state->write_accesses = other_bank.write_accesses.load();
@@ -63,10 +63,10 @@ MemoryOrchestrator::MemoryOrchestrator(const MemoryOrchestrator& other)
     // Note: We don't copy active commands or dependencies as they're runtime state
 }
 
-MemoryOrchestrator& MemoryOrchestrator::operator=(const MemoryOrchestrator& other) {
+StorageScheduler& StorageScheduler::operator=(const StorageScheduler& other) {
     if (this != &other) {
         num_banks = other.num_banks;
-        orchestrator_id = other.orchestrator_id;
+        scheduler_id = other.scheduler_id;
         bank_configs = other.bank_configs;
 
         bank_states.clear();
@@ -81,7 +81,7 @@ MemoryOrchestrator& MemoryOrchestrator::operator=(const MemoryOrchestrator& othe
             bank_state->current_occupancy = other_bank.current_occupancy;
             bank_state->is_reading = other_bank.is_reading.load();
             bank_state->is_writing = other_bank.is_writing.load();
-            bank_state->current_phase = other_bank.current_phase;
+            bank_state->current_operation = other_bank.current_operation;
             bank_state->active_sequence_id = other_bank.active_sequence_id;
             bank_state->read_accesses = other_bank.read_accesses.load();
             bank_state->write_accesses = other_bank.write_accesses.load();
@@ -93,14 +93,14 @@ MemoryOrchestrator& MemoryOrchestrator::operator=(const MemoryOrchestrator& othe
 
         // Clear runtime state
         std::lock_guard<std::mutex> cmd_lock(command_mutex);
-        command_queue = std::queue<EDDOCommand>();
+        command_queue = std::queue<StorageCommand>();
         active_commands.clear();
         dependency_graph.clear();
     }
     return *this;
 }
 
-void MemoryOrchestrator::configure_bank(size_t bank_id, const BankConfig& config) {
+void StorageScheduler::configure_bank(size_t bank_id, const BankConfig& config) {
     if (bank_id >= num_banks) {
         throw std::out_of_range("Bank ID out of range");
     }
@@ -118,19 +118,19 @@ void MemoryOrchestrator::configure_bank(size_t bank_id, const BankConfig& config
     }
 }
 
-void MemoryOrchestrator::register_block_mover(BlockMover* mover) {
+void StorageScheduler::register_block_mover(BlockMover* mover) {
     if (mover != nullptr) {
         block_movers.push_back(mover);
     }
 }
 
-void MemoryOrchestrator::register_streamer(Streamer* streamer) {
+void StorageScheduler::register_streamer(Streamer* streamer) {
     if (streamer != nullptr) {
         streamers.push_back(streamer);
     }
 }
 
-void MemoryOrchestrator::read(size_t bank_id, Address addr, void* data, Size size) {
+void StorageScheduler::direct_read(size_t bank_id, Address addr, void* data, Size size) {
     if (!validate_bank_access(bank_id, addr, size)) {
         throw std::out_of_range("Invalid bank read access");
     }
@@ -146,7 +146,7 @@ void MemoryOrchestrator::read(size_t bank_id, Address addr, void* data, Size siz
     bank.is_reading = false;
 }
 
-void MemoryOrchestrator::write(size_t bank_id, Address addr, const void* data, Size size) {
+void StorageScheduler::direct_write(size_t bank_id, Address addr, const void* data, Size size) {
     if (!validate_bank_access(bank_id, addr, size)) {
         throw std::out_of_range("Invalid bank write access");
     }
@@ -168,7 +168,7 @@ void MemoryOrchestrator::write(size_t bank_id, Address addr, const void* data, S
     bank.is_writing = false;
 }
 
-bool MemoryOrchestrator::is_ready(size_t bank_id) const {
+bool StorageScheduler::is_ready(size_t bank_id) const {
     if (bank_id >= num_banks) return false;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
@@ -176,12 +176,12 @@ bool MemoryOrchestrator::is_ready(size_t bank_id) const {
     return !bank.is_reading && !bank.is_writing;
 }
 
-void MemoryOrchestrator::enqueue_eddo_command(const EDDOCommand& cmd) {
+void StorageScheduler::schedule_operation(const StorageCommand& cmd) {
     std::lock_guard<std::mutex> lock(command_mutex);
     command_queue.push(cmd);
 }
 
-bool MemoryOrchestrator::process_eddo_commands() {
+bool StorageScheduler::execute_pending_operations() {
     std::lock_guard<std::mutex> lock(command_mutex);
 
     if (command_queue.empty()) {
@@ -190,26 +190,32 @@ bool MemoryOrchestrator::process_eddo_commands() {
 
     // Try to execute ready commands
     bool executed_any = false;
-    std::queue<EDDOCommand> deferred_commands;
+    std::queue<StorageCommand> deferred_commands;
 
     while (!command_queue.empty()) {
-        EDDOCommand cmd = command_queue.front();
+        StorageCommand cmd = command_queue.front();
         command_queue.pop();
 
         if (can_execute_command(cmd)) {
             // Execute based on phase
-            switch (cmd.phase) {
-                case EDDOPhase::PREFETCH:
-                    execute_prefetch_command(cmd);
+            switch (cmd.operation) {
+                case StorageOperation::FETCH_UPSTREAM:
+                    execute_fetch_upstream_command(cmd);
                     break;
-                case EDDOPhase::COMPUTE:
-                    execute_compute_command(cmd);
+                case StorageOperation::FETCH_DOWNSTREAM:
+                    execute_fetch_downstream_command(cmd);
                     break;
-                case EDDOPhase::WRITEBACK:
-                    execute_writeback_command(cmd);
+                case StorageOperation::WRITEBACK_UPSTREAM:
+                    execute_writeback_upstream_command(cmd);
                     break;
-                case EDDOPhase::SYNC:
-                    execute_sync_command(cmd);
+                case StorageOperation::WRITEBACK_DOWNSTREAM:
+                    execute_writeback_downstream_command(cmd);
+                    break;
+                case StorageOperation::YIELD:
+                    execute_yield_command(cmd);
+                    break;
+                case StorageOperation::BARRIER:
+                    execute_barrier_command(cmd);
                     break;
             }
             executed_any = true;
@@ -226,9 +232,9 @@ bool MemoryOrchestrator::process_eddo_commands() {
     return executed_any;
 }
 
-bool MemoryOrchestrator::can_execute_command(const EDDOCommand& cmd) const {
+bool StorageScheduler::can_execute_command(const StorageCommand& cmd) const {
     // Check if bank is available for this phase
-    if (!is_bank_available(cmd.bank_id, cmd.phase)) {
+    if (!is_bank_available(cmd.bank_id, cmd.operation)) {
         return false;
     }
 
@@ -242,11 +248,11 @@ bool MemoryOrchestrator::can_execute_command(const EDDOCommand& cmd) const {
     return true;
 }
 
-void MemoryOrchestrator::execute_prefetch_command(const EDDOCommand& cmd) {
-    // Mark bank as transitioning to prefetch phase
-    transition_bank_phase(cmd.bank_id, EDDOPhase::PREFETCH, cmd.sequence_id);
+void StorageScheduler::execute_fetch_upstream_command(const StorageCommand& cmd) {
+    // Mark bank as transitioning to fetch upstream operation
+    transition_bank_operation(cmd.bank_id, StorageOperation::FETCH_UPSTREAM, cmd.sequence_id);
 
-    // Simulate prefetch completion immediately for now
+    // Simulate fetch completion immediately for now
     // In a real implementation, this would be asynchronous
     // and complete when the data movement is done
 
@@ -254,31 +260,52 @@ void MemoryOrchestrator::execute_prefetch_command(const EDDOCommand& cmd) {
     // Don't add to active_commands since we're completing immediately
 }
 
-void MemoryOrchestrator::execute_compute_command(const EDDOCommand& cmd) {
-    transition_bank_phase(cmd.bank_id, EDDOPhase::COMPUTE, cmd.sequence_id);
+void StorageScheduler::execute_fetch_downstream_command(const StorageCommand& cmd) {
+    // Mark bank as transitioning to fetch downstream operation
+    transition_bank_operation(cmd.bank_id, StorageOperation::FETCH_DOWNSTREAM, cmd.sequence_id);
 
-    // Simulate compute completion immediately for testing
-    // In real implementation, this would involve actual computation
+    // Simulate fetch completion immediately for now
+    // In a real implementation, this would be asynchronous
+    // and complete when the data movement is done
+
+    // For simulation purposes, mark as completed immediately
     // Don't add to active_commands since we're completing immediately
 }
 
-void MemoryOrchestrator::execute_writeback_command(const EDDOCommand& cmd) {
-    transition_bank_phase(cmd.bank_id, EDDOPhase::WRITEBACK, cmd.sequence_id);
+void StorageScheduler::execute_writeback_downstream_command(const StorageCommand& cmd) {
+    transition_bank_operation(cmd.bank_id, StorageOperation::WRITEBACK_DOWNSTREAM, cmd.sequence_id);
 
     // Simulate writeback completion immediately for testing
     // In real implementation, this would involve data streaming
     // Don't add to active_commands since we're completing immediately
 }
 
-void MemoryOrchestrator::execute_sync_command(const EDDOCommand& cmd) {
-    // Sync commands ensure all previous operations complete
-    // Reset bank to sync phase
-    transition_bank_phase(cmd.bank_id, EDDOPhase::SYNC, cmd.sequence_id);
+void StorageScheduler::execute_yield_command(const StorageCommand& cmd) {
+    transition_bank_operation(cmd.bank_id, StorageOperation::YIELD, cmd.sequence_id);
 
-    // Sync completes immediately - it's just a coordination point
+    // Yield allows external access to the bank data
+    // In real implementation, this would allow external components
+    // to access the bank data while the scheduler waits
+    // Don't add to active_commands since we're completing immediately
 }
 
-void MemoryOrchestrator::complete_command(const EDDOCommand& cmd) {
+void StorageScheduler::execute_writeback_upstream_command(const StorageCommand& cmd) {
+    transition_bank_operation(cmd.bank_id, StorageOperation::WRITEBACK_UPSTREAM, cmd.sequence_id);
+
+    // Simulate writeback completion immediately for testing
+    // In real implementation, this would involve data streaming
+    // Don't add to active_commands since we're completing immediately
+}
+
+void StorageScheduler::execute_barrier_command(const StorageCommand& cmd) {
+    // Barrier commands ensure all previous operations complete
+    // Reset bank to barrier state
+    transition_bank_operation(cmd.bank_id, StorageOperation::BARRIER, cmd.sequence_id);
+
+    // Barrier completes immediately - it's just a coordination point
+}
+
+void StorageScheduler::complete_command(const StorageCommand& cmd) {
     // Remove from active commands
     active_commands.erase(cmd.sequence_id);
 
@@ -291,7 +318,7 @@ void MemoryOrchestrator::complete_command(const EDDOCommand& cmd) {
     }
 }
 
-void MemoryOrchestrator::update_dependencies(size_t completed_sequence_id) {
+void StorageScheduler::update_dependencies(size_t completed_sequence_id) {
     // Remove completed command from all dependency lists
     for (auto& [seq_id, dependents] : dependency_graph) {
         dependents.erase(
@@ -300,52 +327,54 @@ void MemoryOrchestrator::update_dependencies(size_t completed_sequence_id) {
     }
 }
 
-bool MemoryOrchestrator::is_bank_available(size_t bank_id, EDDOPhase phase) const {
+bool StorageScheduler::is_bank_available(size_t bank_id, StorageOperation operation) const {
     if (bank_id >= num_banks) return false;
 
     const auto& bank = *bank_states[bank_id];
 
     // More permissive availability check to prevent infinite loops
-    switch (phase) {
-        case EDDOPhase::PREFETCH:
+    switch (operation) {
+        case StorageOperation::FETCH_UPSTREAM:
+        case StorageOperation::FETCH_DOWNSTREAM:
             return !bank.is_writing;
-        case EDDOPhase::COMPUTE:
-            // Allow compute on any bank that's not actively reading/writing
-            return !bank.is_reading && !bank.is_writing;
-        case EDDOPhase::WRITEBACK:
+        case StorageOperation::WRITEBACK_UPSTREAM:
+        case StorageOperation::WRITEBACK_DOWNSTREAM:
             return !bank.is_reading;
-        case EDDOPhase::SYNC:
-            // Sync can always proceed - it's a coordination phase
+        case StorageOperation::YIELD:
+            // Allow yield on any bank that's not actively reading/writing
+            return !bank.is_reading && !bank.is_writing;
+        case StorageOperation::BARRIER:
+            // Barrier can always proceed - it's a coordination phase
             return true;
     }
     return false;
 }
 
-void MemoryOrchestrator::transition_bank_phase(size_t bank_id, EDDOPhase new_phase, size_t sequence_id) {
+void StorageScheduler::transition_bank_operation(size_t bank_id, StorageOperation new_operation, size_t sequence_id) {
     if (bank_id >= num_banks) return;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
     auto& bank = *bank_states[bank_id];
-    bank.current_phase = new_phase;
+    bank.current_operation = new_operation;
     bank.active_sequence_id = sequence_id;
 }
 
-bool MemoryOrchestrator::validate_bank_access(size_t bank_id, Address addr, Size size) const {
+bool StorageScheduler::validate_bank_access(size_t bank_id, Address addr, Size size) const {
     if (bank_id >= num_banks) return false;
 
     // Check if the access would exceed bank capacity
     return (addr + size) <= bank_states[bank_id]->capacity;
 }
 
-Address MemoryOrchestrator::map_to_bank_address(size_t bank_id, Address global_addr) const {
+Address StorageScheduler::map_to_bank_address(size_t bank_id, Address global_addr) const {
     // Simple mapping - in practice this could be more sophisticated
     return global_addr % bank_states[bank_id]->capacity;
 }
 
-void MemoryOrchestrator::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
+void StorageScheduler::schedule_double_buffer(size_t bank_a, size_t bank_b,
                                      Address src_addr, Size transfer_size) {
-    EDDOCommand prefetch_a{
-        .phase = EDDOPhase::PREFETCH,
+    StorageCommand prefetch_a{
+        .operation = StorageOperation::FETCH_UPSTREAM,
         .bank_id = bank_a,
         .source_addr = src_addr,
         .dest_addr = 0,
@@ -357,8 +386,8 @@ void MemoryOrchestrator::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
         .completion_callback = nullptr
     };
 
-    EDDOCommand prefetch_b{
-        .phase = EDDOPhase::PREFETCH,
+    StorageCommand prefetch_b{
+        .operation = StorageOperation::FETCH_UPSTREAM,
         .bank_id = bank_b,
         .source_addr = src_addr + transfer_size,
         .dest_addr = 0,
@@ -370,14 +399,14 @@ void MemoryOrchestrator::orchestrate_double_buffer(size_t bank_a, size_t bank_b,
         .completion_callback = nullptr
     };
 
-    enqueue_eddo_command(prefetch_a);
-    enqueue_eddo_command(prefetch_b);
+    schedule_operation(prefetch_a);
+    schedule_operation(prefetch_b);
 }
 
-void MemoryOrchestrator::orchestrate_pipeline_stage(size_t input_bank, size_t output_bank,
+void StorageScheduler::schedule_pipeline_stage(size_t input_bank, size_t output_bank,
                                        const std::function<void()>& compute_func) {
-    EDDOCommand compute_cmd{
-        .phase = EDDOPhase::COMPUTE,
+    StorageCommand compute_cmd{
+        .operation = StorageOperation::YIELD,
         .bank_id = input_bank,
         .source_addr = 0,
         .dest_addr = 0,
@@ -386,11 +415,11 @@ void MemoryOrchestrator::orchestrate_pipeline_stage(size_t input_bank, size_t ou
         .dependencies = {},
         .block_mover_id = SIZE_MAX,
         .streamer_id = SIZE_MAX,
-        .completion_callback = [compute_func](const EDDOCommand&) { compute_func(); }
+        .completion_callback = [compute_func](const StorageCommand&) { compute_func(); }
     };
 
-    EDDOCommand writeback_cmd{
-        .phase = EDDOPhase::WRITEBACK,
+    StorageCommand writeback_cmd{
+        .operation = StorageOperation::WRITEBACK_UPSTREAM,
         .bank_id = output_bank,
         .source_addr = 0,
         .dest_addr = 0,
@@ -402,36 +431,36 @@ void MemoryOrchestrator::orchestrate_pipeline_stage(size_t input_bank, size_t ou
         .completion_callback = nullptr
     };
 
-    enqueue_eddo_command(compute_cmd);
-    enqueue_eddo_command(writeback_cmd);
+    schedule_operation(compute_cmd);
+    schedule_operation(writeback_cmd);
 }
 
-size_t MemoryOrchestrator::get_pending_commands() const {
+size_t StorageScheduler::get_pending_operations() const {
     std::lock_guard<std::mutex> lock(command_mutex);
     return command_queue.size();
 }
 
-bool MemoryOrchestrator::is_busy() const {
+bool StorageScheduler::is_busy() const {
     std::lock_guard<std::mutex> lock(command_mutex);
     return !command_queue.empty() || !active_commands.empty();
 }
 
-bool MemoryOrchestrator::is_bank_busy(size_t bank_id) const {
+bool StorageScheduler::is_bank_busy(size_t bank_id) const {
     if (bank_id >= num_banks) return false;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
     const auto& bank = *bank_states[bank_id];
-    return bank.is_reading || bank.is_writing || bank.current_phase != EDDOPhase::SYNC;
+    return bank.is_reading || bank.is_writing || bank.current_operation != StorageOperation::BARRIER;
 }
 
-MemoryOrchestrator::EDDOPhase MemoryOrchestrator::get_bank_phase(size_t bank_id) const {
-    if (bank_id >= num_banks) return EDDOPhase::SYNC;
+StorageScheduler::StorageOperation StorageScheduler::get_bank_operation(size_t bank_id) const {
+    if (bank_id >= num_banks) return StorageOperation::BARRIER;
 
     std::lock_guard<std::mutex> lock(bank_mutex);
-    return bank_states[bank_id]->current_phase;
+    return bank_states[bank_id]->current_operation;
 }
 
-MemoryOrchestrator::PerformanceMetrics MemoryOrchestrator::get_performance_metrics() const {
+StorageScheduler::PerformanceMetrics StorageScheduler::get_performance_metrics() const {
     std::lock_guard<std::mutex> lock(bank_mutex);
 
     PerformanceMetrics metrics{};
@@ -443,33 +472,33 @@ MemoryOrchestrator::PerformanceMetrics MemoryOrchestrator::get_performance_metri
         metrics.total_cache_hits += bank->cache_hits;
         metrics.total_cache_misses += bank->cache_misses;
 
-        if (bank->current_phase != EDDOPhase::SYNC) {
+        if (bank->current_operation != StorageOperation::BARRIER) {
             busy_banks++;
         }
     }
 
     metrics.average_bank_utilization = static_cast<double>(busy_banks) / num_banks;
-    metrics.completed_eddo_commands = 0; // Would track this in real implementation
+    metrics.completed_storage_operations = 0; // Would track this in real implementation
 
     return metrics;
 }
 
-Size MemoryOrchestrator::get_bank_capacity(size_t bank_id) const {
+Size StorageScheduler::get_bank_capacity(size_t bank_id) const {
     if (bank_id >= num_banks) return 0;
     return bank_states[bank_id]->capacity;
 }
 
-Size MemoryOrchestrator::get_bank_occupancy(size_t bank_id) const {
+Size StorageScheduler::get_bank_occupancy(size_t bank_id) const {
     if (bank_id >= num_banks) return 0;
     return bank_states[bank_id]->current_occupancy;
 }
 
-void MemoryOrchestrator::reset() {
+void StorageScheduler::reset() {
     std::lock_guard<std::mutex> cmd_lock(command_mutex);
     std::lock_guard<std::mutex> bank_lock(bank_mutex);
 
     // Clear command queues
-    command_queue = std::queue<EDDOCommand>();
+    command_queue = std::queue<StorageCommand>();
     active_commands.clear();
     dependency_graph.clear();
 
@@ -478,7 +507,7 @@ void MemoryOrchestrator::reset() {
         bank->current_occupancy = 0;
         bank->is_reading = false;
         bank->is_writing = false;
-        bank->current_phase = EDDOPhase::SYNC;
+        bank->current_operation = StorageOperation::BARRIER;
         bank->active_sequence_id = 0;
         bank->read_accesses = 0;
         bank->write_accesses = 0;
@@ -488,7 +517,7 @@ void MemoryOrchestrator::reset() {
     }
 }
 
-void MemoryOrchestrator::flush_all_banks() {
+void StorageScheduler::flush_all_banks() {
     std::lock_guard<std::mutex> lock(bank_mutex);
     for (auto& bank : bank_states) {
         bank->current_occupancy = 0;
@@ -496,82 +525,135 @@ void MemoryOrchestrator::flush_all_banks() {
     }
 }
 
-void MemoryOrchestrator::abort_pending_commands() {
+void StorageScheduler::abort_pending_operations() {
     std::lock_guard<std::mutex> lock(command_mutex);
-    command_queue = std::queue<EDDOCommand>();
+    command_queue = std::queue<StorageCommand>();
     active_commands.clear();
     dependency_graph.clear();
 }
 
-// EDDOWorkflowBuilder Implementation
-EDDOWorkflowBuilder& EDDOWorkflowBuilder::prefetch(size_t bank_id, Address src_addr,
+// StorageWorkflowBuilder Implementation
+StorageWorkflowBuilder& StorageWorkflowBuilder::fetch_upstream(size_t bank_id, Address src_addr,
                                                  Address dest_addr, Size size) {
-    MemoryOrchestrator::EDDOCommand cmd{
-        .phase = MemoryOrchestrator::EDDOPhase::PREFETCH,
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::FETCH_UPSTREAM,
         .bank_id = bank_id,
         .source_addr = src_addr,
         .dest_addr = dest_addr,
         .transfer_size = size,
         .sequence_id = next_sequence_id++,
+        .dependencies = {},
         .block_mover_id = SIZE_MAX,
-        .streamer_id = SIZE_MAX
+        .streamer_id = SIZE_MAX,
+        .completion_callback = nullptr
     };
     commands.push_back(cmd);
     return *this;
 }
 
-EDDOWorkflowBuilder& EDDOWorkflowBuilder::compute(size_t bank_id,
-                                                const std::function<void()>& compute_func) {
-    MemoryOrchestrator::EDDOCommand cmd{
-        .phase = MemoryOrchestrator::EDDOPhase::COMPUTE,
+StorageWorkflowBuilder& StorageWorkflowBuilder::yield(size_t bank_id,
+                                                const std::function<void()>& yield_func) {
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::YIELD,
         .bank_id = bank_id,
+        .source_addr = 0,
+        .dest_addr = 0,
+        .transfer_size = 0,
         .sequence_id = next_sequence_id++,
-        .completion_callback = [compute_func](const MemoryOrchestrator::EDDOCommand&) { compute_func(); }
+        .dependencies = {},
+        .block_mover_id = SIZE_MAX,
+        .streamer_id = SIZE_MAX,
+        .completion_callback = [yield_func](const StorageScheduler::StorageCommand&) { yield_func(); }
     };
     commands.push_back(cmd);
     return *this;
 }
 
-EDDOWorkflowBuilder& EDDOWorkflowBuilder::writeback(size_t bank_id, Address src_addr,
+StorageWorkflowBuilder& StorageWorkflowBuilder::writeback_upstream(size_t bank_id, Address src_addr,
                                                   Address dest_addr, Size size) {
-    MemoryOrchestrator::EDDOCommand cmd{
-        .phase = MemoryOrchestrator::EDDOPhase::WRITEBACK,
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::WRITEBACK_UPSTREAM,
         .bank_id = bank_id,
         .source_addr = src_addr,
         .dest_addr = dest_addr,
         .transfer_size = size,
         .sequence_id = next_sequence_id++,
+        .dependencies = {},
         .block_mover_id = SIZE_MAX,
-        .streamer_id = SIZE_MAX
+        .streamer_id = SIZE_MAX,
+        .completion_callback = nullptr
     };
     commands.push_back(cmd);
     return *this;
 }
 
-EDDOWorkflowBuilder& EDDOWorkflowBuilder::sync() {
-    MemoryOrchestrator::EDDOCommand cmd{
-        .phase = MemoryOrchestrator::EDDOPhase::SYNC,
-        .bank_id = 0, // Sync applies to all banks
-        .sequence_id = next_sequence_id++
+StorageWorkflowBuilder& StorageWorkflowBuilder::fetch_downstream(size_t bank_id, Address src_addr,
+                                                     Address dest_addr, Size size) {
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::FETCH_DOWNSTREAM,
+        .bank_id = bank_id,
+        .source_addr = src_addr,
+        .dest_addr = dest_addr,
+        .transfer_size = size,
+        .sequence_id = next_sequence_id++,
+        .dependencies = {},
+        .block_mover_id = SIZE_MAX,
+        .streamer_id = SIZE_MAX,
+        .completion_callback = nullptr
     };
     commands.push_back(cmd);
     return *this;
 }
 
-EDDOWorkflowBuilder& EDDOWorkflowBuilder::depend_on(size_t dependency_sequence_id) {
+StorageWorkflowBuilder& StorageWorkflowBuilder::writeback_downstream(size_t bank_id, Address src_addr,
+                                                      Address dest_addr, Size size) {
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::WRITEBACK_DOWNSTREAM,
+        .bank_id = bank_id,
+        .source_addr = src_addr,
+        .dest_addr = dest_addr,
+        .transfer_size = size,
+        .sequence_id = next_sequence_id++,
+        .dependencies = {},
+        .block_mover_id = SIZE_MAX,
+        .streamer_id = SIZE_MAX,
+        .completion_callback = nullptr
+    };
+    commands.push_back(cmd);
+    return *this;
+}
+
+StorageWorkflowBuilder& StorageWorkflowBuilder::barrier() {
+    StorageScheduler::StorageCommand cmd{
+        .operation = StorageScheduler::StorageOperation::BARRIER,
+        .bank_id = 0, // Barrier applies to all banks
+        .source_addr = 0,
+        .dest_addr = 0,
+        .transfer_size = 0,
+        .sequence_id = next_sequence_id++,
+        .dependencies = {},
+        .block_mover_id = SIZE_MAX,
+        .streamer_id = SIZE_MAX,
+        .completion_callback = nullptr
+    };
+    commands.push_back(cmd);
+    return *this;
+}
+
+StorageWorkflowBuilder& StorageWorkflowBuilder::depend_on(size_t dependency_sequence_id) {
     if (!commands.empty()) {
         commands.back().dependencies.push_back(dependency_sequence_id);
     }
     return *this;
 }
 
-std::vector<MemoryOrchestrator::EDDOCommand> EDDOWorkflowBuilder::build() {
+std::vector<StorageScheduler::StorageCommand> StorageWorkflowBuilder::build() {
     return commands;
 }
 
-void EDDOWorkflowBuilder::execute_on(MemoryOrchestrator& orchestrator) {
+void StorageWorkflowBuilder::execute_on(StorageScheduler& scheduler) {
     for (const auto& cmd : commands) {
-        orchestrator.enqueue_eddo_command(cmd);
+        scheduler.schedule_operation(cmd);
     }
 }
 

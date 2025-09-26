@@ -32,30 +32,30 @@ class BlockMover;
 class Streamer;
 
 /**
- * MemoryOrchestrator: Multi-bank buffer memory supporting EDDO (Explicit Decoupled Data Orchestration)
+ * StorageScheduler: Autonomous multi-bank storage engine that executes scheduled command sequences
  *
- * NOTE: This is NOT the original "Buffet" from Google's paper, which uses Fill/Read/Update/Shrink
- * for sparse tensor operations. This is a dense memory orchestrator using Prefetch/Compute/Writeback/Sync
- * phases for general-purpose memory hierarchy coordination.
+ * This component provides explicitly managed storage with autonomous command execution for:
+ * - Coordinated data movement between storage hierarchy levels
+ * - Pipelined fetch/store operations with dependency management
+ * - Integration with upstream/downstream storage components via DMA/streaming
  *
- * EDDO separates control flow from data flow for efficient pipelining and overlap of:
- * - Dense matrix operations (matrix multiplication, convolution)
- * - Multi-stage pipeline coordination
- * - Cross-component workflow orchestration
+ * The scheduler supports both autonomous operation (scheduled commands) and direct access
+ * for different use cases within the memory hierarchy.
  *
- * For sparse tensor operations, see SparseBuffet which implements the true Buffet FSM.
  */
-class KPU_API MemoryOrchestrator {
+class KPU_API StorageScheduler {
 public:
-    // EDDO Operation Types
-    enum class EDDOPhase {
-        PREFETCH,      // Asynchronously prefetch data into buffer banks
-        COMPUTE,       // Allow compute access to buffered data
-        WRITEBACK,     // Write results back to memory hierarchy
-        SYNC          // Synchronization barrier between phases
+    // Storage Operation Types
+    enum class StorageOperation {
+        FETCH_UPSTREAM,      // Fetch data from higher-level storage (e.g., main memory)
+        FETCH_DOWNSTREAM,    // Fetch data from lower-level storage (e.g., L1 cache)
+        WRITEBACK_UPSTREAM,  // Write data back to higher-level storage
+        WRITEBACK_DOWNSTREAM,// Write data back to lower-level storage
+        YIELD,               // Allow external access to bank data
+        BARRIER              // Synchronization barrier between operations
     };
 
-    // Memory Bank Access Patterns for EDDO
+    // Memory Bank Access Patterns for Storage Operations
     enum class AccessPattern {
         SEQUENTIAL,    // Sequential access within bank
         STRIDED,       // Strided access pattern
@@ -72,9 +72,9 @@ public:
         bool enable_prefetch;       // Enable hardware prefetching
     };
 
-    // EDDO Orchestration Command
-    struct EDDOCommand {
-        EDDOPhase phase;
+    // Storage Scheduling Command
+    struct StorageCommand {
+        StorageOperation operation;
         size_t bank_id;
 
         // Memory addressing
@@ -91,7 +91,7 @@ public:
         size_t streamer_id;         // Which Streamer to use (-1 if none)
 
         // Completion notification
-        std::function<void(const EDDOCommand&)> completion_callback;
+        std::function<void(const StorageCommand&)> completion_callback;
     };
 
     // Per-bank state tracking
@@ -104,8 +104,8 @@ public:
         std::atomic<bool> is_reading;       // Currently serving read requests
         std::atomic<bool> is_writing;       // Currently serving write requests
 
-        // EDDO phase tracking
-        EDDOPhase current_phase;
+        // Storage operation tracking
+        StorageOperation current_operation;
         size_t active_sequence_id;
 
         // Performance counters
@@ -120,11 +120,11 @@ private:
     size_t num_banks;
     std::vector<BankConfig> bank_configs;
     std::vector<std::unique_ptr<BankState>> bank_states;
-    size_t orchestrator_id;
+    size_t scheduler_id;
 
-    // EDDO command orchestration
-    std::queue<EDDOCommand> command_queue;
-    std::unordered_map<size_t, EDDOCommand> active_commands;  // sequence_id -> command
+    // Storage command scheduling
+    std::queue<StorageCommand> command_queue;
+    std::unordered_map<size_t, StorageCommand> active_commands;  // sequence_id -> command
     std::unordered_map<size_t, std::vector<size_t>> dependency_graph; // sequence_id -> dependents
 
     // Thread synchronization (for thread-safe operation)
@@ -138,59 +138,61 @@ private:
     // Sequence ID generator
     size_t next_sequence_id;
 
-    // Internal orchestration methods
-    bool can_execute_command(const EDDOCommand& cmd) const;
-    void execute_prefetch_command(const EDDOCommand& cmd);
-    void execute_compute_command(const EDDOCommand& cmd);
-    void execute_writeback_command(const EDDOCommand& cmd);
-    void execute_sync_command(const EDDOCommand& cmd);
-    void complete_command(const EDDOCommand& cmd);
+    // Internal scheduling methods
+    bool can_execute_command(const StorageCommand& cmd) const;
+    void execute_fetch_upstream_command(const StorageCommand& cmd);
+    void execute_fetch_downstream_command(const StorageCommand& cmd);
+    void execute_writeback_upstream_command(const StorageCommand& cmd);
+    void execute_writeback_downstream_command(const StorageCommand& cmd);
+    void execute_yield_command(const StorageCommand& cmd);
+    void execute_barrier_command(const StorageCommand& cmd);
+    void complete_command(const StorageCommand& cmd);
     void update_dependencies(size_t completed_sequence_id);
 
     // Bank management
-    bool is_bank_available(size_t bank_id, EDDOPhase phase) const;
-    void transition_bank_phase(size_t bank_id, EDDOPhase new_phase, size_t sequence_id);
+    bool is_bank_available(size_t bank_id, StorageOperation operation) const;
+    void transition_bank_operation(size_t bank_id, StorageOperation new_operation, size_t sequence_id);
 
     // Address validation and mapping
     bool validate_bank_access(size_t bank_id, Address addr, Size size) const;
     Address map_to_bank_address(size_t bank_id, Address global_addr) const;
 
 public:
-    explicit MemoryOrchestrator(size_t orchestrator_id, size_t num_banks = 4,
+    explicit StorageScheduler(size_t scheduler_id, size_t num_banks = 4,
                    const BankConfig& default_config = {64, 64, 2, AccessPattern::SEQUENTIAL, true});
-    ~MemoryOrchestrator() = default;
+    ~StorageScheduler() = default;
 
     // Custom copy/move for vector compatibility
-    MemoryOrchestrator(const MemoryOrchestrator& other);
-    MemoryOrchestrator& operator=(const MemoryOrchestrator& other);
-    MemoryOrchestrator(MemoryOrchestrator&&) = delete;
-    MemoryOrchestrator& operator=(MemoryOrchestrator&&) = delete;
+    StorageScheduler(const StorageScheduler& other);
+    StorageScheduler& operator=(const StorageScheduler& other);
+    StorageScheduler(StorageScheduler&&) = delete;
+    StorageScheduler& operator=(StorageScheduler&&) = delete;
 
     // Configuration and initialization
     void configure_bank(size_t bank_id, const BankConfig& config);
     void register_block_mover(BlockMover* mover);
     void register_streamer(Streamer* streamer);
 
-    // Core memory operations (direct access)
-    void read(size_t bank_id, Address addr, void* data, Size size);
-    void write(size_t bank_id, Address addr, const void* data, Size size);
+    // Direct access interface (bypass scheduling)
+    void direct_read(size_t bank_id, Address addr, void* data, Size size);
+    void direct_write(size_t bank_id, Address addr, const void* data, Size size);
     bool is_ready(size_t bank_id) const;
 
-    // EDDO Orchestration Interface
-    void enqueue_eddo_command(const EDDOCommand& cmd);
-    bool process_eddo_commands();  // Process one cycle of EDDO commands
-    size_t get_pending_commands() const;
+    // Autonomous storage scheduling interface
+    void schedule_operation(const StorageCommand& cmd);
+    bool execute_pending_operations();  // Process one cycle of scheduled operations
+    size_t get_pending_operations() const;
 
-    // Advanced EDDO patterns
-    void orchestrate_double_buffer(size_t bank_a, size_t bank_b,
-                                  Address src_addr, Size transfer_size);
-    void orchestrate_pipeline_stage(size_t input_bank, size_t output_bank,
-                                   const std::function<void()>& compute_func);
+    // Advanced storage patterns
+    void schedule_double_buffer(size_t bank_a, size_t bank_b,
+                               Address src_addr, Size transfer_size);
+    void schedule_pipeline_stage(size_t input_bank, size_t output_bank,
+                                const std::function<void()>& yield_func);
 
     // Status and performance monitoring
     bool is_busy() const;
     bool is_bank_busy(size_t bank_id) const;
-    EDDOPhase get_bank_phase(size_t bank_id) const;
+    StorageOperation get_bank_operation(size_t bank_id) const;
 
     // Performance metrics
     struct PerformanceMetrics {
@@ -199,12 +201,12 @@ public:
         size_t total_cache_hits;
         size_t total_cache_misses;
         double average_bank_utilization;
-        size_t completed_eddo_commands;
+        size_t completed_storage_operations;
     };
     PerformanceMetrics get_performance_metrics() const;
 
     // Configuration queries
-    size_t get_orchestrator_id() const { return orchestrator_id; }
+    size_t get_scheduler_id() const { return scheduler_id; }
     size_t get_num_banks() const { return num_banks; }
     Size get_bank_capacity(size_t bank_id) const;
     Size get_bank_occupancy(size_t bank_id) const;
@@ -212,28 +214,30 @@ public:
     // Reset and cleanup
     void reset();
     void flush_all_banks();
-    void abort_pending_commands();
+    void abort_pending_operations();
 };
 
-// Helper class for EDDO workflow construction
-class KPU_API EDDOWorkflowBuilder {
+// Helper class for storage workflow construction
+class KPU_API StorageWorkflowBuilder {
 private:
-    std::vector<MemoryOrchestrator::EDDOCommand> commands;
+    std::vector<StorageScheduler::StorageCommand> commands;
     size_t next_sequence_id;
 
 public:
-    EDDOWorkflowBuilder() : next_sequence_id(0) {}
+    StorageWorkflowBuilder() : next_sequence_id(0) {}
 
     // Workflow construction methods
-    EDDOWorkflowBuilder& prefetch(size_t bank_id, Address src_addr, Address dest_addr, Size size);
-    EDDOWorkflowBuilder& compute(size_t bank_id, const std::function<void()>& compute_func);
-    EDDOWorkflowBuilder& writeback(size_t bank_id, Address src_addr, Address dest_addr, Size size);
-    EDDOWorkflowBuilder& sync();
-    EDDOWorkflowBuilder& depend_on(size_t dependency_sequence_id);
+    StorageWorkflowBuilder& fetch_upstream(size_t bank_id, Address src_addr, Address dest_addr, Size size);
+    StorageWorkflowBuilder& fetch_downstream(size_t bank_id, Address src_addr, Address dest_addr, Size size);
+    StorageWorkflowBuilder& writeback_upstream(size_t bank_id, Address src_addr, Address dest_addr, Size size);
+    StorageWorkflowBuilder& writeback_downstream(size_t bank_id, Address src_addr, Address dest_addr, Size size);
+    StorageWorkflowBuilder& yield(size_t bank_id, const std::function<void()>& yield_func);
+    StorageWorkflowBuilder& barrier();
+    StorageWorkflowBuilder& depend_on(size_t dependency_sequence_id);
 
     // Build and execute
-    std::vector<MemoryOrchestrator::EDDOCommand> build();
-    void execute_on(MemoryOrchestrator& orchestrator);
+    std::vector<StorageScheduler::StorageCommand> build();
+    void execute_on(StorageScheduler& scheduler);
 };
 
 } // namespace sw::kpu

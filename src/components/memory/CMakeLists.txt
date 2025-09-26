@@ -8,7 +8,7 @@ set(MEMORY_COMPONENT_SOURCES
     l3_tile.cpp
     l2_bank.cpp
     cache.cpp
-    memory_orchestrator.cpp
+    storage_scheduler.cpp
     memory_orchestrator_integration.cpp
 )
 
