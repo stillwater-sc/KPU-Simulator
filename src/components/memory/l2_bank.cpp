@@ -10,7 +10,7 @@ namespace sw::kpu {
 L2Bank::L2Bank(size_t bank_id, Size capacity_kb)
     : capacity(capacity_kb * 1024), bank_id(bank_id) {
     memory_model.resize(capacity);
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 void L2Bank::read(Address addr, void* data, Size size) {
@@ -68,7 +68,7 @@ void L2Bank::write_block(Address base_addr, const void* data,
 }
 
 void L2Bank::reset() {
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 } // namespace sw::kpu

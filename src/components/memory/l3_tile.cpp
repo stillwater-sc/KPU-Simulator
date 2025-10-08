@@ -10,7 +10,7 @@ namespace sw::kpu {
 L3Tile::L3Tile(size_t tile_id, Size capacity_kb)
     : capacity(capacity_kb * 1024), tile_id(tile_id) {
     memory_model.resize(capacity);
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 void L3Tile::read(Address addr, void* data, Size size) {
@@ -60,7 +60,7 @@ void L3Tile::write_block(Address base_addr, const void* data,
 }
 
 void L3Tile::reset() {
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 } // namespace sw::kpu

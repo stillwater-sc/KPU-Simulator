@@ -1,0 +1,224 @@
+{
+  "system": {
+    "name": "Minimal KPU System",
+    "description": "Basic single-KPU system for testing and development"
+  },
+
+  "host": {
+    "cpu": {
+      "core_count": 4,
+      "frequency_mhz": 2400,
+      "cache_l1_kb": 32,
+      "cache_l2_kb": 256,
+      "cache_l3_kb": 8192
+    },
+    "memory": {
+      "dram_controller": {
+        "channel_count": 2,
+        "data_width_bits": 64
+      },
+      "modules": [
+        {
+          "id": "host_mem_0",
+          "type": "DDR4",
+          "form_factor": "DIMM",
+          "capacity_gb": 16,
+          "frequency_mhz": 3200,
+          "bandwidth_gbps": 25.6,
+          "latency_ns": 80,
+          "channels": 2
+        }
+      ]
+    }
+  },
+
+  "accelerators": [
+    {
+      "type": "KPU",
+      "id": "kpu_0",
+      "description": "Primary knowledge processing unit",
+      "kpu_config": {
+        "memory": {
+          "type": "GDDR6",
+          "form_factor": "PCB",
+          "banks": [
+            {
+              "id": "bank_0",
+              "capacity_mb": 1024,
+              "bandwidth_gbps": 100,
+              "latency_ns": 20
+            },
+            {
+              "id": "bank_1",
+              "capacity_mb": 1024,
+              "bandwidth_gbps": 100,
+              "latency_ns": 20
+            }
+          ],
+          "l3_tiles": [
+            {
+              "id": "l3_0",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l3_1",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l3_2",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l3_3",
+              "capacity_kb": 128
+            }
+          ],
+          "l2_banks": [
+            {
+              "id": "l2_0",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_1",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_2",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_3",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_4",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_5",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_6",
+              "capacity_kb": 64
+            },
+            {
+              "id": "l2_7",
+              "capacity_kb": 64
+            }
+          ],
+          "scratchpads": [
+            {
+              "id": "scratch_0",
+              "capacity_kb": 64
+            },
+            {
+              "id": "scratch_1",
+              "capacity_kb": 64
+            }
+          ]
+        },
+        "compute_fabric": {
+          "tiles": [
+            {
+              "id": "tile_0",
+              "type": "systolic",
+              "systolic_rows": 16,
+              "systolic_cols": 16,
+              "datatype": "fp32"
+            },
+            {
+              "id": "tile_1",
+              "type": "systolic",
+              "systolic_rows": 16,
+              "systolic_cols": 16,
+              "datatype": "fp32"
+            }
+          ]
+        },
+        "data_movement": {
+          "dma_engines": [
+            {
+              "id": "dma_0",
+              "bandwidth_gbps": 50,
+              "channels": 1
+            },
+            {
+              "id": "dma_1",
+              "bandwidth_gbps": 50,
+              "channels": 1
+            }
+          ],
+          "block_movers": [
+            {
+              "id": "block_mover_0"
+            },
+            {
+              "id": "block_mover_1"
+            },
+            {
+              "id": "block_mover_2"
+            },
+            {
+              "id": "block_mover_3"
+            }
+          ],
+          "streamers": [
+            {
+              "id": "streamer_0"
+            },
+            {
+              "id": "streamer_1"
+            },
+            {
+              "id": "streamer_2"
+            },
+            {
+              "id": "streamer_3"
+            },
+            {
+              "id": "streamer_4"
+            },
+            {
+              "id": "streamer_5"
+            },
+            {
+              "id": "streamer_6"
+            },
+            {
+              "id": "streamer_7"
+            }
+          ]
+        }
+      }
+    }
+  ],
+
+  "interconnect": {
+    "host_to_accelerator": {
+      "type": "PCIe",
+      "pcie_config": {
+        "generation": 4,
+        "lanes": 16,
+        "bandwidth_gbps": 32
+      }
+    },
+    "on_chip": {
+      "type": "AMBA",
+      "amba_config": {
+        "protocol": "AXI4"
+      }
+    }
+  },
+
+  "system_services": {
+    "memory_manager": {
+      "enabled": true,
+      "pool_size_mb": 512,
+      "alignment_bytes": 64
+    },
+    "interrupt_controller": {
+      "enabled": true
+    }
+  }
+}

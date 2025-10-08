@@ -4,6 +4,8 @@
 
 set(SYSTEM_SOURCES
     toplevel.cpp
+    system_config.cpp
+    config_loader.cpp
 )
 
 # Find required system packages
@@ -24,6 +26,9 @@ target_include_directories(kpu_system
 )
 
 target_link_libraries(kpu_system
+    PUBLIC
+        StillwaterKPU::Simulator
+        $<TARGET_NAME_IF_EXISTS:nlohmann_json::nlohmann_json>
     PRIVATE
         $<TARGET_NAME_IF_EXISTS:Threads::Threads>
         $<TARGET_NAME_IF_EXISTS:fmt::fmt>

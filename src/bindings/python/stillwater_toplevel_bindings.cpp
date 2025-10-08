@@ -10,7 +10,7 @@ PYBIND11_MODULE(stillwater_toplevel, m) {
     
     py::class_<SystemSimulator>(m, "SystemSimulator")
         .def(py::init<>(), "Create a new SystemSimulator instance")
-        .def("initialize", &SystemSimulator::initialize, 
+        .def("initialize", py::overload_cast<>(&SystemSimulator::initialize),
              "Initialize the simulator and all its components.\n\n"
              "Returns:\n"
              "    bool: True if initialization successful, False otherwise")

@@ -50,3 +50,14 @@ kpu_add_example(memory_management
     DESCRIPTION "Memory usage patterns"
     SOURCES memory_management.cpp
 )
+
+kpu_add_example(system_config_demo
+    FOLDER "Basic"
+    DESCRIPTION "JSON-based system configuration"
+    SOURCES system_config_demo.cpp
+)
+
+# Link system config demo against system library
+target_link_libraries(example_system_config_demo PRIVATE
+    StillwaterKPU::System
+)

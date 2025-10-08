@@ -143,6 +143,11 @@ if(KPU_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Only add examples if enabled
+if(KPU_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
 # Installation of headers
 install(DIRECTORY include/
     DESTINATION include

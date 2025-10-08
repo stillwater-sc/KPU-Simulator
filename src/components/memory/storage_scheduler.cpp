@@ -513,7 +513,7 @@ void StorageScheduler::reset() {
         bank->write_accesses = 0;
         bank->cache_hits = 0;
         bank->cache_misses = 0;
-        std::fill(bank->data.begin(), bank->data.end(), 0);
+        std::fill(bank->data.begin(), bank->data.end(), uint8_t(0));
     }
 }
 
@@ -521,7 +521,7 @@ void StorageScheduler::flush_all_banks() {
     std::lock_guard<std::mutex> lock(bank_mutex);
     for (auto& bank : bank_states) {
         bank->current_occupancy = 0;
-        std::fill(bank->data.begin(), bank->data.end(), 0);
+        std::fill(bank->data.begin(), bank->data.end(), uint8_t(0));
     }
 }
 

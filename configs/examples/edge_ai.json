@@ -1,0 +1,195 @@
+{
+  "system": {
+    "name": "Edge AI System",
+    "description": "KPU + NPU heterogeneous system for edge inference workloads"
+  },
+
+  "host": {
+    "cpu": {
+      "core_count": 8,
+      "frequency_mhz": 2000,
+      "cache_l1_kb": 64,
+      "cache_l2_kb": 512,
+      "cache_l3_kb": 4096
+    },
+    "memory": {
+      "dram_controller": {
+        "channel_count": 4,
+        "data_width_bits": 64
+      },
+      "modules": [
+        {
+          "id": "host_mem_0",
+          "type": "LPDDR5",
+          "form_factor": "OnPackage",
+          "capacity_gb": 8,
+          "frequency_mhz": 6400,
+          "bandwidth_gbps": 51.2,
+          "latency_ns": 60,
+          "channels": 4
+        }
+      ]
+    },
+    "storage": [
+      {
+        "id": "storage_0",
+        "type": "NVME",
+        "capacity_gb": 256,
+        "read_bandwidth_mbps": 3500,
+        "write_bandwidth_mbps": 3000,
+        "latency_us": 100
+      }
+    ]
+  },
+
+  "accelerators": [
+    {
+      "type": "KPU",
+      "id": "kpu_0",
+      "description": "Edge KPU for complex reasoning tasks",
+      "kpu_config": {
+        "memory": {
+          "type": "LPDDR5",
+          "form_factor": "OnPackage",
+          "banks": [
+            {
+              "id": "bank_0",
+              "capacity_mb": 512,
+              "bandwidth_gbps": 68,
+              "latency_ns": 50
+            }
+          ],
+          "l3_tiles": [
+            {
+              "id": "l3_0",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l3_1",
+              "capacity_kb": 256
+            }
+          ],
+          "l2_banks": [
+            {
+              "id": "l2_0",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l2_1",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l2_2",
+              "capacity_kb": 128
+            },
+            {
+              "id": "l2_3",
+              "capacity_kb": 128
+            }
+          ],
+          "scratchpads": [
+            {
+              "id": "scratch_0",
+              "capacity_kb": 128
+            }
+          ]
+        },
+        "compute_fabric": {
+          "tiles": [
+            {
+              "id": "tile_0",
+              "type": "systolic",
+              "systolic_rows": 8,
+              "systolic_cols": 8,
+              "datatype": "fp16"
+            }
+          ]
+        },
+        "data_movement": {
+          "dma_engines": [
+            {
+              "id": "dma_0",
+              "bandwidth_gbps": 34,
+              "channels": 1
+            }
+          ],
+          "block_movers": [
+            {
+              "id": "block_mover_0"
+            },
+            {
+              "id": "block_mover_1"
+            }
+          ],
+          "streamers": [
+            {
+              "id": "streamer_0"
+            },
+            {
+              "id": "streamer_1"
+            },
+            {
+              "id": "streamer_2"
+            },
+            {
+              "id": "streamer_3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "NPU",
+      "id": "npu_0",
+      "description": "Dedicated NPU for CNN inference",
+      "npu_config": {
+        "tops_int8": 40,
+        "tops_fp16": 20,
+        "memory": {
+          "type": "OnChip",
+          "capacity_mb": 16,
+          "bandwidth_gbps": 200
+        }
+      }
+    }
+  ],
+
+  "interconnect": {
+    "host_to_accelerator": {
+      "type": "CustomFabric",
+      "pcie_config": {
+        "generation": 3,
+        "lanes": 4,
+        "bandwidth_gbps": 8
+      }
+    },
+    "accelerator_to_accelerator": {
+      "type": "NoC",
+      "noc_config": {
+        "topology": "ring",
+        "router_count": 3,
+        "link_bandwidth_gbps": 16
+      }
+    },
+    "on_chip": {
+      "type": "AMBA",
+      "amba_config": {
+        "protocol": "ACE"
+      }
+    }
+  },
+
+  "system_services": {
+    "memory_manager": {
+      "enabled": true,
+      "pool_size_mb": 256,
+      "alignment_bytes": 64
+    },
+    "interrupt_controller": {
+      "enabled": true
+    },
+    "power_management": {
+      "enabled": true
+    }
+  }
+}

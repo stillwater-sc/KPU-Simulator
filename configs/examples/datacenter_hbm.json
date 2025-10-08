@@ -1,0 +1,424 @@
+{
+  "system": {
+    "name": "Datacenter AI Cluster Node",
+    "description": "High-performance datacenter system with HBM-equipped KPU and GPU"
+  },
+
+  "host": {
+    "cpu": {
+      "core_count": 64,
+      "frequency_mhz": 3500,
+      "cache_l1_kb": 64,
+      "cache_l2_kb": 1024,
+      "cache_l3_kb": 262144
+    },
+    "memory": {
+      "dram_controller": {
+        "channel_count": 8,
+        "data_width_bits": 64
+      },
+      "modules": [
+        {
+          "id": "host_mem_0",
+          "type": "DDR5",
+          "form_factor": "DIMM",
+          "capacity_gb": 128,
+          "frequency_mhz": 5600,
+          "bandwidth_gbps": 89.6,
+          "latency_ns": 70,
+          "channels": 2
+        },
+        {
+          "id": "host_mem_1",
+          "type": "DDR5",
+          "form_factor": "DIMM",
+          "capacity_gb": 128,
+          "frequency_mhz": 5600,
+          "bandwidth_gbps": 89.6,
+          "latency_ns": 70,
+          "channels": 2
+        },
+        {
+          "id": "host_mem_2",
+          "type": "DDR5",
+          "form_factor": "DIMM",
+          "capacity_gb": 128,
+          "frequency_mhz": 5600,
+          "bandwidth_gbps": 89.6,
+          "latency_ns": 70,
+          "channels": 2
+        },
+        {
+          "id": "host_mem_3",
+          "type": "DDR5",
+          "form_factor": "DIMM",
+          "capacity_gb": 128,
+          "frequency_mhz": 5600,
+          "bandwidth_gbps": 89.6,
+          "latency_ns": 70,
+          "channels": 2
+        }
+      ]
+    },
+    "storage": [
+      {
+        "id": "storage_0",
+        "type": "NVME",
+        "capacity_gb": 8192,
+        "read_bandwidth_mbps": 14000,
+        "write_bandwidth_mbps": 12000,
+        "latency_us": 50
+      }
+    ]
+  },
+
+  "accelerators": [
+    {
+      "type": "KPU",
+      "id": "kpu_0",
+      "description": "High-end KPU with HBM3 for large-scale reasoning",
+      "kpu_config": {
+        "memory": {
+          "type": "HBM3",
+          "form_factor": "Interposer",
+          "banks": [
+            {
+              "id": "bank_0",
+              "capacity_mb": 8192,
+              "bandwidth_gbps": 819,
+              "latency_ns": 10
+            },
+            {
+              "id": "bank_1",
+              "capacity_mb": 8192,
+              "bandwidth_gbps": 819,
+              "latency_ns": 10
+            },
+            {
+              "id": "bank_2",
+              "capacity_mb": 8192,
+              "bandwidth_gbps": 819,
+              "latency_ns": 10
+            },
+            {
+              "id": "bank_3",
+              "capacity_mb": 8192,
+              "bandwidth_gbps": 819,
+              "latency_ns": 10
+            }
+          ],
+          "l3_tiles": [
+            {
+              "id": "l3_0",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_1",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_2",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_3",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_4",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_5",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_6",
+              "capacity_kb": 512
+            },
+            {
+              "id": "l3_7",
+              "capacity_kb": 512
+            }
+          ],
+          "l2_banks": [
+            {
+              "id": "l2_0",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_1",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_2",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_3",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_4",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_5",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_6",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_7",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_8",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_9",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_10",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_11",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_12",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_13",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_14",
+              "capacity_kb": 256
+            },
+            {
+              "id": "l2_15",
+              "capacity_kb": 256
+            }
+          ],
+          "scratchpads": [
+            {
+              "id": "scratch_0",
+              "capacity_kb": 256
+            },
+            {
+              "id": "scratch_1",
+              "capacity_kb": 256
+            },
+            {
+              "id": "scratch_2",
+              "capacity_kb": 256
+            },
+            {
+              "id": "scratch_3",
+              "capacity_kb": 256
+            }
+          ]
+        },
+        "compute_fabric": {
+          "tiles": [
+            {
+              "id": "tile_0",
+              "type": "systolic",
+              "systolic_rows": 32,
+              "systolic_cols": 32,
+              "datatype": "fp32"
+            },
+            {
+              "id": "tile_1",
+              "type": "systolic",
+              "systolic_rows": 32,
+              "systolic_cols": 32,
+              "datatype": "fp32"
+            },
+            {
+              "id": "tile_2",
+              "type": "systolic",
+              "systolic_rows": 32,
+              "systolic_cols": 32,
+              "datatype": "fp32"
+            },
+            {
+              "id": "tile_3",
+              "type": "systolic",
+              "systolic_rows": 32,
+              "systolic_cols": 32,
+              "datatype": "fp32"
+            }
+          ]
+        },
+        "data_movement": {
+          "dma_engines": [
+            {
+              "id": "dma_0",
+              "bandwidth_gbps": 200,
+              "channels": 2
+            },
+            {
+              "id": "dma_1",
+              "bandwidth_gbps": 200,
+              "channels": 2
+            },
+            {
+              "id": "dma_2",
+              "bandwidth_gbps": 200,
+              "channels": 2
+            },
+            {
+              "id": "dma_3",
+              "bandwidth_gbps": 200,
+              "channels": 2
+            }
+          ],
+          "block_movers": [
+            {
+              "id": "block_mover_0"
+            },
+            {
+              "id": "block_mover_1"
+            },
+            {
+              "id": "block_mover_2"
+            },
+            {
+              "id": "block_mover_3"
+            },
+            {
+              "id": "block_mover_4"
+            },
+            {
+              "id": "block_mover_5"
+            },
+            {
+              "id": "block_mover_6"
+            },
+            {
+              "id": "block_mover_7"
+            }
+          ],
+          "streamers": [
+            {
+              "id": "streamer_0"
+            },
+            {
+              "id": "streamer_1"
+            },
+            {
+              "id": "streamer_2"
+            },
+            {
+              "id": "streamer_3"
+            },
+            {
+              "id": "streamer_4"
+            },
+            {
+              "id": "streamer_5"
+            },
+            {
+              "id": "streamer_6"
+            },
+            {
+              "id": "streamer_7"
+            },
+            {
+              "id": "streamer_8"
+            },
+            {
+              "id": "streamer_9"
+            },
+            {
+              "id": "streamer_10"
+            },
+            {
+              "id": "streamer_11"
+            },
+            {
+              "id": "streamer_12"
+            },
+            {
+              "id": "streamer_13"
+            },
+            {
+              "id": "streamer_14"
+            },
+            {
+              "id": "streamer_15"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "GPU",
+      "id": "gpu_0",
+      "description": "High-performance GPU for training workloads",
+      "gpu_config": {
+        "compute_units": 128,
+        "clock_mhz": 2100,
+        "memory": {
+          "type": "HBM3",
+          "form_factor": "Interposer",
+          "capacity_gb": 80,
+          "bandwidth_gbps": 3200,
+          "bus_width_bits": 5120
+        }
+      }
+    }
+  ],
+
+  "interconnect": {
+    "host_to_accelerator": {
+      "type": "PCIe",
+      "pcie_config": {
+        "generation": 5,
+        "lanes": 16,
+        "bandwidth_gbps": 128
+      }
+    },
+    "accelerator_to_accelerator": {
+      "type": "NVLink",
+      "noc_config": {
+        "topology": "crossbar",
+        "router_count": 2,
+        "link_bandwidth_gbps": 900
+      }
+    },
+    "on_chip": {
+      "type": "AMBA",
+      "amba_config": {
+        "protocol": "CHI"
+      }
+    },
+    "network": {
+      "enabled": true,
+      "type": "InfiniBand",
+      "speed_gbps": 400
+    }
+  },
+
+  "system_services": {
+    "memory_manager": {
+      "enabled": true,
+      "pool_size_mb": 16384,
+      "alignment_bytes": 256
+    },
+    "interrupt_controller": {
+      "enabled": true
+    },
+    "power_management": {
+      "enabled": true
+    }
+  }
+}

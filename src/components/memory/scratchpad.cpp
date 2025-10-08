@@ -10,7 +10,7 @@ namespace sw::kpu {
 Scratchpad::Scratchpad(Size capacity_kb)
     : capacity(capacity_kb * 1024) {
     memory_model.resize(capacity);
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 void Scratchpad::read(Address addr, void* data, Size size) {
@@ -28,7 +28,7 @@ void Scratchpad::write(Address addr, const void* data, Size size) {
 }
 
 void Scratchpad::reset() {
-    std::fill(memory_model.begin(), memory_model.end(), 0);
+    std::fill(memory_model.begin(), memory_model.end(), uint8_t(0));
 }
 
 } // namespace sw::kpu
