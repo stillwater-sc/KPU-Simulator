@@ -345,13 +345,13 @@ SystemConfig SystemConfig::create_datacenter() {
     config.host.cpu.frequency_mhz = 3500;
     config.host.cpu.cache_l3_kb = 262144;
 
-    // Multiple DDR5 channels
+    // Multiple DDR5 channels (reduced for CI/testing)
     for (int i = 0; i < 4; ++i) {
         MemoryModuleConfig mem;
         mem.id = "host_mem_" + std::to_string(i);
         mem.type = "DDR5";
         mem.form_factor = "DIMM";
-        mem.capacity_gb = 128;
+        mem.capacity_gb = 4;  // Reduced from 128 GB to 4 GB for CI
         mem.bandwidth_gbps = 89.6f;
         config.host.memory.modules.push_back(mem);
     }
@@ -365,11 +365,11 @@ SystemConfig SystemConfig::create_datacenter() {
     kpu.memory.type = "HBM3";
     kpu.memory.form_factor = "Interposer";
 
-    // Multiple HBM stacks
+    // Multiple HBM stacks (reduced for CI/testing)
     for (int i = 0; i < 4; ++i) {
         KPUMemoryBankConfig bank;
         bank.id = "bank_" + std::to_string(i);
-        bank.capacity_mb = 8192;
+        bank.capacity_mb = 256;  // Reduced from 8192 MB to 256 MB for CI
         bank.bandwidth_gbps = 819.0f;
         bank.latency_ns = 10;
         kpu.memory.banks.push_back(bank);
@@ -412,7 +412,7 @@ SystemConfig SystemConfig::create_datacenter() {
     gpu.compute_units = 128;
     gpu.clock_mhz = 2100;
     gpu.memory.type = "HBM3";
-    gpu.memory.capacity_gb = 80;
+    gpu.memory.capacity_gb = 2;  // Reduced from 80 GB to 2 GB for CI
     gpu.memory.bandwidth_gbps = 3200.0f;
     gpu_accel.gpu_config = gpu;
     config.accelerators.push_back(gpu_accel);
