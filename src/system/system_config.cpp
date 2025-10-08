@@ -110,6 +110,11 @@ size_t SystemConfig::get_gpu_count() const {
         [](const AcceleratorConfig& a) { return a.type == AcceleratorType::GPU; });
 }
 
+size_t SystemConfig::get_tpu_count() const {
+    return std::count_if(accelerators.begin(), accelerators.end(),
+        [](const AcceleratorConfig& a) { return a.type == AcceleratorType::TPU; });
+}
+
 size_t SystemConfig::get_npu_count() const {
     return std::count_if(accelerators.begin(), accelerators.end(),
         [](const AcceleratorConfig& a) { return a.type == AcceleratorType::NPU; });

@@ -152,6 +152,22 @@ struct GPUConfig {
 };
 
 //=============================================================================
+// TPU Accelerator Configuration Structures
+//=============================================================================
+
+struct TPUMemoryConfig {
+    std::string type;  // LPDDR5, HBM, OnChip
+    uint32_t capacity_mb{ 16 };
+    float bandwidth_gbps{ 200.0f };
+};
+
+struct TPUConfig {
+    uint32_t tops_int8{ 40 };
+    uint32_t tops_fp16{ 20 };
+    TPUMemoryConfig memory;
+};
+
+//=============================================================================
 // NPU Accelerator Configuration Structures
 //=============================================================================
 
@@ -168,13 +184,63 @@ struct NPUConfig {
 };
 
 //=============================================================================
+// CGRA Accelerator Configuration Structures
+//=============================================================================
+
+struct CGRAMemoryConfig {
+    std::string type;  // LPDDR5, HBM, OnChip
+    uint32_t capacity_mb{ 16 };
+    float bandwidth_gbps{ 200.0f };
+};
+
+struct CGRAConfig {
+    uint32_t tops_int8{ 40 };
+    uint32_t tops_fp16{ 20 };
+    CGRAMemoryConfig memory;
+};
+
+//=============================================================================
+// DSP Accelerator Configuration Structures
+//=============================================================================
+
+struct DSPMemoryConfig {
+    std::string type;  // LPDDR5, HBM, OnChip
+    uint32_t capacity_mb{ 16 };
+    float bandwidth_gbps{ 200.0f };
+};
+
+struct DSPConfig {
+    uint32_t tops_int8{ 40 };
+    uint32_t tops_fp16{ 20 };
+    DSPMemoryConfig memory;
+};
+
+//=============================================================================
+// FPGA Accelerator Configuration Structures
+//=============================================================================
+
+struct FPGAMemoryConfig {
+    std::string type;  // LPDDR5, HBM, OnChip
+    uint32_t capacity_mb{ 16 };
+    float bandwidth_gbps{ 200.0f };
+};
+
+struct FPGAConfig {
+    uint32_t tops_int8{ 40 };
+    uint32_t tops_fp16{ 20 };
+    FPGAMemoryConfig memory;
+};
+
+//=============================================================================
 // Unified Accelerator Configuration
 //=============================================================================
 
 enum class AcceleratorType {
     KPU,
     GPU,
+    TPU,
     NPU,
+    CGRA,
     DSP,
     FPGA
 };
@@ -187,7 +253,11 @@ struct AcceleratorConfig {
     // Only one of these will be populated based on type
     std::optional<KPUConfig> kpu_config;
     std::optional<GPUConfig> gpu_config;
+    std::optional<TPUConfig> tpu_config;
     std::optional<NPUConfig> npu_config;
+    std::optional<NPUConfig> cgra_config;
+    std::optional<NPUConfig> dsp_config;
+    std::optional<NPUConfig> fpga_config;
 };
 
 //=============================================================================
@@ -292,7 +362,11 @@ struct SystemConfig {
     // Utility functions
     size_t get_kpu_count() const;
     size_t get_gpu_count() const;
+	size_t get_tpu_count() const;
     size_t get_npu_count() const;
+	size_t get_cgra_count() const;
+	size_t get_dsp_count() const;
+	size_t get_fpga_count() const;
     const AcceleratorConfig* find_accelerator(const std::string& id) const;
 
     // Default configurations

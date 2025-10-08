@@ -146,7 +146,7 @@ sw::kpu::KPUSimulator* SystemSimulator::create_kpu_from_config(const KPUConfig& 
     sim_config.memory_bank_count = kpu_config.memory.banks.size();
     if (!kpu_config.memory.banks.empty()) {
         sim_config.memory_bank_capacity_mb = kpu_config.memory.banks[0].capacity_mb;
-        sim_config.memory_bandwidth_gbps = kpu_config.memory.banks[0].bandwidth_gbps;
+        sim_config.memory_bandwidth_gbps = static_cast<sw::kpu::Size>(kpu_config.memory.banks[0].bandwidth_gbps);
     }
 
     // Scratchpad configuration
