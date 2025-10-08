@@ -120,6 +120,21 @@ size_t SystemConfig::get_npu_count() const {
         [](const AcceleratorConfig& a) { return a.type == AcceleratorType::NPU; });
 }
 
+size_t SystemConfig::get_cgra_count() const {
+    return std::count_if(accelerators.begin(), accelerators.end(),
+        [](const AcceleratorConfig& a) { return a.type == AcceleratorType::CGRA; });
+}
+
+size_t SystemConfig::get_dsp_count() const {
+    return std::count_if(accelerators.begin(), accelerators.end(),
+        [](const AcceleratorConfig& a) { return a.type == AcceleratorType::DSP; });
+}
+
+size_t SystemConfig::get_fpga_count() const {
+    return std::count_if(accelerators.begin(), accelerators.end(),
+        [](const AcceleratorConfig& a) { return a.type == AcceleratorType::FPGA; });
+}
+
 const AcceleratorConfig* SystemConfig::find_accelerator(const std::string& id) const {
     auto it = std::find_if(accelerators.begin(), accelerators.end(),
         [&id](const AcceleratorConfig& a) { return a.id == id; });

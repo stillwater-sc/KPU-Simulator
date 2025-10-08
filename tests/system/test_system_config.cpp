@@ -155,8 +155,7 @@ TEST_CASE("ConfigLoader - Load Example Configurations", "[system][config][json][
         "../../../configs/examples",        // From build_msvc/tests/system/Debug
         "../../../../configs/examples",     // From deeper build directories
         "../configs/examples",              // Alternative
-        "configs/examples",                 // From project root
-        "C:/Users/tomtz/dev/stillwater/clones/KPU-simulator/configs/examples"  // Absolute fallback
+        "configs/examples"                  // From project root
     };
 
     bool found = false;
