@@ -1,4 +1,6 @@
-Why This Works
+# Sparse Memory design notes
+
+## Why This Works
 
   - std::vector can hold move-only types (types that can be moved but not copied)
   - By explicitly making both classes movable, std::vector can use move semantics when resizing or reordering
@@ -13,7 +15,7 @@ Why This Works
   2. Move-only types: Types that manage unique resources should be move-only, not copyable.
   3. Explicit declarations: Even when = default, being explicit about copy/move semantics makes the intent clear.
 
-Summary: Windows Memory Mapping Segfault Fix
+## Summary: Windows Memory Mapping Segfault Fix
 
   Problem
 
