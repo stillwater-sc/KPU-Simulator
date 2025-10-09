@@ -69,18 +69,15 @@ TEST_CASE("MemoryMap basic functionality", "[memory][memmap]") {
 TEST_CASE("MemoryMap sparse allocation", "[memory][memmap][sparse]") {
     // NOTE: MAP_NORESERVE sparse allocation with on-demand page faulting does not
     // work reliably on WSL. The prefault() operation (which tries to touch pages
-    // to trigger page faults) causes bus errors.
+    // to trigger page faults) causes bus errors on WSL.
     //
-    // For sparse memory on WSL/Windows, use the SparseMemory wrapper instead,
-    // which explicitly commits pages using VirtualAlloc on Windows.
+    // This test works on:
+    // - Native Windows (using VirtualAlloc with MEM_RESERVE + explicit MEM_COMMIT in prefault)
+    // - Native Linux (using mmap with on-demand paging)
     //
-    // On native Linux (not WSL), this test should work.
+    // It should NOT run on WSL due to known bus errors with MAP_NORESERVE.
 
-#ifndef __linux__
-    // Only run these tests on native Linux, skip on WSL/Windows
-    WARN("Sparse MemoryMap tests skipped on this platform - use SparseMemory wrapper instead");
-    return;
-#else
+#ifdef __linux__
     // Check if we're running under WSL by looking for "microsoft" in uname
     std::string uname_output;
     {
@@ -101,10 +98,14 @@ TEST_CASE("MemoryMap sparse allocation", "[memory][memmap][sparse]") {
         WARN("Sparse MemoryMap tests skipped on WSL - use SparseMemory wrapper instead");
         return;
     }
+#endif
 
     SECTION("Large virtual size with minimal physical usage") {
-        // Request 16MB virtual space
-        Size virtual_size = 16ULL * 1024ULL * 1024ULL;  // 16MB
+        // Request 1GB virtual space - this demonstrates sparse allocation well:
+        // - Virtual reservation: 1GB (trivial on 64-bit systems)
+        // - Physical commitment: Only the pages we actually touch (~16-64KB depending on page size)
+        // - This is the key benefit: massive virtual address space with minimal RAM usage
+        Size virtual_size = 1ULL * 1024ULL * 1024ULL * 1024ULL;  // 1GB
         MemoryMap::Config config(virtual_size);
         config.populate = false;  // Sparse allocation
 
@@ -113,12 +114,16 @@ TEST_CASE("MemoryMap sparse allocation", "[memory][memmap][sparse]") {
         REQUIRE(map.size() == virtual_size);
 
         // Write to a few pages scattered across the address space
+        // We're touching maybe 4-16 pages out of 262,144 pages (for 4KB pages)
+        // Physical memory used: ~16-64KB out of 1GB reserved
         Size page_size = map.page_size();
         std::vector<Size> test_offsets = {
             0,
             page_size * 10,
             page_size * 100,
-            page_size * 1000
+            page_size * 1000,
+            page_size * 10000,
+            page_size * 100000
         };
 
         // IMPORTANT: For sparse (non-populated) memory, we MUST prefault pages
@@ -147,7 +152,6 @@ TEST_CASE("MemoryMap sparse allocation", "[memory][memmap][sparse]") {
             REQUIRE(actual == expected);
         }
     }
-#endif
 }
 
 TEST_CASE("MemoryMap move semantics", "[memory][memmap]") {
