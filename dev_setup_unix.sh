@@ -70,14 +70,14 @@ echo "Setting up development environment..."
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Clean up existing venv if it exists
-if [ -d "$PROJECT_DIR/kpu_dev_env" ]; then
+if [ -d "$PROJECT_DIR/kpu_venv" ]; then
     echo "Removing existing virtual environment..."
-    rm -rf "$PROJECT_DIR/kpu_dev_env"
+    rm -rf "$PROJECT_DIR/kpu_venv"
 fi
 
 # Create virtual environment
 echo "Creating Python virtual environment..."
-python3 -m venv "$PROJECT_DIR/kpu_dev_env"
+python3 -m venv "$PROJECT_DIR/kpu_venv"
 if [ $? -ne 0 ]; then
     print_error "Failed to create virtual environment"
     exit 1
@@ -85,7 +85,7 @@ fi
 
 # Activate virtual environment
 echo "Activating virtual environment..."
-source "$PROJECT_DIR/kpu_dev_env/bin/activate"
+source "$PROJECT_DIR/kpu_venv/bin/activate"
 
 # Upgrade pip
 echo "Upgrading pip..."
@@ -129,16 +129,16 @@ echo "   cmake .. -DCMAKE_BUILD_TYPE=Release"
 echo "   make -j\$(nproc)"
 echo
 echo "2. Test Python bindings:"
-echo "   source kpu_dev_env/bin/activate"
+echo "   source kpu_venv/bin/activate"
 echo "   python tests/test_python.py"
 echo
 echo "3. Start Jupyter for interactive development:"
-echo "   source kpu_dev_env/bin/activate"
+echo "   source kpu_venv/bin/activate"
 echo "   jupyter notebook"
 echo
 echo "Environment details:"
 echo "  Project: $PROJECT_DIR"
-echo "  Virtual env: $PROJECT_DIR/kpu_dev_env"
+echo "  Virtual env: $PROJECT_DIR/kpu_venv"
 echo "  Python: $PYTHON_VERSION"
 echo "  CMake: $CMAKE_VERSION"
 echo
