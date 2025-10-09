@@ -127,12 +127,13 @@ void* MemoryMap::platform_map(const Config& config) {
     int prot = get_protection_flags(config.read_only);
     int flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
-    // For sparse allocation, use MAP_NORESERVE to avoid committing swap space
-    // Physical pages will be allocated on first write via page faults
+    // For sparse allocation on some systems, MAP_NORESERVE can be used
+    // to avoid committing swap space. However, this can lead to SIGBUS
+    // errors if the system runs out of memory. For greater stability,
+    // we will not use MAP_NORESERVE by default. The OS will still use
+    // demand paging to allocate physical pages on first access.
     if (!config.populate) {
-#ifdef MAP_NORESERVE
-        flags |= MAP_NORESERVE;
-#endif
+        // flags |= MAP_NORESERVE; // Disabled for stability
     }
 
 #ifdef __APPLE__

@@ -91,44 +91,31 @@ void SparseMemory::ensure_page_committed(Address addr) {
         }
     }
 #else
-    // On Unix systems, the page fault handler automatically commits pages
-    // However, we need to explicitly touch the page to trigger the fault
+    // On Unix systems, the OS automatically handles committing pages on the first
+    // access (page fault). We just need to handle zeroing the page if requested.
     Size psize = page_size();
-    Address page_addr = (addr / psize) * psize;
     void* base = map_->data();
 
     if (base == nullptr) {
         throw std::runtime_error("MemoryMap base pointer is null");
     }
 
-    if (page_addr >= config_.virtual_size) {
-        throw std::out_of_range(
-            "Page address " + std::to_string(page_addr) +
-            " exceeds virtual size " + std::to_string(config_.virtual_size)
-        );
-    }
-
-    void* page_ptr = static_cast<char*>(base) + page_addr;
-
     // Check if this is the first access to this page
     Size page_idx = get_page_index(addr);
     bool first_access = !config_.track_pages ||
                         (accessed_pages_.find(page_idx) == accessed_pages_.end());
 
-    if (first_access) {
-        // First access: touch the page to trigger fault, then zero if requested
-        volatile char* touch = static_cast<char*>(page_ptr);
-
-        // Try to trigger page fault with a read
-        char test_byte = *touch;  // Read from the page
-        (void)test_byte;  // Suppress unused variable warning
-
-        if (config_.zero_on_access) {
-            // Zero the entire page
-            std::memset(page_ptr, 0, psize);
-        }
+    if (first_access && config_.zero_on_access) {
+        // If this is the first time we're accessing this page and we need to zero it,
+        // we can just write zeros to the whole page. This will trigger the page
+        // fault and commit the page in a single, simple operation.
+        Address page_addr = (addr / psize) * psize;
+        void* page_ptr = static_cast<char*>(base) + page_addr;
+        std::memset(page_ptr, 0, psize);
     }
-    // If not first access, page is already committed and we don't need to do anything
+    // If we don't need to zero the page, the first read/write access by the caller
+    // will trigger the page fault and commit the page automatically. No extra
+    // work is needed here.
 #endif
 }
 
