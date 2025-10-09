@@ -4,6 +4,8 @@
 # Memory component sources
 set(MEMORY_COMPONENT_SOURCES
     external_memory.cpp
+    memory_map.cpp
+    sparse_memory.cpp
     scratchpad.cpp
     l3_tile.cpp
     l2_bank.cpp

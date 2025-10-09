@@ -111,7 +111,15 @@ private:
 public:
     explicit KPUSimulator(const Config& config = {});  // Config{ 2,1024,100,2,64,2,2 }: 2 banks, 1GB each, 100GBps, 2 pads 64KB each, 2 tiles, 2 DMAs
     ~KPUSimulator() = default;
-    
+
+    // Disable copying (contains non-copyable ExternalMemory)
+    KPUSimulator(const KPUSimulator&) = delete;
+    KPUSimulator& operator=(const KPUSimulator&) = delete;
+
+    // Enable moving
+    KPUSimulator(KPUSimulator&&) noexcept = default;
+    KPUSimulator& operator=(KPUSimulator&&) noexcept = default;
+
     // Memory operations - clean delegation API
     void read_memory_bank(size_t bank_id, Address addr, void* data, Size size);
     void write_memory_bank(size_t bank_id, Address addr, const void* data, Size size);
