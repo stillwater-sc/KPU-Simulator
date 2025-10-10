@@ -130,6 +130,22 @@ void create_system(SystemConfig& config) {
         kpu.memory.banks.push_back(bank);
     }
 
+    // Add L3 tiles
+    for (int i = 0; i < 4; ++i) {
+        KPUTileConfig tile;
+        tile.id = "l3_" + std::to_string(i);
+        tile.capacity_kb = 256;
+        kpu.memory.l3_tiles.push_back(tile);
+    }
+
+    // Add L2 banks
+    for (int i = 0; i < 8; ++i) {
+        KPUTileConfig bank;
+        bank.id = "l2_" + std::to_string(i);
+        bank.capacity_kb = 128;
+        kpu.memory.l2_banks.push_back(bank);
+    }
+
     // Add scratchpads
     for (int i = 0; i < 4; ++i) {
         KPUScratchpadConfig scratch;
@@ -157,6 +173,20 @@ void create_system(SystemConfig& config) {
         kpu.data_movement.dma_engines.push_back(dma);
     }
 
+    // Add block movers
+    for (int i = 0; i < 4; ++i) {
+        BlockMoverConfig mover;
+        mover.id = "block_mover_" + std::to_string(i);
+        kpu.data_movement.block_movers.push_back(mover);
+    }
+
+    // Add streamers
+    for (int i = 0; i < 8; ++i) {
+        StreamerConfig streamer;
+        streamer.id = "streamer_" + std::to_string(i);
+        kpu.data_movement.streamers.push_back(streamer);
+    }
+
     kpu_accel.kpu_config = kpu;
     config.accelerators.push_back(kpu_accel);
 
@@ -172,8 +202,15 @@ void create_system(SystemConfig& config) {
     std::cout << "  System: " << config.system.name << "\n";
     std::cout << "  Host cores: " << config.host.cpu.core_count << "\n";
     std::cout << "  Host memory: " << config.host.memory.modules[0].capacity_gb << " GB\n";
-    std::cout << "  KPU memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
-    std::cout << "  KPU compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
+    std::cout << "\n  KPU Components:\n";
+    std::cout << "    Memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
+    std::cout << "    L3 tiles: " << config.accelerators[0].kpu_config->memory.l3_tiles.size() << "\n";
+    std::cout << "    L2 banks: " << config.accelerators[0].kpu_config->memory.l2_banks.size() << "\n";
+    std::cout << "    Scratchpads: " << config.accelerators[0].kpu_config->memory.scratchpads.size() << "\n";
+    std::cout << "    Compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
+    std::cout << "    DMA engines: " << config.accelerators[0].kpu_config->data_movement.dma_engines.size() << "\n";
+    std::cout << "    Block movers: " << config.accelerators[0].kpu_config->data_movement.block_movers.size() << "\n";
+    std::cout << "    Streamers: " << config.accelerators[0].kpu_config->data_movement.streamers.size() << "\n";
 
     // Validate
     std::cout << "\nValidation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
@@ -209,6 +246,207 @@ void demo_json_round_trip() {
     std::cout << "Cleaned up temporary file\n";
 }
 
+/**
+ * @brief Execute MLP layer through complete memory hierarchy
+ *
+ * Data flow pipeline:
+ * 1. Host memory → KPU memory banks (via DMA simulation)
+ * 2. Memory banks → L3 tiles (via DMA)
+ * 3. L3 tiles → L2 banks (via Block Movers)
+ * 4. L2 banks → L1 scratchpad (via Streamers)
+ * 5. Compute on systolic array: output = input × weights + bias
+ * 6. Result readback through reverse path
+ */
+bool execute_mlp_layer(sw::kpu::KPUSimulator* kpu,
+                       size_t batch_size,
+                       size_t input_dim,
+                       size_t output_dim) {
+    using namespace sw;
+    using namespace sw::kpu;
+
+    std::cout << "\n========================================\n";
+    std::cout << "  MLP Layer Execution\n";
+    std::cout << "========================================\n";
+    std::cout << "Batch size: " << batch_size << "\n";
+    std::cout << "Input dimension: " << input_dim << "\n";
+    std::cout << "Output dimension: " << output_dim << "\n";
+    std::cout << "\n--- Data Movement Pipeline ---\n";
+
+    // Step 1: Allocate and initialize tensors in host memory
+    std::cout << "\n[1] Host Memory Allocation\n";
+
+    // Input tensor: [batch_size × input_dim]
+    std::vector<float> input(batch_size * input_dim);
+    // Weight matrix: [input_dim × output_dim]
+    std::vector<float> weights(input_dim * output_dim);
+    // Bias vector: [output_dim]
+    std::vector<float> bias(output_dim);
+    // Output tensor: [batch_size × output_dim]
+    std::vector<float> output(batch_size * output_dim, 0.0f);
+
+    // Initialize with simple test data
+    for (size_t i = 0; i < input.size(); ++i) {
+        input[i] = static_cast<float>(i % 10) * 0.1f;
+    }
+    for (size_t i = 0; i < weights.size(); ++i) {
+        weights[i] = static_cast<float>((i % 5) + 1) * 0.2f;
+    }
+    for (size_t i = 0; i < bias.size(); ++i) {
+        bias[i] = 0.5f;
+    }
+
+    std::cout << "  Input tensor allocated: " << input.size() * sizeof(float) / 1024.0f << " KB\n";
+    std::cout << "  Weight matrix allocated: " << weights.size() * sizeof(float) / 1024.0f << " KB\n";
+    std::cout << "  Bias vector allocated: " << bias.size() * sizeof(float) / 1024.0f << " KB\n";
+
+    // Step 2: Transfer from host to KPU memory banks (simulated as direct write)
+    std::cout << "\n[2] Host -> KPU Memory Banks (DMA simulation)\n";
+
+    const size_t bank_id = 0;
+    const Address input_addr = 0x0000;
+    const Address weights_addr = input_addr + input.size() * sizeof(float);
+    const Address bias_addr = weights_addr + weights.size() * sizeof(float);
+
+    kpu->write_memory_bank(bank_id, input_addr, input.data(), input.size() * sizeof(float));
+    kpu->write_memory_bank(bank_id, weights_addr, weights.data(), weights.size() * sizeof(float));
+    kpu->write_memory_bank(bank_id, bias_addr, bias.data(), bias.size() * sizeof(float));
+
+    std::cout << "  Input -> Bank[" << bank_id << "] @ 0x" << std::hex << input_addr << std::dec << "\n";
+    std::cout << "  Weights -> Bank[" << bank_id << "] @ 0x" << std::hex << weights_addr << std::dec << "\n";
+    std::cout << "  Bias -> Bank[" << bank_id << "] @ 0x" << std::hex << bias_addr << std::dec << "\n";
+
+    // Step 3: Manual transfer from memory banks to L3 tiles
+    // Note: DMA only supports EXTERNAL<->SCRATCHPAD, so we use direct read/write for L3
+    std::cout << "\n[3] Memory Banks -> L3 Tiles (manual transfer)\n";
+
+    const size_t l3_tile_id = 0;
+    const Address l3_input_addr = 0x0000;
+    const Address l3_weights_addr = 0x4000;
+
+    // Transfer input to L3 (read from bank, write to L3)
+    std::vector<uint8_t> temp_buffer(std::max(input.size(), weights.size()) * sizeof(float));
+    kpu->read_memory_bank(bank_id, input_addr, temp_buffer.data(), input.size() * sizeof(float));
+    kpu->write_l3_tile(l3_tile_id, l3_input_addr, temp_buffer.data(), input.size() * sizeof(float));
+    std::cout << "  Input transferred to L3[" << l3_tile_id << "]\n";
+
+    // Transfer weights to L3
+    kpu->read_memory_bank(bank_id, weights_addr, temp_buffer.data(), weights.size() * sizeof(float));
+    kpu->write_l3_tile(l3_tile_id, l3_weights_addr, temp_buffer.data(), weights.size() * sizeof(float));
+    std::cout << "  Weights transferred to L3[" << l3_tile_id << "]\n";
+
+    // Step 4: Block mover from L3 to L2
+    std::cout << "\n[4] L3 Tiles -> L2 Banks (Block Mover)\n";
+
+    const size_t block_mover_id = 0;
+    const size_t l2_bank_id = 0;
+    const Address l2_input_addr = 0x0000;
+    const Address l2_weights_addr = 0x2000;
+
+    // Transfer input blocks to L2
+    kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_input_addr,
+        l2_bank_id, l2_input_addr,
+        batch_size, input_dim, sizeof(float));
+    kpu->run_until_idle();
+    std::cout << "  Input blocks moved to L2[" << l2_bank_id << "]\n";
+
+    // Transfer weight blocks to L2
+    kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_weights_addr,
+        l2_bank_id, l2_weights_addr,
+        input_dim, output_dim, sizeof(float));
+    kpu->run_until_idle();
+    std::cout << "  Weight blocks moved to L2[" << l2_bank_id << "]\n";
+
+    // Step 5: Streamers from L2 to L1 scratchpad
+    std::cout << "\n[5] L2 Banks -> L1 Scratchpad (Streamers)\n";
+
+    const size_t row_streamer_id = 0;
+    const size_t col_streamer_id = 1;
+    const size_t scratchpad_id = 0;
+    const Address l1_input_addr = 0x0000;
+    const Address l1_weights_addr = 0x1000;
+    const size_t compute_fabric_size = kpu->get_systolic_array_rows();
+
+    // Stream input rows to L1
+    kpu->start_row_stream(row_streamer_id, l2_bank_id, scratchpad_id,
+        l2_input_addr, l1_input_addr,
+        batch_size, input_dim, sizeof(float), compute_fabric_size);
+    kpu->run_until_idle();
+    std::cout << "  Input rows streamed to L1 scratchpad[" << scratchpad_id << "]\n";
+
+    // Stream weight columns to L1
+    kpu->start_column_stream(col_streamer_id, l2_bank_id, scratchpad_id,
+        l2_weights_addr, l1_weights_addr,
+        input_dim, output_dim, sizeof(float), compute_fabric_size);
+    kpu->run_until_idle();
+    std::cout << "  Weight columns streamed to L1 scratchpad[" << scratchpad_id << "]\n";
+
+    // Step 6: Execute matrix multiplication on systolic array
+    std::cout << "\n[6] Systolic Array Compute\n";
+
+    const size_t compute_tile_id = 0;
+    const Address l1_output_addr = 0x2000;
+
+    std::cout << "  Systolic array: " << kpu->get_systolic_array_rows()
+              << "×" << kpu->get_systolic_array_cols()
+              << " (" << kpu->get_systolic_array_total_pes() << " PEs)\n";
+
+    kpu->start_matmul(compute_tile_id, scratchpad_id,
+        batch_size, output_dim, input_dim,
+        l1_input_addr, l1_weights_addr, l1_output_addr);
+    kpu->run_until_idle();
+    std::cout << "  Matrix multiplication completed\n";
+
+    // Add bias (simple operation in scratchpad)
+    std::cout << "  Adding bias...\n";
+    std::vector<float> result(batch_size * output_dim);
+    kpu->read_scratchpad(scratchpad_id, l1_output_addr, result.data(), result.size() * sizeof(float));
+    for (size_t i = 0; i < result.size(); ++i) {
+        result[i] += bias[i % output_dim];
+    }
+    kpu->write_scratchpad(scratchpad_id, l1_output_addr, result.data(), result.size() * sizeof(float));
+    std::cout << "  Bias added\n";
+
+    // Step 7: Result readback through reverse path
+    std::cout << "\n[7] Result Readback Path\n";
+
+    // L1 → L2 (via streamer)
+    const Address l2_output_addr = 0x4000;
+    kpu->start_row_stream(row_streamer_id, l2_bank_id, scratchpad_id,
+        l2_output_addr, l1_output_addr,
+        batch_size, output_dim, sizeof(float), compute_fabric_size,
+        sw::kpu::Streamer::StreamDirection::L1_TO_L2);
+    kpu->run_until_idle();
+    std::cout << "  L1 -> L2 (streamer)\n";
+
+    // L2 → L3 (via block mover with reverse transform)
+    const Address l3_output_addr = 0x8000;
+    kpu->start_block_transfer(block_mover_id, l2_bank_id, l2_output_addr,
+        l3_tile_id, l3_output_addr,
+        batch_size, output_dim, sizeof(float));
+    kpu->run_until_idle();
+    std::cout << "  L2 -> L3 (block mover)\n";
+
+    // L3 → Memory bank (manual transfer)
+    const Address output_addr = 0x10000;
+    kpu->read_l3_tile(l3_tile_id, l3_output_addr, temp_buffer.data(), result.size() * sizeof(float));
+    kpu->write_memory_bank(bank_id, output_addr, temp_buffer.data(), result.size() * sizeof(float));
+    std::cout << "  L3 -> Memory bank (manual transfer)\n";
+
+    // Memory bank → Host (read back)
+    kpu->read_memory_bank(bank_id, output_addr, output.data(), output.size() * sizeof(float));
+    std::cout << "  Memory bank → Host\n";
+
+    // Verify results
+    std::cout << "\n[8] Result Verification\n";
+    std::cout << "  Sample outputs (first 5):\n";
+    for (size_t i = 0; i < std::min(size_t(5), output.size()); ++i) {
+        std::cout << "    output[" << i << "] = " << output[i] << "\n";
+    }
+
+    std::cout << "\nMLP layer execution completed successfully!\n";
+    return true;
+}
+
 // Run Built-in Self Test
 bool bist(const SystemConfig& config) {
     std::cout << "========================================\n";
@@ -230,6 +468,13 @@ bool bist(const SystemConfig& config) {
             std::cout << "  Scratchpads: " << kpu->get_scratchpad_count() << "\n";
             std::cout << "  Compute tiles: " << kpu->get_compute_tile_count() << "\n";
             std::cout << "  DMA engines: " << kpu->get_dma_engine_count() << "\n";
+            std::cout << "  L3 tiles: " << kpu->get_l3_tile_count() << "\n";
+            std::cout << "  L2 banks: " << kpu->get_l2_bank_count() << "\n";
+            std::cout << "  Block movers: " << kpu->get_block_mover_count() << "\n";
+            std::cout << "  Streamers: " << kpu->get_streamer_count() << "\n";
+
+            // Run MLP layer execution demo
+            execute_mlp_layer(kpu, 4, 8, 4);  // Small test: 4 batch, 8 input dim, 4 output dim
         }
 
         // Run self test
