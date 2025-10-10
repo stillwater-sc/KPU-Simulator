@@ -1,0 +1,280 @@
+/**
+ * @file host_kpu.cpp
+ * @brief models a host + KPU simulator configuration
+ *
+ */
+
+#include <sw/system/toplevel.hpp>
+#include <sw/system/config_loader.hpp>
+#include <sw/kpu/kpu_simulator.hpp>
+#include <iostream>
+#include <filesystem>
+
+using namespace sw::sim;
+
+void demo_factory_configs() {
+    std::cout << "\n========================================\n";
+    std::cout << "Demo 1: Factory Configuration Methods\n";
+    std::cout << "========================================\n";
+
+    // Create predefined configurations
+    auto minimal = SystemConfig::create_minimal_kpu();
+    auto edge_ai = SystemConfig::create_edge_ai();
+    auto datacenter = SystemConfig::create_datacenter();
+
+    std::cout << "\nAvailable factory configurations:\n";
+    std::cout << "1. " << minimal.system.name << "\n";
+    std::cout << "   - KPUs: " << minimal.get_kpu_count() << "\n";
+    std::cout << "   - GPUs: " << minimal.get_gpu_count() << "\n";
+    std::cout << "   - NPUs: " << minimal.get_npu_count() << "\n";
+
+    std::cout << "2. " << edge_ai.system.name << "\n";
+    std::cout << "   - KPUs: " << edge_ai.get_kpu_count() << "\n";
+    std::cout << "   - GPUs: " << edge_ai.get_gpu_count() << "\n";
+    std::cout << "   - NPUs: " << edge_ai.get_npu_count() << "\n";
+
+    std::cout << "3. " << datacenter.system.name << "\n";
+    std::cout << "   - KPUs: " << datacenter.get_kpu_count() << "\n";
+    std::cout << "   - GPUs: " << datacenter.get_gpu_count() << "\n";
+    std::cout << "   - NPUs: " << datacenter.get_npu_count() << "\n";
+}
+
+void demo_json_file_loading() {
+    std::cout << "\n========================================\n";
+    std::cout << "Demo 2: Loading from JSON Files\n";
+    std::cout << "========================================\n";
+
+    std::filesystem::path examples_dir = "../../configs/examples";
+    if (!std::filesystem::exists(examples_dir)) {
+        examples_dir = "../configs/examples";
+    }
+
+    if (!std::filesystem::exists(examples_dir)) {
+        std::cout << "Example configurations not found, skipping demo\n";
+        return;
+    }
+
+    // Try to load each example configuration
+    std::vector<std::string> config_files = {
+        "minimal_kpu.json",
+        "edge_ai.json",
+        "datacenter_hbm.json"
+    };
+
+    for (const auto& filename : config_files) {
+        auto config_path = examples_dir / filename;
+        if (!std::filesystem::exists(config_path)) {
+            continue;
+        }
+
+        std::cout << "\nLoading: " << filename << "\n";
+
+        try {
+            auto config = ConfigLoader::load_from_file(config_path);
+            std::cout << "  System: " << config.system.name << "\n";
+            std::cout << "  Valid: " << (config.validate() ? "Yes" : "No") << "\n";
+            std::cout << "  Accelerators: " << config.accelerators.size() << "\n";
+
+            // Get validation warnings/errors
+            auto validation_msg = config.get_validation_errors();
+            if (!validation_msg.empty()) {
+                std::cout << "  Notes:\n" << validation_msg;
+            }
+        }
+        catch (const std::exception& e) {
+            std::cout << "  Error: " << e.what() << "\n";
+        }
+    }
+}
+
+void create_system(SystemConfig& config) {
+
+    std::cout << "========================================\n";
+    std::cout << "   Creating a Host + KPU configuration\n";
+    std::cout << "========================================\n";
+
+    config.clear();
+
+    // System info
+    config.system.name = "Host+KPU Baseline System";
+    config.system.description = "Programmatically created configuration";
+
+    // Host configuration
+    config.host.cpu.core_count = 16;
+    config.host.cpu.frequency_mhz = 3000;
+
+    MemoryModuleConfig mem;
+    mem.id = "ddr5_dimm_0";
+    mem.type = "DDR5";
+    mem.form_factor = "DIMM";
+    mem.capacity_gb = 64;
+    mem.bandwidth_gbps = 51.2f;
+    config.host.memory.modules.push_back(mem);
+
+    // KPU accelerator
+    AcceleratorConfig kpu_accel;
+    kpu_accel.type = AcceleratorType::KPU;
+    kpu_accel.id = "T100";
+    kpu_accel.description = "Custom configured KPU to deliver 100 TOPS of sustained performance";
+
+    KPUConfig kpu;
+    kpu.memory.type = "GDDR6";
+    kpu.memory.form_factor = "PCB";
+
+    // Add memory banks
+    for (int i = 0; i < 2; ++i) {
+        KPUMemoryBankConfig bank;
+        bank.id = "bank_" + std::to_string(i);
+        bank.capacity_mb = 2048;
+        bank.bandwidth_gbps = 150.0f;
+        kpu.memory.banks.push_back(bank);
+    }
+
+    // Add scratchpads
+    for (int i = 0; i < 4; ++i) {
+        KPUScratchpadConfig scratch;
+        scratch.id = "scratch_" + std::to_string(i);
+        scratch.capacity_kb = 128;
+        kpu.memory.scratchpads.push_back(scratch);
+    }
+
+    // Add compute tiles
+    for (int i = 0; i < 4; ++i) {
+        ComputeTileConfig tile;
+        tile.id = "tile_" + std::to_string(i);
+        tile.type = "systolic";
+        tile.systolic_rows = 16;
+        tile.systolic_cols = 16;
+        tile.datatype = "fp32";
+        kpu.compute_fabric.tiles.push_back(tile);
+    }
+
+    // Add DMA engines
+    for (int i = 0; i < 4; ++i) {
+        DMAEngineConfig dma;
+        dma.id = "dma_" + std::to_string(i);
+        dma.bandwidth_gbps = 75.0f;
+        kpu.data_movement.dma_engines.push_back(dma);
+    }
+
+    kpu_accel.kpu_config = kpu;
+    config.accelerators.push_back(kpu_accel);
+
+    // Interconnect
+    config.interconnect.host_to_accelerator.type = "PCIe";
+    PCIeConfig pcie;
+    pcie.generation = 4;
+    pcie.lanes = 16;
+    pcie.bandwidth_gbps = 32.0f;
+    config.interconnect.host_to_accelerator.pcie_config = pcie;
+
+    std::cout << "\nCreated configuration:\n";
+    std::cout << "  System: " << config.system.name << "\n";
+    std::cout << "  Host cores: " << config.host.cpu.core_count << "\n";
+    std::cout << "  Host memory: " << config.host.memory.modules[0].capacity_gb << " GB\n";
+    std::cout << "  KPU memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
+    std::cout << "  KPU compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
+
+    // Validate
+    std::cout << "\nValidation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
+}
+
+void demo_json_round_trip() {
+    std::cout << "========================================\n";
+    std::cout << "   JSON Serialization Round Trip\n";
+    std::cout << "========================================\n";
+
+    // Create a configuration
+    auto config = SystemConfig::create_edge_ai();
+
+    std::cout << "\nOriginal configuration: " << config.system.name << "\n";
+
+    // Serialize to JSON string
+    std::string json_str = ConfigLoader::to_json_string(config, true);
+    std::cout << "JSON size: " << json_str.length() << " characters\n";
+
+    // Save to file
+    std::filesystem::path temp_file = "demo_config_temp.json";
+    ConfigLoader::save_to_file(config, temp_file);
+    std::cout << "Saved to: " << temp_file << "\n";
+
+    // Load back
+    auto loaded_config = ConfigLoader::load_from_file(temp_file);
+    std::cout << "Loaded configuration: " << loaded_config.system.name << "\n";
+    std::cout << "Configurations match: "
+              << (loaded_config.system.name == config.system.name ? "Yes" : "No") << "\n";
+
+    // Cleanup
+    std::filesystem::remove(temp_file);
+    std::cout << "Cleaned up temporary file\n";
+}
+
+// Run Built-in Self Test
+bool bist(const SystemConfig& config) {
+    std::cout << "========================================\n";
+    std::cout << "    System Simulator BIST\n";
+    std::cout << "========================================\n";
+
+    // Initialize simulator
+    SystemSimulator sim(config);
+    if (sim.initialize()) {
+        std::cout << "Initialization: SUCCESS\n";
+
+        // Access KPU
+        std::cout << "\nKPU count: " << sim.get_kpu_count() << "\n";
+
+        auto* kpu = sim.get_kpu(0);
+        if (kpu) {
+            std::cout << "KPU[0] details:\n";
+            std::cout << "  Memory banks: " << kpu->get_memory_bank_count() << "\n";
+            std::cout << "  Scratchpads: " << kpu->get_scratchpad_count() << "\n";
+            std::cout << "  Compute tiles: " << kpu->get_compute_tile_count() << "\n";
+            std::cout << "  DMA engines: " << kpu->get_dma_engine_count() << "\n";
+        }
+
+        // Run self test
+        std::cout << "\nRunning self test...\n";
+        bool test_passed = sim.run_self_test();
+        std::cout << "Self test: " << (test_passed ? "PASSED" : "FAILED") << "\n";
+
+        // Shutdown
+        sim.shutdown();
+        std::cout << "Shutdown: complete\n";
+	    return true;
+    }
+    else {
+        std::cout << "Initialization: FAILED\n";
+	    return false;
+    }
+}
+
+int main() {
+    std::cout << "===========================================\n";
+    std::cout << " Host + T100 KPU configuration\n";
+    std::cout << "===========================================\n";
+
+    try {
+	bool bSaveToFile = false;
+	SystemConfig config;
+	create_system(config);
+        bool success = bist(config);
+	
+	if (bSaveToFile) {
+	    // Save to file
+	    std::filesystem::path temp_file = "host_kpu_T100.json";
+	    ConfigLoader::save_to_file(config, temp_file);
+	    std::cout << "Saved to: " << temp_file << "\n";
+	}
+
+	std::cout << '\n';
+        std::cout << "===========================================\n";
+        std::cout << " simulation completed successfully!\n";
+        std::cout << "===========================================\n";
+
+        return EXIT_SUCCESS;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "\nError: " << e.what() << "\n";
+        return EXIT_FAILURE;
+    }
+}

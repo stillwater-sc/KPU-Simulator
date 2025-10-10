@@ -5,6 +5,81 @@
 namespace sw::sim {
 
 //=============================================================================
+// AcceleratorConfig Equality Operators
+//=============================================================================
+
+bool AcceleratorConfig::operator==(const AcceleratorConfig& other) const {
+    if (type != other.type || id != other.id || description != other.description) {
+        return false;
+    }
+
+    // Compare type-specific configs based on type
+    switch (type) {
+        case AcceleratorType::KPU:
+            return kpu_config.has_value() == other.kpu_config.has_value();
+            // Note: We're doing a simple existence check rather than deep comparison
+            // Deep comparison would require operator== for all nested config types
+        case AcceleratorType::GPU:
+            return gpu_config.has_value() == other.gpu_config.has_value();
+        case AcceleratorType::TPU:
+            return tpu_config.has_value() == other.tpu_config.has_value();
+        case AcceleratorType::NPU:
+            return npu_config.has_value() == other.npu_config.has_value();
+        case AcceleratorType::CGRA:
+            return cgra_config.has_value() == other.cgra_config.has_value();
+        case AcceleratorType::DSP:
+            return dsp_config.has_value() == other.dsp_config.has_value();
+        case AcceleratorType::FPGA:
+            return fpga_config.has_value() == other.fpga_config.has_value();
+        default:
+            return true;
+    }
+}
+
+void InterconnectConfig::clear() {
+    host_to_accelerator = HostToAcceleratorConfig{};
+    accelerator_to_accelerator = AcceleratorToAcceleratorConfig{};
+	on_chip = OnChipConfig{};
+	network.reset();
+}
+bool InterconnectConfig::is_empty() const {
+    return host_to_accelerator.type == "None" &&
+           accelerator_to_accelerator.type == "None" &&
+           !network.has_value();
+}
+
+bool InterconnectConfig::operator==(const InterconnectConfig& other) const {
+    return (host_to_accelerator.type == other.host_to_accelerator.type) &&
+           (accelerator_to_accelerator.type == other.accelerator_to_accelerator.type) &&
+           (network.has_value() == other.network.has_value() &&
+            (!network.has_value() || (network->type == other.network->type)));
+}
+
+//=============================================================================
+// SystemConfig State Management Functions
+//=============================================================================
+
+void SystemConfig::clear() {
+    system = SystemInfo{};
+    host = HostConfig{};
+    accelerators.clear();
+    interconnect = InterconnectConfig{};
+    system_services = SystemServicesConfig{};
+}
+
+bool SystemConfig::is_empty() const {
+    return system.name.empty() && host.memory.modules.empty() && accelerators.empty();
+}
+
+bool SystemConfig::operator==(const SystemConfig& other) const {
+    return (system.name == other.system.name) &&
+           (host.memory.modules == other.host.memory.modules) &&
+           (accelerators == other.accelerators) &&
+           (interconnect == other.interconnect) &&
+           (system_services.memory_manager.enabled == other.system_services.memory_manager.enabled);
+}
+
+//=============================================================================
 // SystemConfig Validation
 //=============================================================================
 

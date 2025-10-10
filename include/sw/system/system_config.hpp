@@ -43,6 +43,17 @@ struct MemoryModuleConfig {
     float bandwidth_gbps{25.6f};
     uint32_t latency_ns{80};
     uint32_t channels{2};
+
+    bool operator==(const MemoryModuleConfig& other) const {
+        return id == other.id &&
+               type == other.type &&
+               form_factor == other.form_factor &&
+               capacity_gb == other.capacity_gb &&
+               frequency_mhz == other.frequency_mhz &&
+               bandwidth_gbps == other.bandwidth_gbps &&
+               latency_ns == other.latency_ns &&
+               channels == other.channels;
+    }
 };
 
 struct HostMemoryConfig {
@@ -258,6 +269,8 @@ struct AcceleratorConfig {
     std::optional<NPUConfig> cgra_config;
     std::optional<NPUConfig> dsp_config;
     std::optional<NPUConfig> fpga_config;
+
+    bool operator==(const AcceleratorConfig& other) const;
 };
 
 //=============================================================================
@@ -312,6 +325,9 @@ struct InterconnectConfig {
     AcceleratorToAcceleratorConfig accelerator_to_accelerator;
     OnChipConfig on_chip;
     std::optional<NetworkConfig> network;
+	void clear();
+	bool is_empty() const;
+	bool operator==(const InterconnectConfig& other) const;
 };
 
 //=============================================================================
@@ -354,6 +370,11 @@ struct SystemConfig {
     std::vector<AcceleratorConfig> accelerators;
     InterconnectConfig interconnect;
     SystemServicesConfig system_services;
+
+	// state management
+    void clear();
+	bool is_empty() const;
+	bool operator==(const SystemConfig& other) const;
 
     // Validation
     bool validate() const;

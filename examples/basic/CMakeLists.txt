@@ -23,7 +23,7 @@ function(kpu_add_example name)
     
     install(TARGETS example_${name}
         RUNTIME DESTINATION ${CMAKE_INSTALL_DATADIR}/stillwater-kpu/examples/bin
-            COMPONENT Examples
+        COMPONENT Examples
     )
     
     # Install source code for reference

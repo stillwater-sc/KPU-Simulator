@@ -40,6 +40,7 @@ option(KPU_BUILD_EXAMPLES         "Build examples"                ON)
 option(KPU_BUILD_TOOLS            "Build development tools"       ON)
 option(KPU_BUILD_PYTHON_BINDINGS  "Build Python bindings"         ON)
 option(KPU_BUILD_BENCHMARKS       "Build benchmark suite"         ON)
+option(KPU_BUILD_MODELS           "Build architecture models"     ON)
 option(KPU_BUILD_DOCS             "Build documentation"           OFF)
 option(KPU_ENABLE_OPENMP          "Enable OpenMP parallelization" ON)
 option(KPU_ENABLE_CUDA            "Enable CUDA support"           OFF)
@@ -138,12 +139,17 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # Add subdirectory builds - each manages its own sources and targets
 add_subdirectory(src)
 
-# Only add tests if enabled
+# Only build tests if enabled
 if(KPU_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Only add examples if enabled
+# Only build models if enabled
+if(KPU_BUILD_MODELS)
+    add_subdirectory(models)
+endif()
+
+# Only build examples if enabled
 if(KPU_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
