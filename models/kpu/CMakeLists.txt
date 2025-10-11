@@ -69,3 +69,18 @@ add_model(test_debug_dataflow
 target_link_libraries(model_test_debug_dataflow PRIVATE
     StillwaterKPU::System
 )
+
+add_model(matmul_tiled_autonomous
+    FOLDER "kpu"
+    DESCRIPTION "Configurable tiled matrix multiplication with autonomous orchestration"
+    SOURCES matmul_tiled_autonomous.cpp
+)
+
+target_link_libraries(model_matmul_tiled_autonomous PRIVATE
+    StillwaterKPU::System
+)
+
+# Add include directory for autonomous_orchestrator.hpp
+target_include_directories(model_matmul_tiled_autonomous PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
