@@ -46,6 +46,7 @@ endfunction()
 add_subdirectory(system)
 add_subdirectory(driver)
 add_subdirectory(memory)
+add_subdirectory(trace)
 add_subdirectory(dma)
 add_subdirectory(block_mover)
 add_subdirectory(streamer)
@@ -81,7 +82,7 @@ add_custom_target(test_driver
 )
 set_target_properties(test_driver PROPERTIES FOLDER "Tests/Runners")
 
-add_custom_target(test_memory 
+add_custom_target(test_memory
     COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L memory
     COMMENT "Running memory tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -89,8 +90,16 @@ add_custom_target(test_memory
 )
 set_target_properties(test_memory PROPERTIES FOLDER "Tests/Runners")
 
+add_custom_target(test_trace
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L trace
+    COMMENT "Running trace system tests"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    VERBATIM
+)
+set_target_properties(test_trace PROPERTIES FOLDER "Tests/Runners")
+
 add_custom_target(test_dma
-    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L dma  
+    COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG> --output-on-failure -L dma
     COMMENT "Running DMA tests"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     VERBATIM

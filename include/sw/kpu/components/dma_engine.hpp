@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 // Windows/MSVC compatibility
 #ifdef _MSC_VER
@@ -21,6 +22,7 @@
 #include <sw/concepts.hpp>
 #include <sw/memory/external_memory.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
     
@@ -41,6 +43,11 @@ public:
         Address dst_addr;
         Size size;
         std::function<void()> completion_callback;
+
+        // Cycle-based timing
+        trace::CycleCount start_cycle;
+        trace::CycleCount end_cycle;
+        uint64_t transaction_id;  // For trace correlation
     };
 
 private:
@@ -48,16 +55,42 @@ private:
     bool is_active;
     size_t engine_id;  // For debugging/identification
 
+    // Tracing support
+    bool tracing_enabled_;
+    trace::TraceLogger* trace_logger_;
+    double clock_freq_ghz_;  // Clock frequency for bandwidth calculations
+    double bandwidth_gb_s_;  // Theoretical bandwidth in GB/s
+
+    // Current cycle (for timing)
+    trace::CycleCount current_cycle_;
+
 public:
-    explicit DMAEngine(size_t engine_id = 0);
+    explicit DMAEngine(size_t engine_id = 0, double clock_freq_ghz = 1.0, double bandwidth_gb_s = 100.0);
     ~DMAEngine() = default;
 
-    // Transfer operations - now configured per-transfer
+    // Enable/disable tracing
+    void enable_tracing(bool enabled = true, trace::TraceLogger* logger = nullptr) {
+        tracing_enabled_ = enabled;
+        if (logger) trace_logger_ = logger;
+    }
+
+    // Set current cycle (called by system clock/orchestrator)
+    void set_current_cycle(trace::CycleCount cycle) {
+        current_cycle_ = cycle;
+    }
+
+    trace::CycleCount get_current_cycle() const {
+        return current_cycle_;
+    }
+
+    // Transfer operations - now cycle-aware
     void enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
                          MemoryType dst_type, size_t dst_id, Address dst_addr,
                          Size size, std::function<void()> callback = nullptr);
+
     bool process_transfers(std::vector<ExternalMemory>& memory_banks,
                           std::vector<Scratchpad>& scratchpads);
+
     bool is_busy() const { return is_active || !transfer_queue.empty(); }
     void reset();
 

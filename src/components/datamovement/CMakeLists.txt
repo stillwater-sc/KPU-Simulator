@@ -22,6 +22,7 @@ target_include_directories(kpu_datamovement_components
 target_link_libraries(kpu_datamovement_components
     PUBLIC
         kpu_memory_components  # DATAMOVEMENT components depend on memory components
+        kpu_trace              # For cycle-accurate tracing
 )
 
 # Set target properties

@@ -2,6 +2,9 @@
 # src/CMakeLists.txt
 # Core simulator engine
 
+# Add trace infrastructure first (needed by components)
+add_subdirectory(trace)
+
 # Add component-based architecture
 add_subdirectory(components)
 
