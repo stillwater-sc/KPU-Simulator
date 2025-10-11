@@ -222,13 +222,14 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     }, "Streamer: L1->L2 (output)");
 
     orch.await(STREAM_OUTPUT_DONE, [&]() {
+        const Address l2_output_addr = 0x4000;
         const Address l3_output_addr = 0x8000;
-        kpu->start_block_transfer(block_mover_id, l2_bank_id, 0x4000,  // l2_output_addr
-                                   l3_tile_id, l3_output_addr,
-                                   batch_size, output_dim, sizeof(float),
-                                   BlockMover::TransformType::IDENTITY,
-                                   [&]() { orch.signal(BLOCK_OUTPUT_DONE); });
-    }, "BlockMover: L2->L3 (output)");
+        // BlockMover only supports L3→L2, so do manual L2→L3 transfer
+        std::vector<uint8_t> temp(batch_size * output_dim * sizeof(float));
+        kpu->read_l2_bank(l2_bank_id, l2_output_addr, temp.data(), temp.size());
+        kpu->write_l3_tile(l3_tile_id, l3_output_addr, temp.data(), temp.size());
+        orch.signal(BLOCK_OUTPUT_DONE);
+    }, "Manual: L2->L3 (output)");
 
     orch.await(BLOCK_OUTPUT_DONE, [&]() {
         const Address l3_output_addr = 0x8000;
@@ -279,7 +280,14 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         }
     }
 
-    std::cout << "  Execution complete in " << cycle_count << " cycles\n";
+    std::cout << "  All operations launched in " << cycle_count << " cycles\n";
+    std::cout << "  Waiting for hardware to finish processing...\n";
+
+    // Continue stepping until all hardware components are idle
+    // (orchestrator completion just means operations are launched, not finished)
+    kpu->run_until_idle();
+
+    std::cout << "  Hardware processing complete\n";
 
     // ========================================
     // Result Verification
@@ -309,7 +317,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     }
 
     if (correct) {
-        std::cout << "  ✓ Results verified correct!\n";
+        std::cout << "  Results verified correct!\n";
     }
 
     std::cout << "\n========================================\n";
@@ -478,7 +486,7 @@ bool run_autonomous_test(const SystemConfig& config) {
 
     // Run autonomous MLP layer execution
     // Small test: 4 batch, 8 input dim, 4 output dim
-    bool success = execute_mlp_layer_autonomous(kpu, 4, 8, 4, false);
+    bool success = execute_mlp_layer_autonomous(kpu, 4, 8, 4, false);  // Disable verbose
 
     sim.shutdown();
     std::cout << "Shutdown: complete\n";

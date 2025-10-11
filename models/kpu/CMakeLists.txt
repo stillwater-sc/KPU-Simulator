@@ -59,3 +59,13 @@ target_link_libraries(model_host_t100_autonomous PRIVATE
 target_include_directories(model_host_t100_autonomous PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+add_model(test_debug_dataflow
+    FOLDER "kpu"
+    DESCRIPTION "Debug test for data flow through KPU pipeline"
+    SOURCES test_debug_dataflow.cpp
+)
+
+target_link_libraries(model_test_debug_dataflow PRIVATE
+    StillwaterKPU::System
+)

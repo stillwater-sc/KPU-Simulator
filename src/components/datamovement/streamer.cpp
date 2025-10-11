@@ -145,6 +145,7 @@ bool Streamer::stream_row_l2_to_l1(Cycle current_cycle,
 
     // Simplified row streaming for test compatibility
     // Stream elements from the current row to consecutive L1 positions
+    // FIX: Accumulate L1 address offset so we don't overwrite previous chunks
 
     Size elements_to_stream = std::min(fabric_size, config.matrix_width - current_stream->current_col);
 
@@ -155,8 +156,10 @@ bool Streamer::stream_row_l2_to_l1(Cycle current_cycle,
         Address l2_addr = config.l2_base_addr +
                          (current_stream->current_row * config.matrix_width + current_matrix_col) * config.element_size;
 
-        // Calculate L1 address: consecutive positions
-        Address l1_addr = config.l1_base_addr + i * config.element_size;
+        // Calculate L1 address: accumulate offset for full matrix
+        // Position in the full matrix being assembled in L1
+        Size offset = current_stream->current_row * config.matrix_width + current_matrix_col;
+        Address l1_addr = config.l1_base_addr + offset * config.element_size;
 
         // Transfer data directly from L2 to L1
         std::vector<uint8_t> element_data(config.element_size);
@@ -191,6 +194,7 @@ bool Streamer::stream_column_l2_to_l1(Cycle current_cycle,
 
     // Simplified column streaming for test compatibility
     // Stream elements from the current column to consecutive L1 positions
+    // FIX: Accumulate L1 address offset so we don't overwrite previous chunks
 
     Size elements_to_stream = std::min(fabric_size, config.matrix_height - current_stream->current_row);
 
@@ -201,8 +205,10 @@ bool Streamer::stream_column_l2_to_l1(Cycle current_cycle,
         Address l2_addr = config.l2_base_addr +
                          (current_matrix_row * config.matrix_width + current_stream->current_col) * config.element_size;
 
-        // Calculate L1 address: consecutive positions
-        Address l1_addr = config.l1_base_addr + i * config.element_size;
+        // Calculate L1 address: accumulate offset for full matrix
+        // Position in the full matrix being assembled in L1
+        Size offset = current_matrix_row * config.matrix_width + current_stream->current_col;
+        Address l1_addr = config.l1_base_addr + offset * config.element_size;
 
         // Transfer data directly from L2 to L1
         std::vector<uint8_t> element_data(config.element_size);
@@ -236,15 +242,18 @@ bool Streamer::stream_row_l1_to_l2(Cycle current_cycle,
     Size fabric_size = config.compute_fabric_size;
 
     // Simplified L1→L2 row streaming
+    // FIX: Read from proper L1 offset (full matrix layout)
     Size elements_to_stream = std::min(fabric_size, config.matrix_width - current_stream->current_col);
 
     for (Size i = 0; i < elements_to_stream; ++i) {
-        // Calculate L1 address
-        Address l1_addr = config.l1_base_addr + i * config.element_size;
+        Size current_matrix_col = current_stream->current_col + i;
+
+        // Calculate L1 address: read from full matrix layout
+        Size offset = current_stream->current_row * config.matrix_width + current_matrix_col;
+        Address l1_addr = config.l1_base_addr + offset * config.element_size;
 
         // Calculate L2 address: write to row in row-major matrix (row * width + col)
-        Address l2_addr = config.l2_base_addr +
-                         (current_stream->current_row * config.matrix_width + current_stream->current_col + i) * config.element_size;
+        Address l2_addr = config.l2_base_addr + offset * config.element_size;
 
         // Transfer data
         std::vector<uint8_t> element_data(config.element_size);
@@ -278,15 +287,18 @@ bool Streamer::stream_column_l1_to_l2(Cycle current_cycle,
     Size fabric_size = config.compute_fabric_size;
 
     // Simplified L1→L2 column streaming
+    // FIX: Read from proper L1 offset (full matrix layout)
     Size elements_to_stream = std::min(fabric_size, config.matrix_height - current_stream->current_row);
 
     for (Size i = 0; i < elements_to_stream; ++i) {
-        // Calculate L1 address
-        Address l1_addr = config.l1_base_addr + i * config.element_size;
+        Size current_matrix_row = current_stream->current_row + i;
+
+        // Calculate L1 address: read from full matrix layout
+        Size offset = current_matrix_row * config.matrix_width + current_stream->current_col;
+        Address l1_addr = config.l1_base_addr + offset * config.element_size;
 
         // Calculate L2 address: write to column in row-major matrix (row * width + col)
-        Address l2_addr = config.l2_base_addr +
-                         ((current_stream->current_row + i) * config.matrix_width + current_stream->current_col) * config.element_size;
+        Address l2_addr = config.l2_base_addr + offset * config.element_size;
 
         // Transfer data
         std::vector<uint8_t> element_data(config.element_size);

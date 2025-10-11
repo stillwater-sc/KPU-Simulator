@@ -135,12 +135,23 @@ bool SystolicArray::update(Cycle current_cycle, std::vector<Scratchpad>& scratch
         return false;
     }
 
+    // Set start cycle on first call
     if (compute_start_cycle == 0) {
         compute_start_cycle = current_cycle;
-        // For now, implement a simple direct matrix multiplication
-        // Rather than true systolic dataflow
+    }
+
+    // Calculate elapsed cycles
+    Cycle cycles_elapsed = current_cycle - compute_start_cycle;
+
+    // Calculate required cycles for this matmul operation
+    Cycle required_cycles = estimate_cycles(current_op.m, current_op.n, current_op.k);
+
+    // Check if computation has completed
+    if (cycles_elapsed >= required_cycles) {
+        // Perform the actual matrix multiplication
         perform_direct_matrix_multiply(scratchpads);
 
+        // Call completion callback if provided
         if (current_op.completion_callback) {
             current_op.completion_callback();
         }
@@ -149,6 +160,7 @@ bool SystolicArray::update(Cycle current_cycle, std::vector<Scratchpad>& scratch
         return true;
     }
 
+    // Still computing
     return false;
 }
 

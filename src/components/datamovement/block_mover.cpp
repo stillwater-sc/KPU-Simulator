@@ -13,7 +13,8 @@ namespace sw::kpu {
 
 // BlockMover implementation - manages L3↔L2 data movement with transformations
 BlockMover::BlockMover(size_t engine_id, size_t associated_l3_tile_id)
-    : is_active(false), engine_id(engine_id), associated_l3_tile_id(associated_l3_tile_id) {
+    : is_active(false), engine_id(engine_id), associated_l3_tile_id(associated_l3_tile_id),
+      cycles_remaining(0) {
 }
 
 void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offset,
@@ -31,57 +32,79 @@ void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offse
 
 bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
                                   std::vector<L2Bank>& l2_banks) {
-    if (transfer_queue.empty()) {
+    if (transfer_queue.empty() && cycles_remaining == 0) {
         is_active = false;
         return false;
     }
 
     is_active = true;
-    auto& transfer = transfer_queue.front();
 
-    // Validate indices
-    if (transfer.src_l3_tile_id >= l3_tiles.size()) {
-        throw std::out_of_range("Invalid L3 tile ID: " + std::to_string(transfer.src_l3_tile_id));
-    }
-    if (transfer.dst_l2_bank_id >= l2_banks.size()) {
-        throw std::out_of_range("Invalid L2 bank ID: " + std::to_string(transfer.dst_l2_bank_id));
-    }
+    // Start a new transfer if none is active
+    if (cycles_remaining == 0 && !transfer_queue.empty()) {
+        auto& transfer = transfer_queue.front();
 
-    // Calculate total block size
-    Size block_size = transfer.block_height * transfer.block_width * transfer.element_size;
+        // Validate indices
+        if (transfer.src_l3_tile_id >= l3_tiles.size()) {
+            throw std::out_of_range("Invalid L3 tile ID: " + std::to_string(transfer.src_l3_tile_id));
+        }
+        if (transfer.dst_l2_bank_id >= l2_banks.size()) {
+            throw std::out_of_range("Invalid L2 bank ID: " + std::to_string(transfer.dst_l2_bank_id));
+        }
 
-    // Allocate buffers for the transfer
-    std::vector<std::uint8_t> src_buffer(block_size);
-    std::vector<std::uint8_t> dst_buffer(block_size);
+        // Calculate total block size and transfer cycles
+        Size block_size = transfer.block_height * transfer.block_width * transfer.element_size;
 
-    // Read block from L3 tile
-    l3_tiles[transfer.src_l3_tile_id].read_block(
-        transfer.src_offset, src_buffer.data(),
-        transfer.block_height, transfer.block_width, transfer.element_size
-    );
+        // Timing model: 1 cycle per 64 bytes (cache line), minimum 1 cycle
+        constexpr Size CACHE_LINE_SIZE = 64;
+        cycles_remaining = std::max<Cycle>(1, (block_size + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE);
 
-    // Apply transformation
-    apply_transform(src_buffer, dst_buffer, transfer);
+        // Read block from L3 tile into buffer
+        std::vector<std::uint8_t> src_buffer(block_size);
+        transfer_buffer.resize(block_size);
 
-    // Write transformed block to L2 bank
-    l2_banks[transfer.dst_l2_bank_id].write_block(
-        transfer.dst_offset, dst_buffer.data(),
-        transfer.block_height, transfer.block_width, transfer.element_size
-    );
+        l3_tiles[transfer.src_l3_tile_id].read_block(
+            transfer.src_offset, src_buffer.data(),
+            transfer.block_height, transfer.block_width, transfer.element_size
+        );
 
-    // Call completion callback if provided
-    if (transfer.completion_callback) {
-        transfer.completion_callback();
+        // Apply transformation immediately (transform happens in block mover logic)
+        apply_transform(src_buffer, transfer_buffer, transfer);
     }
 
-    transfer_queue.erase(transfer_queue.begin());
+    // Process one cycle of the current transfer
+    if (cycles_remaining > 0) {
+        cycles_remaining--;
 
-    bool completed = transfer_queue.empty();
-    if (completed) {
-        is_active = false;
+        // Transfer completes when cycles reach 0
+        if (cycles_remaining == 0) {
+            auto& transfer = transfer_queue.front();
+
+            // Write transformed block to L2 bank
+            l2_banks[transfer.dst_l2_bank_id].write_block(
+                transfer.dst_offset, transfer_buffer.data(),
+                transfer.block_height, transfer.block_width, transfer.element_size
+            );
+
+            // Call completion callback if provided
+            if (transfer.completion_callback) {
+                transfer.completion_callback();
+            }
+
+            // Remove completed transfer from queue
+            transfer_queue.erase(transfer_queue.begin());
+            transfer_buffer.clear();
+
+            // Check if all work is done
+            bool completed = transfer_queue.empty();
+            if (completed) {
+                is_active = false;
+            }
+
+            return completed;
+        }
     }
 
-    return completed;
+    return false;
 }
 
 void BlockMover::apply_transform(const std::vector<uint8_t>& src_data,
@@ -133,6 +156,8 @@ void BlockMover::transpose_block(const std::vector<uint8_t>& src,
 
 void BlockMover::reset() {
     transfer_queue.clear();
+    transfer_buffer.clear();
+    cycles_remaining = 0;
     is_active = false;
 }
 

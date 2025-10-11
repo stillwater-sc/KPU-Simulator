@@ -63,6 +63,10 @@ private:
     size_t engine_id;              // For debugging/identification
     size_t associated_l3_tile_id;  // Which L3 tile this block mover serves
 
+    // Multi-cycle timing state
+    Cycle cycles_remaining;        // Cycles left for current transfer
+    std::vector<uint8_t> transfer_buffer;  // Buffer for current transfer data
+
     // Internal transformation engine
     void apply_transform(const std::vector<uint8_t>& src_data,
                         std::vector<uint8_t>& dst_data,
