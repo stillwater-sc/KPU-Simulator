@@ -43,3 +43,19 @@ add_model(host_t100
 target_link_libraries(model_host_t100 PRIVATE
     StillwaterKPU::System
 )
+
+add_model(host_t100_autonomous
+    FOLDER "kpu"
+    DESCRIPTION "host + T100 KPU simulator with autonomous component orchestration"
+    SOURCES host_t100_autonomous.cpp
+)
+
+# Link autonomous model against system library
+target_link_libraries(model_host_t100_autonomous PRIVATE
+    StillwaterKPU::System
+)
+
+# Add include directory for autonomous_orchestrator.hpp
+target_include_directories(model_host_t100_autonomous PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
