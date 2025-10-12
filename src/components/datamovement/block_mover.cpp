@@ -8,13 +8,34 @@
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/l3_tile.hpp>
 #include <sw/kpu/components/l2_bank.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
 
+// Helper function to convert TransformType to string
+static const char* transform_type_to_string(BlockMover::TransformType type) {
+    switch (type) {
+        case BlockMover::TransformType::IDENTITY: return "IDENTITY";
+        case BlockMover::TransformType::TRANSPOSE: return "TRANSPOSE";
+        case BlockMover::TransformType::BLOCK_RESHAPE: return "BLOCK_RESHAPE";
+        case BlockMover::TransformType::SHUFFLE_PATTERN: return "SHUFFLE_PATTERN";
+        default: return "UNKNOWN";
+    }
+}
+
 // BlockMover implementation - manages L3↔L2 data movement with transformations
-BlockMover::BlockMover(size_t engine_id, size_t associated_l3_tile_id)
-    : is_active(false), engine_id(engine_id), associated_l3_tile_id(associated_l3_tile_id),
-      cycles_remaining(0) {
+BlockMover::BlockMover(size_t engine_id, size_t associated_l3_tile_id,
+                       double clock_freq_ghz, double bandwidth_gb_s)
+    : is_active(false)
+    , engine_id(engine_id)
+    , associated_l3_tile_id(associated_l3_tile_id)
+    , cycles_remaining(0)
+    , tracing_enabled_(false)
+    , trace_logger_(&trace::TraceLogger::instance())
+    , clock_freq_ghz_(clock_freq_ghz)
+    , current_cycle_(0)
+    , bandwidth_gb_s_(bandwidth_gb_s)
+{
 }
 
 void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offset,
@@ -22,12 +43,57 @@ void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offse
                                        Size block_height, Size block_width, Size element_size,
                                        TransformType transform,
                                        std::function<void()> callback) {
-    transfer_queue.emplace_back(BlockTransfer{
+    // Get transaction ID
+    uint64_t txn_id = trace_logger_->next_transaction_id();
+
+    // Calculate block size
+    Size block_size = block_height * block_width * element_size;
+
+    // Create transfer with timing info
+    BlockTransfer transfer{
         src_l3_tile_id, src_offset,
         dst_l2_bank_id, dst_offset,
         block_height, block_width, element_size,
-        transform, std::move(callback)
-    });
+        transform, std::move(callback),
+        current_cycle_,  // start_cycle
+        0,               // end_cycle (not yet completed)
+        txn_id
+    };
+
+    transfer_queue.emplace_back(std::move(transfer));
+
+    // Log trace entry for transfer issue
+    if (tracing_enabled_ && trace_logger_) {
+        trace::TraceEntry entry(
+            current_cycle_,
+            trace::ComponentType::BLOCK_MOVER,
+            static_cast<uint32_t>(engine_id),
+            trace::TransactionType::TRANSFER,
+            txn_id
+        );
+
+        // Set clock frequency for time conversion
+        entry.clock_freq_ghz = clock_freq_ghz_;
+
+        // Create DMA payload (BlockMover is a specialized DMA)
+        trace::DMAPayload payload;
+        payload.source = trace::MemoryLocation(
+            src_offset, block_size, static_cast<uint32_t>(src_l3_tile_id),
+            trace::ComponentType::L3_TILE
+        );
+        payload.destination = trace::MemoryLocation(
+            dst_offset, block_size, static_cast<uint32_t>(dst_l2_bank_id),
+            trace::ComponentType::L2_BANK
+        );
+        payload.bytes_transferred = block_size;
+        payload.bandwidth_gb_s = bandwidth_gb_s_;
+
+        entry.payload = payload;
+        entry.description = std::string("BlockMover transfer enqueued (") +
+                           transform_type_to_string(transform) + ")";
+
+        trace_logger_->log(std::move(entry));
+    }
 }
 
 bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
@@ -79,11 +145,52 @@ bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
         if (cycles_remaining == 0) {
             auto& transfer = transfer_queue.front();
 
+            // Set completion time
+            transfer.end_cycle = current_cycle_;
+
             // Write transformed block to L2 bank
             l2_banks[transfer.dst_l2_bank_id].write_block(
                 transfer.dst_offset, transfer_buffer.data(),
                 transfer.block_height, transfer.block_width, transfer.element_size
             );
+
+            // Log trace entry for transfer completion
+            if (tracing_enabled_ && trace_logger_) {
+                Size block_size = transfer.block_height * transfer.block_width * transfer.element_size;
+
+                trace::TraceEntry entry(
+                    transfer.start_cycle,
+                    trace::ComponentType::BLOCK_MOVER,
+                    static_cast<uint32_t>(engine_id),
+                    trace::TransactionType::TRANSFER,
+                    transfer.transaction_id
+                );
+
+                // Set clock frequency for time conversion
+                entry.clock_freq_ghz = clock_freq_ghz_;
+
+                // Complete the entry with end cycle
+                entry.complete(transfer.end_cycle, trace::TransactionStatus::COMPLETED);
+
+                // Create DMA payload
+                trace::DMAPayload payload;
+                payload.source = trace::MemoryLocation(
+                    transfer.src_offset, block_size, static_cast<uint32_t>(transfer.src_l3_tile_id),
+                    trace::ComponentType::L3_TILE
+                );
+                payload.destination = trace::MemoryLocation(
+                    transfer.dst_offset, block_size, static_cast<uint32_t>(transfer.dst_l2_bank_id),
+                    trace::ComponentType::L2_BANK
+                );
+                payload.bytes_transferred = block_size;
+                payload.bandwidth_gb_s = bandwidth_gb_s_;
+
+                entry.payload = payload;
+                entry.description = std::string("BlockMover transfer completed (") +
+                                   transform_type_to_string(transfer.transform) + ")";
+
+                trace_logger_->log(std::move(entry));
+            }
 
             // Call completion callback if provided
             if (transfer.completion_callback) {
@@ -159,6 +266,7 @@ void BlockMover::reset() {
     transfer_buffer.clear();
     cycles_remaining = 0;
     is_active = false;
+    current_cycle_ = 0;
 }
 
 } // namespace sw::kpu

@@ -47,7 +47,7 @@ int main() {
     std::cout << "L3 A: " << verify_A[0] << ", " << verify_A[1] << ", " << verify_A[2] << ", " << verify_A[3] << "\n";
     std::cout << "L3 B: " << verify_B[0] << ", " << verify_B[1] << ", " << verify_B[2] << ", " << verify_B[3] << "\n";
 
-    std::cout << "\n=== Step 3: BlockMover L3→L2 ===\n";
+    std::cout << "\n=== Step 3: BlockMover L3->L2 ===\n";
     bool block_a_done = false, block_b_done = false;
     kpu.start_block_transfer(0, 0, 0x0000, 0, 0x0000, 2, 2, sizeof(float),
                              BlockMover::TransformType::IDENTITY,
@@ -64,7 +64,7 @@ int main() {
     std::cout << "L2 A: " << verify_A[0] << ", " << verify_A[1] << ", " << verify_A[2] << ", " << verify_A[3] << "\n";
     std::cout << "L2 B: " << verify_B[0] << ", " << verify_B[1] << ", " << verify_B[2] << ", " << verify_B[3] << "\n";
 
-    std::cout << "\n=== Step 4: Streamer L2→L1 ===\n";
+    std::cout << "\n=== Step 4: Streamer L2->L1 ===\n";
     bool stream_a_done = false, stream_b_done = false;
     kpu.start_row_stream(0, 0, 0, 0x0000, 0x0000, 2, 2, sizeof(float), 16,
                          Streamer::StreamDirection::L2_TO_L1,

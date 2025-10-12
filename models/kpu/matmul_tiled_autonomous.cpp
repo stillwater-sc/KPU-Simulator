@@ -91,7 +91,7 @@ struct MatMulConfig {
         }
 
         // Calculate utilization
-        double theoretical_cycles = std::max(M, N) * std::max(K, N);
+        double theoretical_cycles = static_cast<double>(std::max(M, N) * std::max(K, N));
         double utilization = (theoretical_cycles / total_cycles) * 100.0;
         std::cout << "Array utilization: " << std::fixed << std::setprecision(1)
                   << utilization << "%\n";

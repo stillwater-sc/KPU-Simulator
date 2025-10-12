@@ -4,3 +4,8 @@
 kpu_add_component_test(block_mover_basic_test "iddo"
     test_block_mover_basic.cpp
 )
+
+# BlockMover tracing tests
+kpu_add_component_test(block_mover_tracing_test "iddo"
+    test_block_mover_tracing.cpp
+)

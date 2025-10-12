@@ -7,6 +7,7 @@
 #include <atomic>
 #include <functional>
 #include <algorithm>
+#include <iterator>
 
 // Windows/MSVC compatibility
 #ifdef _MSC_VER

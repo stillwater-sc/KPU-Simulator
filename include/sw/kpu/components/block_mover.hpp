@@ -19,6 +19,7 @@
 #endif
 
 #include <sw/concepts.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
 
@@ -55,6 +56,11 @@ public:
 
         // Completion callback
         std::function<void()> completion_callback;
+
+        // Timing and tracing
+        Cycle start_cycle;
+        Cycle end_cycle;
+        uint64_t transaction_id;
     };
 
 private:
@@ -66,6 +72,13 @@ private:
     // Multi-cycle timing state
     Cycle cycles_remaining;        // Cycles left for current transfer
     std::vector<uint8_t> transfer_buffer;  // Buffer for current transfer data
+
+    // Tracing support
+    bool tracing_enabled_;
+    trace::TraceLogger* trace_logger_;
+    double clock_freq_ghz_;
+    Cycle current_cycle_;
+    double bandwidth_gb_s_;        // Theoretical bandwidth for this block mover
 
     // Internal transformation engine
     void apply_transform(const std::vector<uint8_t>& src_data,
@@ -81,8 +94,18 @@ private:
                         Size height, Size width, Size element_size);
 
 public:
-    explicit BlockMover(size_t engine_id, size_t associated_l3_tile_id);
+    explicit BlockMover(size_t engine_id, size_t associated_l3_tile_id,
+                       double clock_freq_ghz = 1.0, double bandwidth_gb_s = 100.0);
     ~BlockMover() = default;
+
+    // Tracing control
+    void enable_tracing() { tracing_enabled_ = true; }
+    void disable_tracing() { tracing_enabled_ = false; }
+    bool is_tracing_enabled() const { return tracing_enabled_; }
+
+    // Cycle management for timing simulation
+    void set_cycle(Cycle cycle) { current_cycle_ = cycle; }
+    Cycle get_cycle() const { return current_cycle_; }
 
     // Block transfer operations - configured per-transfer
     void enqueue_block_transfer(size_t src_l3_tile_id, Address src_offset,
