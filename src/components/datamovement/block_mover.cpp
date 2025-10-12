@@ -46,54 +46,18 @@ void BlockMover::enqueue_block_transfer(size_t src_l3_tile_id, Address src_offse
     // Get transaction ID
     uint64_t txn_id = trace_logger_->next_transaction_id();
 
-    // Calculate block size
-    Size block_size = block_height * block_width * element_size;
-
     // Create transfer with timing info
     BlockTransfer transfer{
         src_l3_tile_id, src_offset,
         dst_l2_bank_id, dst_offset,
         block_height, block_width, element_size,
         transform, std::move(callback),
-        current_cycle_,  // start_cycle
+        0,               // start_cycle (will be set when transfer actually starts)
         0,               // end_cycle (not yet completed)
         txn_id
     };
 
     transfer_queue.emplace_back(std::move(transfer));
-
-    // Log trace entry for transfer issue
-    if (tracing_enabled_ && trace_logger_) {
-        trace::TraceEntry entry(
-            current_cycle_,
-            trace::ComponentType::BLOCK_MOVER,
-            static_cast<uint32_t>(engine_id),
-            trace::TransactionType::TRANSFER,
-            txn_id
-        );
-
-        // Set clock frequency for time conversion
-        entry.clock_freq_ghz = clock_freq_ghz_;
-
-        // Create DMA payload (BlockMover is a specialized DMA)
-        trace::DMAPayload payload;
-        payload.source = trace::MemoryLocation(
-            src_offset, block_size, static_cast<uint32_t>(src_l3_tile_id),
-            trace::ComponentType::L3_TILE
-        );
-        payload.destination = trace::MemoryLocation(
-            dst_offset, block_size, static_cast<uint32_t>(dst_l2_bank_id),
-            trace::ComponentType::L2_BANK
-        );
-        payload.bytes_transferred = block_size;
-        payload.bandwidth_gb_s = bandwidth_gb_s_;
-
-        entry.payload = payload;
-        entry.description = std::string("BlockMover transfer enqueued (") +
-                           transform_type_to_string(transform) + ")";
-
-        trace_logger_->log(std::move(entry));
-    }
 }
 
 bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
@@ -109,6 +73,9 @@ bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
     if (cycles_remaining == 0 && !transfer_queue.empty()) {
         auto& transfer = transfer_queue.front();
 
+        // Set the actual start cycle now that processing begins
+        transfer.start_cycle = current_cycle_;
+
         // Validate indices
         if (transfer.src_l3_tile_id >= l3_tiles.size()) {
             throw std::out_of_range("Invalid L3 tile ID: " + std::to_string(transfer.src_l3_tile_id));
@@ -123,6 +90,39 @@ bool BlockMover::process_transfers(std::vector<L3Tile>& l3_tiles,
         // Timing model: 1 cycle per 64 bytes (cache line), minimum 1 cycle
         constexpr Size CACHE_LINE_SIZE = 64;
         cycles_remaining = std::max<Cycle>(1, (block_size + CACHE_LINE_SIZE - 1) / CACHE_LINE_SIZE);
+
+        // Log trace entry for transfer issue (now that it's actually starting)
+        if (tracing_enabled_ && trace_logger_) {
+            trace::TraceEntry entry(
+                current_cycle_,
+                trace::ComponentType::BLOCK_MOVER,
+                static_cast<uint32_t>(engine_id),
+                trace::TransactionType::TRANSFER,
+                transfer.transaction_id
+            );
+
+            // Set clock frequency for time conversion
+            entry.clock_freq_ghz = clock_freq_ghz_;
+
+            // Create DMA payload (BlockMover is a specialized DMA)
+            trace::DMAPayload payload;
+            payload.source = trace::MemoryLocation(
+                transfer.src_offset, block_size, static_cast<uint32_t>(transfer.src_l3_tile_id),
+                trace::ComponentType::L3_TILE
+            );
+            payload.destination = trace::MemoryLocation(
+                transfer.dst_offset, block_size, static_cast<uint32_t>(transfer.dst_l2_bank_id),
+                trace::ComponentType::L2_BANK
+            );
+            payload.bytes_transferred = block_size;
+            payload.bandwidth_gb_s = bandwidth_gb_s_;
+
+            entry.payload = payload;
+            entry.description = std::string("BlockMover transfer issued (") +
+                               transform_type_to_string(transfer.transform) + ")";
+
+            trace_logger_->log(std::move(entry));
+        }
 
         // Read block from L3 tile into buffer
         std::vector<std::uint8_t> src_buffer(block_size);

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <map>
 
 // Windows/MSVC compatibility
 #ifdef _MSC_VER
@@ -141,6 +142,29 @@ public:
 
 // Chrome Trace Event Format Export (for chrome://tracing visualization)
 class KPU_API ChromeTraceExporter {
+private:
+    // Map ComponentType to display order (lower values appear first in viewer)
+    // This reflects the physical pipeline order from host to compute
+    static uint32_t get_display_pid(ComponentType type) {
+        switch (type) {
+            case ComponentType::HOST_MEMORY:        return 1;  // Host DDR
+            case ComponentType::HOST_RESOURCE:      return 2;  // Host CPU
+            case ComponentType::PCIE_BUS:           return 3;  // PCIe interconnect
+            case ComponentType::DMA_ENGINE:         return 4;  // PCIe bus master
+            case ComponentType::L3_TILE:            return 5;  // KPU external memory (GDDR6)
+            case ComponentType::EXTERNAL_MEMORY:    return 5;  // Legacy name (same as L3)
+            case ComponentType::BLOCK_MOVER:        return 6;  // L3->L2 movement
+            case ComponentType::L2_BANK:            return 7;  // L2 cache
+            case ComponentType::STREAMER:           return 8;  // L2<->L1 movement
+            case ComponentType::SCRATCHPAD:         return 9;  // L1 scratchpad
+            case ComponentType::COMPUTE_FABRIC:     return 10; // Compute orchestrator
+            case ComponentType::SYSTOLIC_ARRAY:     return 11; // Compute engine
+            case ComponentType::STORAGE_SCHEDULER:  return 20; // System services
+            case ComponentType::MEMORY_ORCHESTRATOR: return 21;
+            default: return 99;  // Unknown/other components
+        }
+    }
+
 public:
     static bool export_traces(const std::string& filename, const std::vector<TraceEntry>& traces,
                              double default_freq_ghz = 1.0) {
@@ -149,8 +173,48 @@ public:
 
         file << "[\n";
 
+        // First, collect unique process and thread IDs to emit metadata
+        std::map<uint32_t, std::string> process_names;
+        std::map<std::pair<uint32_t, uint32_t>, std::string> thread_names;
+
+        for (const auto& entry : traces) {
+            uint32_t pid = get_display_pid(entry.component_type);
+            uint32_t tid = entry.component_id;
+
+            // Prefix with display order to force correct alphabetical sorting in Chrome viewer
+            std::ostringstream process_name_stream;
+            process_name_stream << std::setfill('0') << std::setw(2) << pid << "-" << to_string(entry.component_type);
+            std::string process_name = process_name_stream.str();
+
+            process_names[pid] = process_name;
+
+            // Create thread name: "ComponentType #ID"
+            std::ostringstream thread_name;
+            thread_name << to_string(entry.component_type) << " #" << tid;
+            thread_names[{pid, tid}] = thread_name.str();
+        }
+
+        // Emit process name metadata events
+        bool first_event = true;
+        for (const auto& [pid, name] : process_names) {
+            if (!first_event) file << ",\n";
+            file << "  {\"name\": \"process_name\", \"ph\": \"M\", \"pid\": " << pid
+                 << ", \"args\": {\"name\": \"" << name << "\"}}";
+            first_event = false;
+        }
+
+        // Emit thread name metadata events
+        for (const auto& [pid_tid, name] : thread_names) {
+            file << ",\n";
+            file << "  {\"name\": \"thread_name\", \"ph\": \"M\", \"pid\": " << pid_tid.first
+                 << ", \"tid\": " << pid_tid.second
+                 << ", \"args\": {\"name\": \"" << name << "\"}}";
+        }
+
+        // Now emit the actual trace events
         for (size_t i = 0; i < traces.size(); ++i) {
             const auto& entry = traces[i];
+            file << ",\n";
 
             // Get frequency (use entry's freq if available, otherwise default)
             double freq = entry.clock_freq_ghz.value_or(default_freq_ghz);
@@ -161,7 +225,7 @@ public:
 
             // Create process and thread names based on component
             std::string process_name = to_string(entry.component_type);
-            uint32_t pid = static_cast<uint32_t>(entry.component_type);
+            uint32_t pid = get_display_pid(entry.component_type);
             uint32_t tid = entry.component_id;
 
             // Complete event (has duration)
@@ -202,14 +266,9 @@ public:
                 }
                 file << "}}";
             }
-
-            if (i < traces.size() - 1) {
-                file << ",";
-            }
-            file << "\n";
         }
 
-        file << "]\n";
+        file << "\n]\n";
 
         file.close();
         return true;

@@ -17,6 +17,8 @@
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
+#include <sw/trace/trace_logger.hpp>
+#include <sw/trace/trace_exporter.hpp>
 #include "autonomous_orchestrator.hpp"
 #include <iostream>
 #include <filesystem>
@@ -55,6 +57,19 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
 
     // Create orchestrator for autonomous execution
     AutonomousOrchestrator orch(verbose);
+
+    // Enable tracing on KPU components
+    auto& trace_logger = sw::trace::TraceLogger::instance();
+    trace_logger.clear();
+    trace_logger.set_enabled(true);
+
+    // Enable tracing on all data movement and compute components
+    kpu->enable_block_mover_tracing(0);
+    kpu->enable_streamer_tracing(0);
+    kpu->enable_streamer_tracing(1);
+    kpu->enable_compute_fabric_tracing(0);
+
+    std::cout << "  Tracing enabled on all components\n";
 
     // Define signal names for the pipeline
     const std::string DMA_INPUT_DONE = "dma_input_done";
@@ -320,10 +335,22 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         std::cout << "  Results verified correct!\n";
     }
 
+    // Export trace to Chrome trace format
+    std::cout << "\n[6] Exporting Trace\n";
+    std::string trace_filename = "autonomous_mlp_trace.trace";
+    bool export_success = sw::trace::export_logger_traces(trace_filename, "chrome", trace_logger);
+    if (export_success) {
+        std::cout << "  Exported " << trace_logger.get_trace_count() << " traces to " << trace_filename << "\n";
+        std::cout << "  Open in chrome://tracing for visualization\n";
+    } else {
+        std::cerr << "  WARNING: Failed to export trace file\n";
+    }
+
     std::cout << "\n========================================\n";
     std::cout << "Autonomous MLP execution completed successfully!\n";
     std::cout << "  Total cycles: " << cycle_count << "\n";
     std::cout << "  Pipeline stages: " << orch.get_total_operations() << "\n";
+    std::cout << "  Trace events: " << trace_logger.get_trace_count() << "\n";
     std::cout << "========================================\n";
 
     return correct;

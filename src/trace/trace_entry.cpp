@@ -4,15 +4,18 @@ namespace sw::trace {
 
 const char* to_string(ComponentType type) {
     switch (type) {
+        case ComponentType::HOST_MEMORY: return "HOST_MEMORY";
+        case ComponentType::HOST_RESOURCE: return "HOST_RESOURCE";
+        case ComponentType::PCIE_BUS: return "PCIE_BUS";
         case ComponentType::DMA_ENGINE: return "DMA_ENGINE";
         case ComponentType::BLOCK_MOVER: return "BLOCK_MOVER";
         case ComponentType::STREAMER: return "STREAMER";
-        case ComponentType::COMPUTE_FABRIC: return "COMPUTE_FABRIC";
-        case ComponentType::SYSTOLIC_ARRAY: return "SYSTOLIC_ARRAY";
-        case ComponentType::L2_BANK: return "L2_BANK";
         case ComponentType::L3_TILE: return "L3_TILE";
+        case ComponentType::L2_BANK: return "L2_BANK";
         case ComponentType::SCRATCHPAD: return "SCRATCHPAD";
         case ComponentType::EXTERNAL_MEMORY: return "EXTERNAL_MEMORY";
+        case ComponentType::COMPUTE_FABRIC: return "COMPUTE_FABRIC";
+        case ComponentType::SYSTOLIC_ARRAY: return "SYSTOLIC_ARRAY";
         case ComponentType::STORAGE_SCHEDULER: return "STORAGE_SCHEDULER";
         case ComponentType::MEMORY_ORCHESTRATOR: return "MEMORY_ORCHESTRATOR";
         case ComponentType::UNKNOWN: return "UNKNOWN";

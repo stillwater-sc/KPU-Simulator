@@ -25,17 +25,30 @@ using CycleCount = uint64_t;
 
 // Component types in the KPU architecture
 enum class ComponentType : uint8_t {
-    DMA_ENGINE = 0,
-    BLOCK_MOVER = 1,
-    STREAMER = 2,
-    COMPUTE_FABRIC = 3,
-    SYSTOLIC_ARRAY = 4,
-    L2_BANK = 5,
-    L3_TILE = 6,
-    SCRATCHPAD = 7,
-    EXTERNAL_MEMORY = 8,
-    STORAGE_SCHEDULER = 9,
-    MEMORY_ORCHESTRATOR = 10,
+    // Host system components
+    HOST_MEMORY = 0,           // Host DDR/system memory
+    HOST_RESOURCE = 1,         // Host CPU/controller
+    PCIE_BUS = 2,              // PCIe interconnect (shared resource)
+
+    // KPU data movement components
+    DMA_ENGINE = 3,            // PCIe bus master for host<->KPU transfers
+    BLOCK_MOVER = 4,           // L3->L2 block transfers
+    STREAMER = 5,              // L2<->L1 streaming transfers
+
+    // KPU memory hierarchy
+    L3_TILE = 6,               // KPU external/local memory (e.g., GDDR6)
+    L2_BANK = 7,               // L2 cache banks
+    SCRATCHPAD = 8,            // L1 scratchpad (fast on-chip memory)
+    EXTERNAL_MEMORY = 9,       // Legacy external memory component
+
+    // KPU compute components
+    COMPUTE_FABRIC = 10,       // Compute orchestrator
+    SYSTOLIC_ARRAY = 11,       // Systolic array compute engine
+
+    // System orchestration
+    STORAGE_SCHEDULER = 20,
+    MEMORY_ORCHESTRATOR = 21,
+
     UNKNOWN = 255
 };
 
