@@ -280,6 +280,9 @@ void KPUSimulator::step() {
     ++current_cycle;
 
     // Update cycle on all components FIRST so they know current cycle when operations are enqueued
+    for (auto& dma : dma_engines) {
+        dma.set_current_cycle(current_cycle);
+    }
     for (auto& block_mover : block_movers) {
         block_mover.set_cycle(current_cycle);
     }
@@ -292,7 +295,7 @@ void KPUSimulator::step() {
 
     // Then process/update all components
     for (auto& dma : dma_engines) {
-        dma.process_transfers(memory_banks, scratchpads);
+        dma.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
     for (auto& block_mover : block_movers) {
         block_mover.process_transfers(l3_tiles, l2_banks);
@@ -698,6 +701,11 @@ Size KPUSimulator::get_systolic_array_total_pes(size_t tile_id) const {
 }
 
 // Tracing control methods
+void KPUSimulator::enable_dma_tracing(size_t dma_id) {
+    validate_dma_id(dma_id);
+    dma_engines[dma_id].enable_tracing(true, &trace::TraceLogger::instance());
+}
+
 void KPUSimulator::enable_block_mover_tracing(size_t mover_id) {
     validate_block_mover_id(mover_id);
     block_movers[mover_id].enable_tracing();
@@ -711,6 +719,11 @@ void KPUSimulator::enable_streamer_tracing(size_t streamer_id) {
 void KPUSimulator::enable_compute_fabric_tracing(size_t tile_id) {
     validate_tile_id(tile_id);
     compute_tiles[tile_id].enable_tracing();
+}
+
+void KPUSimulator::disable_dma_tracing(size_t dma_id) {
+    validate_dma_id(dma_id);
+    dma_engines[dma_id].enable_tracing(false);
 }
 
 void KPUSimulator::disable_block_mover_tracing(size_t mover_id) {

@@ -221,9 +221,11 @@ public:
     bool is_l2_bank_ready(size_t bank_id) const;
 
     // Tracing control
+    void enable_dma_tracing(size_t dma_id);
     void enable_block_mover_tracing(size_t mover_id);
     void enable_streamer_tracing(size_t streamer_id);
     void enable_compute_fabric_tracing(size_t tile_id);
+    void disable_dma_tracing(size_t dma_id);
     void disable_block_mover_tracing(size_t mover_id);
     void disable_streamer_tracing(size_t streamer_id);
     void disable_compute_fabric_tracing(size_t tile_id);

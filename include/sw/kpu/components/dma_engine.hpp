@@ -25,13 +25,20 @@
 #include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
-    
+
+// Forward declarations
+class L3Tile;
+class L2Bank;
+
 // DMA Engine for data movement between memory hierarchies
 class KPU_API DMAEngine {
 public:
     enum class MemoryType {
-        EXTERNAL,
-        SCRATCHPAD
+        HOST_MEMORY,      // Host DDR
+        EXTERNAL,         // KPU memory banks (GDDR6)
+        L3_TILE,          // L3 cache tiles
+        L2_BANK,          // L2 cache banks
+        SCRATCHPAD        // L1 scratchpad
     };
 
     struct Transfer {
@@ -54,6 +61,10 @@ private:
     std::vector<Transfer> transfer_queue;  // Dynamically managed resource
     bool is_active;
     size_t engine_id;  // For debugging/identification
+
+    // Multi-cycle timing state (like BlockMover)
+    trace::CycleCount cycles_remaining;  // Cycles left for current transfer
+    std::vector<uint8_t> transfer_buffer;  // Buffer for current transfer data
 
     // Tracing support
     bool tracing_enabled_;
@@ -88,7 +99,10 @@ public:
                          MemoryType dst_type, size_t dst_id, Address dst_addr,
                          Size size, std::function<void()> callback = nullptr);
 
+    // Process transfers with full memory hierarchy access
     bool process_transfers(std::vector<ExternalMemory>& memory_banks,
+                          std::vector<L3Tile>& l3_tiles,
+                          std::vector<L2Bank>& l2_banks,
                           std::vector<Scratchpad>& scratchpads);
 
     bool is_busy() const { return is_active || !transfer_queue.empty(); }

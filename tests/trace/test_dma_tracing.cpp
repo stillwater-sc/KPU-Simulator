@@ -9,6 +9,8 @@
 #include <sw/kpu/components/dma_engine.hpp>
 #include <sw/memory/external_memory.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
+#include <sw/kpu/components/l3_tile.hpp>
+#include <sw/kpu/components/l2_bank.hpp>
 #include <sw/trace/trace_logger.hpp>
 #include <sw/trace/trace_exporter.hpp>
 
@@ -20,6 +22,8 @@ using namespace sw::trace;
 class DMATracingFixture {
 public:
     std::vector<ExternalMemory> memory_banks;
+    std::vector<L3Tile> l3_tiles;  // Empty for these tests
+    std::vector<L2Bank> l2_banks;  // Empty for these tests
     std::vector<Scratchpad> scratchpads;
     DMAEngine dma_engine;
     TraceLogger& logger;
@@ -35,6 +39,8 @@ public:
         // Create 2 scratchpads of 256KB each
         scratchpads.emplace_back(256);  // 256 KB capacity
         scratchpads.emplace_back(256);
+
+        // L3 and L2 remain empty for these tests (only testing EXTERNAL <-> SCRATCHPAD)
 
         // Reset and configure tracing
         logger.clear();
@@ -79,7 +85,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Single DMA Transfer - External to Sc
     REQUIRE(logger.get_trace_count() == initial_trace_count + 1);
 
     // Process the transfer
-    dma_engine.process_transfers(memory_banks, scratchpads);
+    dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
 
     // Should have logged the completion
     REQUIRE(logger.get_trace_count() == initial_trace_count + 2);
@@ -147,7 +153,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Multiple DMA Transfers", "[trace][dm
 
     // Process all transfers
     while (dma_engine.is_busy()) {
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Should have logged 3 additional completion traces (total 6 new traces)
@@ -188,7 +194,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to CSV", "[trace][dma][export
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Export traces to CSV
@@ -215,7 +221,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to JSON", "[trace][dma][expor
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Export traces to JSON
@@ -246,7 +252,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to Chrome Trace Format", "[tr
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Export traces to Chrome trace format
@@ -276,7 +282,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Cycle Range Query", "[trace][dma][qu
             1024
         );
 
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Query specific cycle ranges
@@ -312,7 +318,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Bandwidth Analysis", "[trace][dma][a
             size
         );
 
-        dma_engine.process_transfers(memory_banks, scratchpads);
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
     }
 
     // Analyze bandwidth from traces
