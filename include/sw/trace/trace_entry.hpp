@@ -100,7 +100,7 @@ struct DMAPayload {
 // Compute operation payload - captures computation details
 struct ComputePayload {
     uint64_t num_operations;  // Number of operations (MACs, FLOPs, etc.)
-    uint32_t m, n, k;         // Matrix dimensions for GEMM (if applicable)
+    uint64_t m, n, k;         // Matrix dimensions for GEMM (if applicable)
     std::string kernel_name;  // Name of compute kernel
 
     ComputePayload() : num_operations(0), m(0), n(0), k(0) {}

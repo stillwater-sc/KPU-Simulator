@@ -34,25 +34,31 @@ function(kpu_add_example name)
 endfunction()
 
 kpu_add_example(hello_kpu
-    FOLDER "Basic"
+    FOLDER "basic"
     DESCRIPTION "Simple first KPU program"
     SOURCES hello_kpu.cpp
 )
 
+kpu_add_example(data_movement_pipeline
+    FOLDER "basic"
+    DESCRIPTION "Full data movement pipeline"
+    SOURCES data_movement_pipeline.cpp
+)
+
 kpu_add_example(matrix_multiply
-    FOLDER "Basic"
+    FOLDER "basic"
     DESCRIPTION "Basic matrix multiplication"
     SOURCES matrix_multiply.cpp
 )
 
 kpu_add_example(memory_management
-    FOLDER "Basic"
+    FOLDER "basic"
     DESCRIPTION "Memory usage patterns"
     SOURCES memory_management.cpp
 )
 
 kpu_add_example(system_config_demo
-    FOLDER "Basic"
+    FOLDER "basic"
     DESCRIPTION "JSON-based system configuration"
     SOURCES system_config_demo.cpp
 )

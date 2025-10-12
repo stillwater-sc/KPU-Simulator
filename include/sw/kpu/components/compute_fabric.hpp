@@ -25,6 +25,7 @@
 #include <sw/concepts.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
 #include <sw/kpu/components/systolic_array.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
 
@@ -42,6 +43,11 @@ public:
         Address a_addr, b_addr, c_addr; // Addresses in scratchpad
         size_t scratchpad_id; // Which scratchpad to use
         std::function<void()> completion_callback;
+
+        // Timing and tracing
+        Cycle start_cycle = 0;
+        Cycle end_cycle = 0;
+        uint64_t transaction_id = 0;
     };
 
 private:
@@ -54,10 +60,17 @@ private:
     // Systolic array (when enabled)
     std::unique_ptr<SystolicArray> systolic_array;
 
+    // Tracing support
+    bool tracing_enabled_;
+    trace::TraceLogger* trace_logger_;
+    double clock_freq_ghz_;
+    Cycle current_cycle_;
+
 public:
     explicit ComputeFabric(size_t tile_id, ComputeType type = ComputeType::SYSTOLIC_ARRAY,
                           Size systolic_rows = SystolicArray::DEFAULT_ROWS,
-                          Size systolic_cols = SystolicArray::DEFAULT_COLS);
+                          Size systolic_cols = SystolicArray::DEFAULT_COLS,
+                          double clock_freq_ghz = 1.0);
     ~ComputeFabric() = default;
 
     // Custom copy and move semantics for std::vector compatibility
@@ -66,6 +79,15 @@ public:
     ComputeFabric(ComputeFabric&&) = default;
     ComputeFabric& operator=(ComputeFabric&&) = default;
     
+    // Tracing control
+    void enable_tracing() { tracing_enabled_ = true; }
+    void disable_tracing() { tracing_enabled_ = false; }
+    bool is_tracing_enabled() const { return tracing_enabled_; }
+
+    // Cycle management for timing simulation
+    void set_cycle(Cycle cycle) { current_cycle_ = cycle; }
+    Cycle get_cycle() const { return current_cycle_; }
+
     // Compute operations
     void start_matmul(const MatMulConfig& config);
     bool update(Cycle current_cycle, std::vector<Scratchpad>& scratchpads);
