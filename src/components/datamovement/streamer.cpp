@@ -6,11 +6,37 @@
 #include <sw/kpu/components/streamer.hpp>
 #include <sw/kpu/components/l2_bank.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
 
-Streamer::Streamer(size_t streamer_id)
-    : current_stream(nullptr), streamer_id(streamer_id) {
+// Helper function to convert StreamDirection to string
+static const char* stream_direction_to_string(Streamer::StreamDirection dir) {
+    switch (dir) {
+        case Streamer::StreamDirection::L2_TO_L1: return "L2_TO_L1";
+        case Streamer::StreamDirection::L1_TO_L2: return "L1_TO_L2";
+        default: return "UNKNOWN";
+    }
+}
+
+// Helper function to convert StreamType to string
+static const char* stream_type_to_string(Streamer::StreamType type) {
+    switch (type) {
+        case Streamer::StreamType::ROW_STREAM: return "ROW_STREAM";
+        case Streamer::StreamType::COLUMN_STREAM: return "COLUMN_STREAM";
+        default: return "UNKNOWN";
+    }
+}
+
+Streamer::Streamer(size_t streamer_id, double clock_freq_ghz, double bandwidth_gb_s)
+    : current_stream(nullptr)
+    , streamer_id(streamer_id)
+    , tracing_enabled_(false)
+    , trace_logger_(&trace::TraceLogger::instance())
+    , clock_freq_ghz_(clock_freq_ghz)
+    , current_cycle_(0)
+    , bandwidth_gb_s_(bandwidth_gb_s)
+{
 }
 
 Streamer::Streamer(const Streamer& other)
@@ -42,7 +68,65 @@ void Streamer::enqueue_stream(const StreamConfig& config) {
         throw std::invalid_argument("Invalid cache line size");
     }
 
-    stream_queue.push(config);
+    // Get transaction ID and add timing info
+    uint64_t txn_id = trace_logger_->next_transaction_id();
+    StreamConfig config_with_timing = config;
+    config_with_timing.start_cycle = current_cycle_;
+    config_with_timing.end_cycle = 0;
+    config_with_timing.transaction_id = txn_id;
+
+    // Calculate stream size
+    Size stream_size = config.matrix_height * config.matrix_width * config.element_size;
+
+    stream_queue.push(config_with_timing);
+
+    // Log trace entry for stream issue
+    if (tracing_enabled_ && trace_logger_) {
+        trace::TraceEntry entry(
+            current_cycle_,
+            trace::ComponentType::STREAMER,
+            static_cast<uint32_t>(streamer_id),
+            trace::TransactionType::TRANSFER,
+            txn_id
+        );
+
+        // Set clock frequency for time conversion
+        entry.clock_freq_ghz = clock_freq_ghz_;
+
+        // Create DMA payload (Streamer is a specialized DMA)
+        trace::DMAPayload payload;
+
+        // Set source/destination based on direction
+        if (config.direction == StreamDirection::L2_TO_L1) {
+            payload.source = trace::MemoryLocation(
+                config.l2_base_addr, stream_size, static_cast<uint32_t>(config.l2_bank_id),
+                trace::ComponentType::L2_BANK
+            );
+            payload.destination = trace::MemoryLocation(
+                config.l1_base_addr, stream_size, static_cast<uint32_t>(config.l1_scratchpad_id),
+                trace::ComponentType::SCRATCHPAD
+            );
+        } else {
+            payload.source = trace::MemoryLocation(
+                config.l1_base_addr, stream_size, static_cast<uint32_t>(config.l1_scratchpad_id),
+                trace::ComponentType::SCRATCHPAD
+            );
+            payload.destination = trace::MemoryLocation(
+                config.l2_base_addr, stream_size, static_cast<uint32_t>(config.l2_bank_id),
+                trace::ComponentType::L2_BANK
+            );
+        }
+
+        payload.bytes_transferred = stream_size;
+        payload.bandwidth_gb_s = bandwidth_gb_s_;
+
+        entry.payload = payload;
+        entry.description = std::string("Streamer ") +
+                           stream_direction_to_string(config.direction) + " " +
+                           stream_type_to_string(config.stream_type) + " enqueued";
+
+        trace_logger_->log(std::move(entry));
+    }
 }
 
 bool Streamer::update(Cycle current_cycle,
@@ -62,6 +146,64 @@ bool Streamer::update(Cycle current_cycle,
     bool stream_complete = advance_stream_cycle(current_cycle, l2_banks, l1_scratchpads);
 
     if (stream_complete) {
+        StreamConfig& config = current_stream->config;
+
+        // Set completion cycle
+        config.end_cycle = current_cycle;
+
+        // Log trace entry for stream completion
+        if (tracing_enabled_ && trace_logger_) {
+            Size stream_size = config.matrix_height * config.matrix_width * config.element_size;
+
+            trace::TraceEntry entry(
+                config.start_cycle,
+                trace::ComponentType::STREAMER,
+                static_cast<uint32_t>(streamer_id),
+                trace::TransactionType::TRANSFER,
+                config.transaction_id
+            );
+
+            // Set clock frequency for time conversion
+            entry.clock_freq_ghz = clock_freq_ghz_;
+
+            // Complete the entry with end cycle
+            entry.complete(config.end_cycle, trace::TransactionStatus::COMPLETED);
+
+            // Create DMA payload
+            trace::DMAPayload payload;
+
+            // Set source/destination based on direction
+            if (config.direction == StreamDirection::L2_TO_L1) {
+                payload.source = trace::MemoryLocation(
+                    config.l2_base_addr, stream_size, static_cast<uint32_t>(config.l2_bank_id),
+                    trace::ComponentType::L2_BANK
+                );
+                payload.destination = trace::MemoryLocation(
+                    config.l1_base_addr, stream_size, static_cast<uint32_t>(config.l1_scratchpad_id),
+                    trace::ComponentType::SCRATCHPAD
+                );
+            } else {
+                payload.source = trace::MemoryLocation(
+                    config.l1_base_addr, stream_size, static_cast<uint32_t>(config.l1_scratchpad_id),
+                    trace::ComponentType::SCRATCHPAD
+                );
+                payload.destination = trace::MemoryLocation(
+                    config.l2_base_addr, stream_size, static_cast<uint32_t>(config.l2_bank_id),
+                    trace::ComponentType::L2_BANK
+                );
+            }
+
+            payload.bytes_transferred = stream_size;
+            payload.bandwidth_gb_s = bandwidth_gb_s_;
+
+            entry.payload = payload;
+            entry.description = std::string("Streamer ") +
+                               stream_direction_to_string(config.direction) + " " +
+                               stream_type_to_string(config.stream_type) + " completed";
+
+            trace_logger_->log(std::move(entry));
+        }
+
         // Call completion callback if provided
         if (current_stream->config.completion_callback) {
             current_stream->config.completion_callback();
@@ -396,6 +538,7 @@ void Streamer::reset() {
     while (!stream_queue.empty()) {
         stream_queue.pop();
     }
+    current_cycle_ = 0;
 }
 
 void Streamer::abort_current_stream() {

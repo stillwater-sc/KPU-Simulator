@@ -21,6 +21,7 @@
 #endif
 
 #include <sw/concepts.hpp>
+#include <sw/trace/trace_logger.hpp>
 
 namespace sw::kpu {
 
@@ -63,6 +64,11 @@ public:
 
         // Callback for completion
         std::function<void()> completion_callback;
+
+        // Timing and tracing
+        Cycle start_cycle = 0;
+        Cycle end_cycle = 0;
+        uint64_t transaction_id = 0;
     };
 
 private:
@@ -90,6 +96,13 @@ private:
     std::queue<StreamConfig> stream_queue;
     std::unique_ptr<StreamState> current_stream;
     size_t streamer_id;
+
+    // Tracing support
+    bool tracing_enabled_;
+    trace::TraceLogger* trace_logger_;
+    double clock_freq_ghz_;
+    Cycle current_cycle_;
+    double bandwidth_gb_s_;
 
     // Internal streaming engine methods
     void initialize_stream_state(const StreamConfig& config);
@@ -128,7 +141,7 @@ private:
     Address calculate_column_address(Size row, Size col) const;
 
 public:
-    explicit Streamer(size_t streamer_id);
+    explicit Streamer(size_t streamer_id, double clock_freq_ghz = 1.0, double bandwidth_gb_s = 100.0);
     ~Streamer() = default;
 
     // Custom copy and move semantics for std::vector compatibility
@@ -136,6 +149,15 @@ public:
     Streamer& operator=(const Streamer& other);
     Streamer(Streamer&&) = default;
     Streamer& operator=(Streamer&&) = default;
+
+    // Tracing control
+    void enable_tracing() { tracing_enabled_ = true; }
+    void disable_tracing() { tracing_enabled_ = false; }
+    bool is_tracing_enabled() const { return tracing_enabled_; }
+
+    // Cycle management for timing simulation
+    void set_cycle(Cycle cycle) { current_cycle_ = cycle; }
+    Cycle get_cycle() const { return current_cycle_; }
 
     // Stream configuration and control
     void enqueue_stream(const StreamConfig& config);
