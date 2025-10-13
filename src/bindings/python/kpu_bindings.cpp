@@ -26,16 +26,17 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         .def("reset", &sw::kpu::Scratchpad::reset);
     
     py::enum_<sw::kpu::DMAEngine::MemoryType>(m, "MemoryType")
+        .value("HOST_MEMORY", sw::kpu::DMAEngine::MemoryType::HOST_MEMORY)
         .value("EXTERNAL", sw::kpu::DMAEngine::MemoryType::EXTERNAL)
+        .value("L3_TILE", sw::kpu::DMAEngine::MemoryType::L3_TILE)
+        .value("L2_BANK", sw::kpu::DMAEngine::MemoryType::L2_BANK)
         .value("SCRATCHPAD", sw::kpu::DMAEngine::MemoryType::SCRATCHPAD);
     
     py::class_<sw::kpu::DMAEngine>(m, "DMAEngine")
         .def("is_busy", &sw::kpu::DMAEngine::is_busy)
         .def("reset", &sw::kpu::DMAEngine::reset)
-        .def("get_src_type", &sw::kpu::DMAEngine::get_src_type)
-        .def("get_dst_type", &sw::kpu::DMAEngine::get_dst_type)
-        .def("get_src_id", &sw::kpu::DMAEngine::get_src_id)
-        .def("get_dst_id", &sw::kpu::DMAEngine::get_dst_id);
+        .def("get_engine_id", &sw::kpu::DMAEngine::get_engine_id)
+        .def("get_queue_size", &sw::kpu::DMAEngine::get_queue_size);
     
     py::class_<sw::kpu::ComputeFabric>(m, "ComputeFabric")
         .def("is_busy", &sw::kpu::ComputeFabric::is_busy)
