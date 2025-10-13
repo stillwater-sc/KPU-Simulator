@@ -159,7 +159,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         
         // DMA operations - Primary address-based API
         .def("start_dma_transfer", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address src_addr, sw::kpu::Address dst_addr,
-                                     sw::kpu::Size size, py::function callback) {
+                                     sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.start_dma_transfer(dma_id, src_addr, dst_addr, size);
             } else {
@@ -172,7 +172,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         // DMA Convenience Helpers - All DMA Patterns
         // Pattern (a): Host ↔ External
         .def("dma_host_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
-                                        sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+                                        sw::kpu::Address external_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_host_to_external(dma_id, host_addr, external_addr, size);
             } else {
@@ -180,7 +180,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             }
         }, py::arg("dma_id"), py::arg("host_addr"), py::arg("external_addr"), py::arg("size"), py::arg("callback") = py::none())
         .def("dma_external_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
-                                        sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+                                        sw::kpu::Address host_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_external_to_host(dma_id, external_addr, host_addr, size);
             } else {
@@ -190,7 +190,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
 
         // Pattern (b): Host ↔ L3
         .def("dma_host_to_l3", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
-                                  sw::kpu::Address l3_addr, sw::kpu::Size size, py::function callback) {
+                                  sw::kpu::Address l3_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_host_to_l3(dma_id, host_addr, l3_addr, size);
             } else {
@@ -198,7 +198,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             }
         }, py::arg("dma_id"), py::arg("host_addr"), py::arg("l3_addr"), py::arg("size"), py::arg("callback") = py::none())
         .def("dma_l3_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address l3_addr,
-                                  sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+                                  sw::kpu::Address host_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_l3_to_host(dma_id, l3_addr, host_addr, size);
             } else {
@@ -208,7 +208,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
 
         // Pattern (c): External ↔ L3
         .def("dma_external_to_l3", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
-                                      sw::kpu::Address l3_addr, sw::kpu::Size size, py::function callback) {
+                                      sw::kpu::Address l3_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_external_to_l3(dma_id, external_addr, l3_addr, size);
             } else {
@@ -216,7 +216,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             }
         }, py::arg("dma_id"), py::arg("external_addr"), py::arg("l3_addr"), py::arg("size"), py::arg("callback") = py::none())
         .def("dma_l3_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address l3_addr,
-                                      sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+                                      sw::kpu::Address external_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_l3_to_external(dma_id, l3_addr, external_addr, size);
             } else {
@@ -226,7 +226,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
 
         // Pattern (d): Host ↔ Scratchpad
         .def("dma_host_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
-                                          sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::function callback) {
+                                          sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_host_to_scratchpad(dma_id, host_addr, scratchpad_addr, size);
             } else {
@@ -234,7 +234,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             }
         }, py::arg("dma_id"), py::arg("host_addr"), py::arg("scratchpad_addr"), py::arg("size"), py::arg("callback") = py::none())
         .def("dma_scratchpad_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address scratchpad_addr,
-                                          sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+                                          sw::kpu::Address host_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_scratchpad_to_host(dma_id, scratchpad_addr, host_addr, size);
             } else {
@@ -244,7 +244,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
 
         // Pattern (e): External ↔ Scratchpad
         .def("dma_external_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
-                                              sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::function callback) {
+                                              sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_external_to_scratchpad(dma_id, external_addr, scratchpad_addr, size);
             } else {
@@ -252,7 +252,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             }
         }, py::arg("dma_id"), py::arg("external_addr"), py::arg("scratchpad_addr"), py::arg("size"), py::arg("callback") = py::none())
         .def("dma_scratchpad_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address scratchpad_addr,
-                                              sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+                                              sw::kpu::Address external_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_scratchpad_to_external(dma_id, scratchpad_addr, external_addr, size);
             } else {
@@ -262,7 +262,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
 
         // Pattern (f): Scratchpad ↔ Scratchpad (data reshuffling)
         .def("dma_scratchpad_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address src_scratchpad_addr,
-                                                 sw::kpu::Address dst_scratchpad_addr, sw::kpu::Size size, py::function callback) {
+                                                 sw::kpu::Address dst_scratchpad_addr, sw::kpu::Size size, py::object callback) {
             if (callback.is_none()) {
                 self.dma_scratchpad_to_scratchpad(dma_id, src_scratchpad_addr, dst_scratchpad_addr, size);
             } else {
@@ -272,7 +272,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         
         // Compute operations
         .def("start_matmul", [](sw::kpu::KPUSimulator& self, size_t tile_id, size_t scratchpad_id, sw::kpu::Size m, sw::kpu::Size n, sw::kpu::Size k,
-                               sw::kpu::Address a_addr, sw::kpu::Address b_addr, sw::kpu::Address c_addr, py::function callback) {
+                               sw::kpu::Address a_addr, sw::kpu::Address b_addr, sw::kpu::Address c_addr, py::object callback) {
             if (callback.is_none()) {
                 self.start_matmul(tile_id, scratchpad_id, m, n, k, a_addr, b_addr, c_addr);
             } else {
