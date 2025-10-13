@@ -148,7 +148,7 @@ private:
     static uint32_t get_display_pid(ComponentType type) {
         switch (type) {
             case ComponentType::HOST_MEMORY:        return 1;  // Host DDR
-            case ComponentType::HOST_RESOURCE:      return 2;  // Host CPU
+            case ComponentType::HOST_CPU:           return 2;  // Host CPU
             case ComponentType::PCIE_BUS:           return 3;  // PCIe interconnect
             case ComponentType::DMA_ENGINE:         return 4;  // PCIe bus master
             case ComponentType::L3_TILE:            return 5;  // KPU external memory (GDDR6)

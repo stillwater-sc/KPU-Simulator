@@ -27,7 +27,7 @@ using CycleCount = uint64_t;
 enum class ComponentType : uint8_t {
     // Host system components
     HOST_MEMORY = 0,           // Host DDR/system memory
-    HOST_RESOURCE = 1,         // Host CPU/controller
+    HOST_CPU = 1,              // Host CPU/controller
     PCIE_BUS = 2,              // PCIe interconnect (shared resource)
 
     // KPU data movement components

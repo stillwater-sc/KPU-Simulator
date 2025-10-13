@@ -5,7 +5,7 @@ namespace sw::trace {
 const char* to_string(ComponentType type) {
     switch (type) {
         case ComponentType::HOST_MEMORY: return "HOST_MEMORY";
-        case ComponentType::HOST_RESOURCE: return "HOST_RESOURCE";
+        case ComponentType::HOST_CPU: return "HOST_CPU";
         case ComponentType::PCIE_BUS: return "PCIE_BUS";
         case ComponentType::DMA_ENGINE: return "DMA_ENGINE";
         case ComponentType::BLOCK_MOVER: return "BLOCK_MOVER";

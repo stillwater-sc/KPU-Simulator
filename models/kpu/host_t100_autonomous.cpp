@@ -21,6 +21,8 @@
 #include <sw/trace/trace_exporter.hpp>
 #include "autonomous_orchestrator.hpp"
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <filesystem>
 
 using namespace sw::sim;
@@ -29,7 +31,7 @@ using namespace sw::sim;
  * @brief Simulate DMA transfer from host memory to KPU memory with full tracing
  *
  * This models the complete data path:
- * HOST_MEMORY → HOST_RESOURCE → PCIE_BUS → DMA_ENGINE → EXTERNAL_MEMORY (KPU banks)
+ * HOST_MEMORY → HOST_CPU → PCIE_BUS → DMA_ENGINE → EXTERNAL_MEMORY (KPU banks)
  */
 void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
                             const void* host_data,
@@ -70,9 +72,9 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
         logger.log(std::move(entry));
     }
 
-    // Step 2: HOST_RESOURCE (CPU) initiates transfer
+    // Step 2: HOST_CPU initiates transfer
     {
-        TraceEntry entry(current_cycle + 1, ComponentType::HOST_RESOURCE, 0,
+        TraceEntry entry(current_cycle + 1, ComponentType::HOST_CPU, 0,
                         TransactionType::TRANSFER, txn_id);
         entry.clock_freq_ghz = clock_freq_ghz;
         entry.complete(current_cycle + 2, TransactionStatus::COMPLETED);
@@ -131,7 +133,7 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
  * @brief Execute MLP layer with autonomous component orchestration
  *
  * Complete data flow pipeline (all programmed upfront):
- * 1. HOST_MEMORY → HOST_RESOURCE → PCIE_BUS → DMA_ENGINE → KPU memory banks
+ * 1. HOST_MEMORY → HOST_CPU → PCIE_BUS → DMA_ENGINE → KPU memory banks
  * 2. KPU memory banks → L3 tiles (via manual transfer, DMA placeholder)
  * 3. L3 tiles → L2 banks (via Block Movers)
  * 4. L2 banks → L1 scratchpad (via Streamers)
@@ -256,7 +258,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     const size_t dma_id = 0;
     const size_t block_mover_id = 0;
 
-    // DMA PHASE 1: Host → KPU Local Memory (via PCIe)
+    // DMA PHASE 1: Host -> KPU Local Memory (via PCIe)
     // These start immediately (no dependencies)
 
     // DMA Phase 1a: Transfer input from host to KPU bank
@@ -268,7 +270,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         // Note: Real hardware would use DMA here, but we don't have actual HOST_MEMORY component yet
         // For now, data is already in KPU bank, so signal completion
         orch.signal(DMA_INPUT_DONE);
-    }, "DMA Phase1: Host→Bank (input)");
+    }, "DMA Phase1: Host->Bank (input)");
 
     // DMA Phase 1b: Transfer weights from host to KPU bank
     orch.await(std::vector<std::string>{}, [&]() {
@@ -278,14 +280,14 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         // Note: Real hardware would use DMA here, but we don't have actual HOST_MEMORY component yet
         // For now, data is already in KPU bank, so signal completion
         orch.signal(DMA_WEIGHTS_DONE);
-    }, "DMA Phase1: Host→Bank (weights)");
+    }, "DMA Phase1: Host->Bank (weights)");
 
-    // DMA PHASE 2: KPU Local Memory → L3 (via DMA_ENGINE)
+    // DMA PHASE 2: KPU Local Memory -> L3 (via DMA_ENGINE)
     // These await Phase 1 completion
 
     orch.await(DMA_INPUT_DONE, [&]() {
         // Use address-based DMA API - compute global addresses
-        // External bank base + offset → L3 tile base + offset
+        // External bank base + offset -> L3 tile base + offset
         Address global_src_addr = kpu->get_external_bank_base(bank_id) + bank_input_addr;
         Address global_dst_addr = kpu->get_l3_tile_base(l3_tile_id) + l3_input_addr;
 
@@ -296,7 +298,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             host_input.size() * sizeof(float),
             [&]() { orch.signal(L3_INPUT_DONE); }  // Signal when DMA actually completes
         );
-    }, "DMA Phase2: Bank→L3 (input)");
+    }, "DMA Phase2: Bank -> L3 (input)");
 
     orch.await(DMA_WEIGHTS_DONE, [&]() {
         // Use address-based DMA API - compute global addresses
@@ -310,12 +312,12 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             host_weights.size() * sizeof(float),
             [&]() { orch.signal(L3_WEIGHTS_DONE); }  // Signal when DMA actually completes
         );
-    }, "DMA Phase2: Bank→L3 (weights)");
+    }, "DMA Phase2: Bank -> L3 (weights)");
 
-    std::cout << "  DMA Phase 1: Host → KPU Banks (via PCIe)\n";
-    std::cout << "  DMA Phase 2: KPU Banks → L3 Tiles\n";
+    std::cout << "  DMA Phase 1: Host -> KPU Banks (via PCIe)\n";
+    std::cout << "  DMA Phase 2: KPU Banks -> L3 Tiles\n";
 
-    // BLOCK MOVER: L3 → L2 (awaits DMA Phase 2 completion)
+    // BLOCK MOVER: L3 -> L2 (awaits DMA Phase 2 completion)
 
     orch.await(L3_INPUT_DONE, [&]() {
         kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_input_addr,
@@ -323,7 +325,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
                                    batch_size, input_dim, sizeof(float),
                                    BlockMover::TransformType::IDENTITY,
                                    [&]() { orch.signal(BLOCK_INPUT_DONE); });
-    }, "BlockMover: L3->L2 (input)");
+    }, "BlockMover: L3 -> L2 (input)");
 
     orch.await(L3_WEIGHTS_DONE, [&]() {
         kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_weights_addr,
@@ -331,9 +333,9 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
                                    input_dim, output_dim, sizeof(float),
                                    BlockMover::TransformType::IDENTITY,
                                    [&]() { orch.signal(BLOCK_WEIGHTS_DONE); });
-    }, "BlockMover: L3->L2 (weights)");
+    }, "BlockMover: L3 -> L2 (weights)");
 
-    // Stage 3: L2 → L1 (via Streamers) - waits for BlockMover
+    // Stage 3: L2 -> L1 (via Streamers) - waits for BlockMover
     const size_t row_streamer_id = 0;
     const size_t col_streamer_id = 1;
 
@@ -374,7 +376,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         orch.signal(BIAS_ADDED);
     }, "Add bias");
 
-    // Stage 6: Result readback path L1 → L2 → L3 → Memory
+    // Stage 6: Result readback path L1 -> L2 -> L3 -> Memory
     orch.await(BIAS_ADDED, [&]() {
         const sw::kpu::Address l2_output_addr = 0x4000;
         kpu->start_row_stream(row_streamer_id, l2_bank_id, scratchpad_id,
@@ -382,17 +384,17 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
                                batch_size, output_dim, sizeof(float), compute_fabric_size,
                                Streamer::StreamDirection::L1_TO_L2,
                                [&]() { orch.signal(STREAM_OUTPUT_DONE); });
-    }, "Streamer: L1->L2 (output)");
+    }, "Streamer: L1 -> L2 (output)");
 
     orch.await(STREAM_OUTPUT_DONE, [&]() {
         const sw::kpu::Address l2_output_addr = 0x4000;
         const sw::kpu::Address l3_output_addr = 0x8000;
-        // BlockMover only supports L3→L2, so do manual L2→L3 transfer
+        // BlockMover only supports L3 -> L2, so do manual L2 -> L3 transfer
         std::vector<uint8_t> temp(batch_size * output_dim * sizeof(float));
         kpu->read_l2_bank(l2_bank_id, l2_output_addr, temp.data(), temp.size());
         kpu->write_l3_tile(l3_tile_id, l3_output_addr, temp.data(), temp.size());
         orch.signal(BLOCK_OUTPUT_DONE);
-    }, "Manual: L2->L3 (output)");
+    }, "Manual: L2 -> L3 (output)");
 
     orch.await(BLOCK_OUTPUT_DONE, [&]() {
         const sw::kpu::Address l3_output_addr = 0x8000;
@@ -401,13 +403,13 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         kpu->read_l3_tile(l3_tile_id, l3_output_addr, result_buffer.data(), result_buffer.size());
         kpu->write_memory_bank(bank_id, output_addr, result_buffer.data(), result_buffer.size());
         orch.signal(L3_OUTPUT_DONE);
-    }, "L3->Memory (output)");
+    }, "L3 -> Memory (output)");
 
     orch.await(L3_OUTPUT_DONE, [&]() {
         const sw::kpu::Address output_addr = 0x10000;
         kpu->read_memory_bank(bank_id, output_addr, host_output.data(), host_output.size() * sizeof(float));
         orch.signal(ALL_DONE);
-    }, "Memory->Host (output)");
+    }, "Memory -> Host (output)");
 
     std::cout << "  Pipeline programmed with " << orch.get_total_operations() << " operations\n";
 
@@ -658,6 +660,86 @@ bool run_autonomous_test(const SystemConfig& config) {
     std::cout << "  L2 banks: " << kpu->get_l2_bank_count() << "\n";
     std::cout << "  Block movers: " << kpu->get_block_mover_count() << "\n";
     std::cout << "  Streamers: " << kpu->get_streamer_count() << "\n";
+
+    // Print unified address space memory map
+    std::cout << "\nUnified Address Space Memory Map:\n";
+    std::cout << "  +---------------------------------------------------------+\n";
+
+    // Host memory (if present)
+    if (kpu->get_host_memory_region_count() > 0) {
+        std::cout << "  | Host Memory                                             |\n";
+        for (size_t i = 0; i < kpu->get_host_memory_region_count(); ++i) {
+            auto base = kpu->get_host_memory_region_base(i);
+            auto capacity = kpu->get_host_memory_region_capacity(i);
+            std::ostringstream line;
+            line << "  |   Region[" << i << "]:  0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / (1024 * 1024)) << " MB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    // External memory banks
+    if (kpu->get_memory_bank_count() > 0) {
+        std::cout << "  +---------------------------------------------------------+\n";
+        std::cout << "  | External Memory (GDDR6)                                 |\n";
+        for (size_t i = 0; i < kpu->get_memory_bank_count(); ++i) {
+            auto base = kpu->get_external_bank_base(i);
+            auto capacity = kpu->get_memory_bank_capacity(i);
+            std::ostringstream line;
+            line << "  |   Bank[" << i << "]:    0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / (1024 * 1024)) << " MB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    // L3 cache tiles
+    if (kpu->get_l3_tile_count() > 0) {
+        std::cout << "  +---------------------------------------------------------+\n";
+        std::cout << "  | L3 Cache Tiles                                          |\n";
+        for (size_t i = 0; i < kpu->get_l3_tile_count(); ++i) {
+            auto base = kpu->get_l3_tile_base(i);
+            auto capacity = kpu->get_l3_tile_capacity(i);
+            std::ostringstream line;
+            line << "  |   Tile[" << i << "]:    0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / 1024) << " KB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    // L2 cache banks
+    if (kpu->get_l2_bank_count() > 0) {
+        std::cout << "  +---------------------------------------------------------+\n";
+        std::cout << "  | L2 Cache Banks                                          |\n";
+        for (size_t i = 0; i < kpu->get_l2_bank_count(); ++i) {
+            auto base = kpu->get_l2_bank_base(i);
+            auto capacity = kpu->get_l2_bank_capacity(i);
+            std::ostringstream line;
+            line << "  |   Bank[" << i << "]:    0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / 1024) << " KB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    // Scratchpads (L1)
+    if (kpu->get_scratchpad_count() > 0) {
+        std::cout << "  +---------------------------------------------------------+\n";
+        std::cout << "  | Scratchpads (L1)                                        |\n";
+        for (size_t i = 0; i < kpu->get_scratchpad_count(); ++i) {
+            auto base = kpu->get_scratchpad_base(i);
+            auto capacity = kpu->get_scratchpad_capacity(i);
+            std::ostringstream line;
+            line << "  |   Scratch[" << i << "]: 0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / 1024) << " KB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    std::cout << "  +---------------------------------------------------------+\n";
 
     // Run autonomous MLP layer execution
     // Small test: 4 batch, 8 input dim, 4 output dim
