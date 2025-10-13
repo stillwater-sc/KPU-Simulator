@@ -44,13 +44,37 @@ PYBIND11_MODULE(stillwater_kpu, m) {
     
     py::class_<sw::kpu::KPUSimulator::Config>(m, "SimulatorConfig")
         .def(py::init<>())
+        // Host memory configuration
+        .def_readwrite("host_memory_region_count", &sw::kpu::KPUSimulator::Config::host_memory_region_count)
+        .def_readwrite("host_memory_region_capacity_mb", &sw::kpu::KPUSimulator::Config::host_memory_region_capacity_mb)
+        .def_readwrite("host_memory_bandwidth_gbps", &sw::kpu::KPUSimulator::Config::host_memory_bandwidth_gbps)
+        // External memory configuration
         .def_readwrite("memory_bank_count", &sw::kpu::KPUSimulator::Config::memory_bank_count)
         .def_readwrite("memory_bank_capacity_mb", &sw::kpu::KPUSimulator::Config::memory_bank_capacity_mb)
         .def_readwrite("memory_bandwidth_gbps", &sw::kpu::KPUSimulator::Config::memory_bandwidth_gbps)
+        // On-chip memory hierarchy
+        .def_readwrite("l3_tile_count", &sw::kpu::KPUSimulator::Config::l3_tile_count)
+        .def_readwrite("l3_tile_capacity_kb", &sw::kpu::KPUSimulator::Config::l3_tile_capacity_kb)
+        .def_readwrite("l2_bank_count", &sw::kpu::KPUSimulator::Config::l2_bank_count)
+        .def_readwrite("l2_bank_capacity_kb", &sw::kpu::KPUSimulator::Config::l2_bank_capacity_kb)
         .def_readwrite("scratchpad_count", &sw::kpu::KPUSimulator::Config::scratchpad_count)
         .def_readwrite("scratchpad_capacity_kb", &sw::kpu::KPUSimulator::Config::scratchpad_capacity_kb)
+        // Compute resources
         .def_readwrite("compute_tile_count", &sw::kpu::KPUSimulator::Config::compute_tile_count)
-        .def_readwrite("dma_engine_count", &sw::kpu::KPUSimulator::Config::dma_engine_count);
+        // Data movement engines
+        .def_readwrite("dma_engine_count", &sw::kpu::KPUSimulator::Config::dma_engine_count)
+        .def_readwrite("block_mover_count", &sw::kpu::KPUSimulator::Config::block_mover_count)
+        .def_readwrite("streamer_count", &sw::kpu::KPUSimulator::Config::streamer_count)
+        // Systolic array configuration
+        .def_readwrite("systolic_array_rows", &sw::kpu::KPUSimulator::Config::systolic_array_rows)
+        .def_readwrite("systolic_array_cols", &sw::kpu::KPUSimulator::Config::systolic_array_cols)
+        .def_readwrite("use_systolic_arrays", &sw::kpu::KPUSimulator::Config::use_systolic_arrays)
+        // Programmable memory map base addresses
+        .def_readwrite("host_memory_base", &sw::kpu::KPUSimulator::Config::host_memory_base)
+        .def_readwrite("external_memory_base", &sw::kpu::KPUSimulator::Config::external_memory_base)
+        .def_readwrite("l3_tile_base", &sw::kpu::KPUSimulator::Config::l3_tile_base)
+        .def_readwrite("l2_bank_base", &sw::kpu::KPUSimulator::Config::l2_bank_base)
+        .def_readwrite("scratchpad_base", &sw::kpu::KPUSimulator::Config::scratchpad_base);
     
     py::class_<sw::kpu::KPUSimulator::MatMulTest>(m, "MatMulTest")
         .def(py::init<>())
@@ -65,6 +89,14 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         .def(py::init<const sw::kpu::KPUSimulator::Config&>(), py::arg("config") = sw::kpu::KPUSimulator::Config{})
         
         // Memory operations - clean delegation API
+        .def("read_host_memory", [](sw::kpu::KPUSimulator& self, size_t region_id, sw::kpu::Address addr, size_t count) {
+            std::vector<float> data(count);
+            self.read_host_memory(region_id, addr, data.data(), count * sizeof(float));
+            return data;
+        })
+        .def("write_host_memory", [](sw::kpu::KPUSimulator& self, size_t region_id, sw::kpu::Address addr, const std::vector<float>& data) {
+            self.write_host_memory(region_id, addr, data.data(), data.size() * sizeof(float));
+        })
         .def("read_memory_bank", [](sw::kpu::KPUSimulator& self, size_t bank_id, sw::kpu::Address addr, size_t count) {
             std::vector<float> data(count);
             self.read_memory_bank(bank_id, addr, data.data(), count * sizeof(float));
@@ -72,6 +104,22 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         })
         .def("write_memory_bank", [](sw::kpu::KPUSimulator& self, size_t bank_id, sw::kpu::Address addr, const std::vector<float>& data) {
             self.write_memory_bank(bank_id, addr, data.data(), data.size() * sizeof(float));
+        })
+        .def("read_l3_tile", [](sw::kpu::KPUSimulator& self, size_t tile_id, sw::kpu::Address addr, size_t count) {
+            std::vector<float> data(count);
+            self.read_l3_tile(tile_id, addr, data.data(), count * sizeof(float));
+            return data;
+        })
+        .def("write_l3_tile", [](sw::kpu::KPUSimulator& self, size_t tile_id, sw::kpu::Address addr, const std::vector<float>& data) {
+            self.write_l3_tile(tile_id, addr, data.data(), data.size() * sizeof(float));
+        })
+        .def("read_l2_bank", [](sw::kpu::KPUSimulator& self, size_t bank_id, sw::kpu::Address addr, size_t count) {
+            std::vector<float> data(count);
+            self.read_l2_bank(bank_id, addr, data.data(), count * sizeof(float));
+            return data;
+        })
+        .def("write_l2_bank", [](sw::kpu::KPUSimulator& self, size_t bank_id, sw::kpu::Address addr, const std::vector<float>& data) {
+            self.write_l2_bank(bank_id, addr, data.data(), data.size() * sizeof(float));
         })
         .def("read_scratchpad", [](sw::kpu::KPUSimulator& self, size_t pad_id, sw::kpu::Address addr, size_t count) {
             std::vector<float> data(count);
@@ -108,16 +156,118 @@ PYBIND11_MODULE(stillwater_kpu, m) {
             self.write_scratchpad(pad_id, addr, buf.ptr, buf.size * sizeof(float));
         })
         
-        // DMA operations
-        .def("start_dma_transfer", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address src_addr, sw::kpu::Address dst_addr, 
+        // DMA operations - Primary address-based API
+        .def("start_dma_transfer", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address src_addr, sw::kpu::Address dst_addr,
                                      sw::kpu::Size size, py::function callback) {
             if (callback.is_none()) {
                 self.start_dma_transfer(dma_id, src_addr, dst_addr, size);
             } else {
                 self.start_dma_transfer(dma_id, src_addr, dst_addr, size, [callback]() { callback(); });
             }
-        }, py::arg("dma_id"), py::arg("src_addr"), py::arg("dst_addr"), py::arg("size"), py::arg("callback") = py::none())
+        }, py::arg("dma_id"), py::arg("src_addr"), py::arg("dst_addr"), py::arg("size"), py::arg("callback") = py::none(),
+        "Primary DMA API - transfer between any two global addresses. Address decoder automatically routes based on address ranges.")
         .def("is_dma_busy", &sw::kpu::KPUSimulator::is_dma_busy)
+
+        // DMA Convenience Helpers - All DMA Patterns
+        // Pattern (a): Host ↔ External
+        .def("dma_host_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
+                                        sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_host_to_external(dma_id, host_addr, external_addr, size);
+            } else {
+                self.dma_host_to_external(dma_id, host_addr, external_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("host_addr"), py::arg("external_addr"), py::arg("size"), py::arg("callback") = py::none())
+        .def("dma_external_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
+                                        sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_external_to_host(dma_id, external_addr, host_addr, size);
+            } else {
+                self.dma_external_to_host(dma_id, external_addr, host_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("external_addr"), py::arg("host_addr"), py::arg("size"), py::arg("callback") = py::none())
+
+        // Pattern (b): Host ↔ L3
+        .def("dma_host_to_l3", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
+                                  sw::kpu::Address l3_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_host_to_l3(dma_id, host_addr, l3_addr, size);
+            } else {
+                self.dma_host_to_l3(dma_id, host_addr, l3_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("host_addr"), py::arg("l3_addr"), py::arg("size"), py::arg("callback") = py::none())
+        .def("dma_l3_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address l3_addr,
+                                  sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_l3_to_host(dma_id, l3_addr, host_addr, size);
+            } else {
+                self.dma_l3_to_host(dma_id, l3_addr, host_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("l3_addr"), py::arg("host_addr"), py::arg("size"), py::arg("callback") = py::none())
+
+        // Pattern (c): External ↔ L3
+        .def("dma_external_to_l3", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
+                                      sw::kpu::Address l3_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_external_to_l3(dma_id, external_addr, l3_addr, size);
+            } else {
+                self.dma_external_to_l3(dma_id, external_addr, l3_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("external_addr"), py::arg("l3_addr"), py::arg("size"), py::arg("callback") = py::none())
+        .def("dma_l3_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address l3_addr,
+                                      sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_l3_to_external(dma_id, l3_addr, external_addr, size);
+            } else {
+                self.dma_l3_to_external(dma_id, l3_addr, external_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("l3_addr"), py::arg("external_addr"), py::arg("size"), py::arg("callback") = py::none())
+
+        // Pattern (d): Host ↔ Scratchpad
+        .def("dma_host_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address host_addr,
+                                          sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_host_to_scratchpad(dma_id, host_addr, scratchpad_addr, size);
+            } else {
+                self.dma_host_to_scratchpad(dma_id, host_addr, scratchpad_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("host_addr"), py::arg("scratchpad_addr"), py::arg("size"), py::arg("callback") = py::none())
+        .def("dma_scratchpad_to_host", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address scratchpad_addr,
+                                          sw::kpu::Address host_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_scratchpad_to_host(dma_id, scratchpad_addr, host_addr, size);
+            } else {
+                self.dma_scratchpad_to_host(dma_id, scratchpad_addr, host_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("scratchpad_addr"), py::arg("host_addr"), py::arg("size"), py::arg("callback") = py::none())
+
+        // Pattern (e): External ↔ Scratchpad
+        .def("dma_external_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address external_addr,
+                                              sw::kpu::Address scratchpad_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_external_to_scratchpad(dma_id, external_addr, scratchpad_addr, size);
+            } else {
+                self.dma_external_to_scratchpad(dma_id, external_addr, scratchpad_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("external_addr"), py::arg("scratchpad_addr"), py::arg("size"), py::arg("callback") = py::none())
+        .def("dma_scratchpad_to_external", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address scratchpad_addr,
+                                              sw::kpu::Address external_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_scratchpad_to_external(dma_id, scratchpad_addr, external_addr, size);
+            } else {
+                self.dma_scratchpad_to_external(dma_id, scratchpad_addr, external_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("scratchpad_addr"), py::arg("external_addr"), py::arg("size"), py::arg("callback") = py::none())
+
+        // Pattern (f): Scratchpad ↔ Scratchpad (data reshuffling)
+        .def("dma_scratchpad_to_scratchpad", [](sw::kpu::KPUSimulator& self, size_t dma_id, sw::kpu::Address src_scratchpad_addr,
+                                                 sw::kpu::Address dst_scratchpad_addr, sw::kpu::Size size, py::function callback) {
+            if (callback.is_none()) {
+                self.dma_scratchpad_to_scratchpad(dma_id, src_scratchpad_addr, dst_scratchpad_addr, size);
+            } else {
+                self.dma_scratchpad_to_scratchpad(dma_id, src_scratchpad_addr, dst_scratchpad_addr, size, [callback]() { callback(); });
+            }
+        }, py::arg("dma_id"), py::arg("src_scratchpad_addr"), py::arg("dst_scratchpad_addr"), py::arg("size"), py::arg("callback") = py::none())
         
         // Compute operations
         .def("start_matmul", [](sw::kpu::KPUSimulator& self, size_t tile_id, size_t scratchpad_id, sw::kpu::Size m, sw::kpu::Size n, sw::kpu::Size k,
@@ -137,14 +287,28 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         .def("run_until_idle", &sw::kpu::KPUSimulator::run_until_idle)
         
         // Configuration queries
+        .def("get_host_memory_region_count", &sw::kpu::KPUSimulator::get_host_memory_region_count)
         .def("get_memory_bank_count", &sw::kpu::KPUSimulator::get_memory_bank_count)
+        .def("get_l3_tile_count", &sw::kpu::KPUSimulator::get_l3_tile_count)
+        .def("get_l2_bank_count", &sw::kpu::KPUSimulator::get_l2_bank_count)
         .def("get_scratchpad_count", &sw::kpu::KPUSimulator::get_scratchpad_count)
         .def("get_compute_tile_count", &sw::kpu::KPUSimulator::get_compute_tile_count)
         .def("get_dma_engine_count", &sw::kpu::KPUSimulator::get_dma_engine_count)
+        .def("get_block_mover_count", &sw::kpu::KPUSimulator::get_block_mover_count)
+        .def("get_streamer_count", &sw::kpu::KPUSimulator::get_streamer_count)
+        .def("get_host_memory_region_capacity", &sw::kpu::KPUSimulator::get_host_memory_region_capacity)
         .def("get_memory_bank_capacity", &sw::kpu::KPUSimulator::get_memory_bank_capacity)
+        .def("get_l3_tile_capacity", &sw::kpu::KPUSimulator::get_l3_tile_capacity)
+        .def("get_l2_bank_capacity", &sw::kpu::KPUSimulator::get_l2_bank_capacity)
         .def("get_scratchpad_capacity", &sw::kpu::KPUSimulator::get_scratchpad_capacity)
 
         // Address computation helpers for unified address space
+        .def("get_host_memory_region_base", &sw::kpu::KPUSimulator::get_host_memory_region_base,
+             "Get the base address of a host memory region in the unified address space.\n\n"
+             "Example:\n"
+             "  host_addr = sim.get_host_memory_region_base(0) + offset\n"
+             "  ext_addr = sim.get_external_bank_base(0) + offset\n"
+             "  sim.dma_host_to_external(0, host_addr, ext_addr, size)")
         .def("get_external_bank_base", &sw::kpu::KPUSimulator::get_external_bank_base,
              "Get the base address of an external memory bank in the unified address space")
         .def("get_l3_tile_base", &sw::kpu::KPUSimulator::get_l3_tile_base,
@@ -163,8 +327,17 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         .def("get_elapsed_time_ms", &sw::kpu::KPUSimulator::get_elapsed_time_ms)
         .def("print_stats", &sw::kpu::KPUSimulator::print_stats)
         .def("print_component_status", &sw::kpu::KPUSimulator::print_component_status)
+        .def("is_host_memory_region_ready", &sw::kpu::KPUSimulator::is_host_memory_region_ready)
         .def("is_memory_bank_ready", &sw::kpu::KPUSimulator::is_memory_bank_ready)
+        .def("is_l3_tile_ready", &sw::kpu::KPUSimulator::is_l3_tile_ready)
+        .def("is_l2_bank_ready", &sw::kpu::KPUSimulator::is_l2_bank_ready)
         .def("is_scratchpad_ready", &sw::kpu::KPUSimulator::is_scratchpad_ready)
+
+        // Systolic array information
+        .def("is_using_systolic_arrays", &sw::kpu::KPUSimulator::is_using_systolic_arrays)
+        .def("get_systolic_array_rows", &sw::kpu::KPUSimulator::get_systolic_array_rows, py::arg("tile_id") = 0)
+        .def("get_systolic_array_cols", &sw::kpu::KPUSimulator::get_systolic_array_cols, py::arg("tile_id") = 0)
+        .def("get_systolic_array_total_pes", &sw::kpu::KPUSimulator::get_systolic_array_total_pes, py::arg("tile_id") = 0)
         
         // Convenient numpy matrix multiplication
         .def("run_numpy_matmul", [](sw::kpu::KPUSimulator& self, py::array_t<float> a, py::array_t<float> b,

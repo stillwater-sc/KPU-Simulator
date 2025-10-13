@@ -89,23 +89,45 @@ else()
     )
 endif()
 
-# TODO: Re-enable KPU simulator bindings when the KPU components are implemented
-# This is the original complex binding that depends on non-existent KPU classes
-# pybind11_add_module(stillwater_kpu_native kpu_bindings.cpp)
-# target_link_libraries(stillwater_kpu_native PRIVATE
-#     StillwaterKPU::Simulator
-#     pybind11::headers
-# )
-# kpu_set_target_options(stillwater_kpu_native)
-# target_compile_definitions(stillwater_kpu_native PRIVATE 
-#     VERSION_INFO="${PROJECT_VERSION}"
-# )
-# set_target_properties(stillwater_kpu_native PROPERTIES
-#     FOLDER "Bindings"
-# )
+# KPU simulator bindings
+pybind11_add_module(stillwater_kpu kpu_bindings.cpp)
+target_link_libraries(stillwater_kpu PRIVATE
+    kpu_simulator
+    pybind11::headers
+)
+kpu_set_target_options(stillwater_kpu)
+target_compile_definitions(stillwater_kpu PRIVATE
+    VERSION_INFO="${PROJECT_VERSION}"
+)
+set_target_properties(stillwater_kpu PROPERTIES
+    FOLDER "src/Bindings"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/Debug"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/Release"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/Debug"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/Release"
+)
+
+# Create properly named copies of the .pyd files for Python import
+if(CMAKE_CONFIGURATION_TYPES)
+    add_custom_command(TARGET stillwater_kpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:stillwater_kpu>"
+            "$<TARGET_FILE_DIR:stillwater_kpu>/stillwater_kpu.pyd"
+        COMMENT "Creating importable copy of KPU Python module"
+    )
+else()
+    add_custom_command(TARGET stillwater_kpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:stillwater_kpu>"
+            "$<TARGET_FILE_DIR:stillwater_kpu>/stillwater_kpu.pyd"
+        COMMENT "Creating importable copy of KPU Python module"
+    )
+endif()
 
 # Install Python modules
-install(TARGETS stillwater_toplevel
+install(TARGETS stillwater_toplevel stillwater_kpu
     DESTINATION .
     COMPONENT Python
 )
