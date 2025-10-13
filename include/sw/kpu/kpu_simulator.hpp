@@ -29,6 +29,7 @@
 #include <sw/kpu/components/dma_engine.hpp>
 #include <sw/kpu/components/l3_tile.hpp>
 #include <sw/kpu/components/l2_bank.hpp>
+#include <sw/kpu/components/l1_buffer.hpp>
 #include <sw/kpu/components/block_mover.hpp>
 #include <sw/kpu/components/streamer.hpp>
 #include <sw/kpu/components/compute_fabric.hpp>
@@ -54,7 +55,9 @@ public:
         Size l3_tile_capacity_kb;
         Size l2_bank_count;
         Size l2_bank_capacity_kb;
-        Size scratchpad_count;
+        Size l1_buffer_count;           // L1 streaming buffers (compute fabric)
+        Size l1_buffer_capacity_kb;
+        Size scratchpad_count;          // Scratchpad page buffers (memory controller)
         Size scratchpad_capacity_kb;
 
         // Compute resources
@@ -77,7 +80,8 @@ public:
         Address external_memory_base;
         Address l3_tile_base;
         Address l2_bank_base;
-        Address scratchpad_base;
+        Address l1_buffer_base;         // L1 streaming buffers (compute fabric)
+        Address scratchpad_base;        // Scratchpad page buffers (memory controller)
 
         Config()
             : host_memory_region_count(1), host_memory_region_capacity_mb(4096),
@@ -86,13 +90,14 @@ public:
               memory_bandwidth_gbps(100),
               l3_tile_count(4), l3_tile_capacity_kb(128),
               l2_bank_count(8), l2_bank_capacity_kb(64),
+              l1_buffer_count(4), l1_buffer_capacity_kb(32),
               scratchpad_count(2), scratchpad_capacity_kb(64),
               compute_tile_count(2),
               dma_engine_count(2), block_mover_count(4), streamer_count(8),
               systolic_array_rows(16), systolic_array_cols(16),
               use_systolic_arrays(true),
               host_memory_base(0), external_memory_base(0), l3_tile_base(0),
-              l2_bank_base(0), scratchpad_base(0) {}
+              l2_bank_base(0), l1_buffer_base(0), scratchpad_base(0) {}
 
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
@@ -105,20 +110,22 @@ public:
                 Size pads, Size pad_cap,
                 Size tiles, Size dmas, Size l3_tiles = 4, Size l3_cap = 128,
                 Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4, Size streamers = 8,
-                Size systolic_rows = 16, Size systolic_cols = 16, bool use_systolic = true)
+                Size systolic_rows = 16, Size systolic_cols = 16, bool use_systolic = true,
+                Size l1_bufs = 4, Size l1_cap = 32)
             : host_memory_region_count(1), host_memory_region_capacity_mb(4096),
               host_memory_bandwidth_gbps(50),
               memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
               memory_bandwidth_gbps(mem_bw),
               l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
               l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap),
+              l1_buffer_count(l1_bufs), l1_buffer_capacity_kb(l1_cap),
               scratchpad_count(pads), scratchpad_capacity_kb(pad_cap),
               compute_tile_count(tiles),
               dma_engine_count(dmas), block_mover_count(block_movers), streamer_count(streamers),
               systolic_array_rows(systolic_rows), systolic_array_cols(systolic_cols),
               use_systolic_arrays(use_systolic),
               host_memory_base(0), external_memory_base(0), l3_tile_base(0),
-              l2_bank_base(0), scratchpad_base(0) {
+              l2_bank_base(0), l1_buffer_base(0), scratchpad_base(0) {
 		}
     };
     
@@ -136,7 +143,8 @@ private:
     std::vector<ExternalMemory> memory_banks;  // KPU local memory banks
     std::vector<L3Tile> l3_tiles;
     std::vector<L2Bank> l2_banks;
-    std::vector<Scratchpad> scratchpads;
+    std::vector<L1Buffer> l1_buffers;  // L1 streaming buffers (compute fabric)
+    std::vector<Scratchpad> scratchpads;  // Scratchpad page buffers (memory controller)
     std::vector<DMAEngine> dma_engines;
     std::vector<ComputeFabric> compute_tiles;
     std::vector<BlockMover> block_movers;
@@ -170,6 +178,8 @@ public:
     void write_l3_tile(size_t tile_id, Address addr, const void* data, Size size);
     void read_l2_bank(size_t bank_id, Address addr, void* data, Size size);
     void write_l2_bank(size_t bank_id, Address addr, const void* data, Size size);
+    void read_l1_buffer(size_t buffer_id, Address addr, void* data, Size size);
+    void write_l1_buffer(size_t buffer_id, Address addr, const void* data, Size size);
     void read_scratchpad(size_t pad_id, Address addr, void* data, Size size);
     void write_scratchpad(size_t pad_id, Address addr, const void* data, Size size);
     
@@ -272,6 +282,7 @@ public:
     size_t get_memory_bank_count() const { return memory_banks.size(); }
     size_t get_l3_tile_count() const { return l3_tiles.size(); }
     size_t get_l2_bank_count() const { return l2_banks.size(); }
+    size_t get_l1_buffer_count() const { return l1_buffers.size(); }
     size_t get_scratchpad_count() const { return scratchpads.size(); }
     size_t get_compute_tile_count() const { return compute_tiles.size(); }
     size_t get_dma_engine_count() const { return dma_engines.size(); }
@@ -282,6 +293,7 @@ public:
     Size get_memory_bank_capacity(size_t bank_id) const;
     Size get_l3_tile_capacity(size_t tile_id) const;
     Size get_l2_bank_capacity(size_t bank_id) const;
+    Size get_l1_buffer_capacity(size_t buffer_id) const;
     Size get_scratchpad_capacity(size_t pad_id) const;
     
     // High-level test operations
@@ -299,6 +311,7 @@ public:
     bool is_memory_bank_ready(size_t bank_id) const;
     bool is_l3_tile_ready(size_t tile_id) const;
     bool is_l2_bank_ready(size_t bank_id) const;
+    bool is_l1_buffer_ready(size_t buffer_id) const;
     bool is_scratchpad_ready(size_t pad_id) const;
 
     // ===========================================
@@ -319,6 +332,7 @@ public:
     Address get_external_bank_base(size_t bank_id) const;
     Address get_l3_tile_base(size_t tile_id) const;
     Address get_l2_bank_base(size_t bank_id) const;
+    Address get_l1_buffer_base(size_t buffer_id) const;
     Address get_scratchpad_base(size_t pad_id) const;
 
     // Tracing control
@@ -336,6 +350,7 @@ private:
     void validate_bank_id(size_t bank_id) const;
     void validate_l3_tile_id(size_t tile_id) const;
     void validate_l2_bank_id(size_t bank_id) const;
+    void validate_l1_buffer_id(size_t buffer_id) const;
     void validate_scratchpad_id(size_t pad_id) const;
     void validate_dma_id(size_t dma_id) const;
     void validate_tile_id(size_t tile_id) const;

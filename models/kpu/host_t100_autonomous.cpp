@@ -564,11 +564,19 @@ void create_t100_system(SystemConfig& config) {
         kpu.memory.l2_banks.push_back(bank);
     }
 
-    // Add scratchpads (L1)
+    // Add L1 streaming buffers (compute fabric)
+    for (int i = 0; i < 4; ++i) {
+        KPUL1Config l1;
+        l1.id = "l1_" + std::to_string(i);
+        l1.capacity_kb = 32;
+        kpu.memory.l1_buffers.push_back(l1);
+    }
+
+    // Add scratchpads (memory controller)
     for (int i = 0; i < 4; ++i) {
         KPUScratchpadConfig scratch;
         scratch.id = "scratch_" + std::to_string(i);
-        scratch.capacity_kb = 128;
+        scratch.capacity_kb = 64;
         kpu.memory.scratchpads.push_back(scratch);
     }
 
@@ -622,6 +630,7 @@ void create_t100_system(SystemConfig& config) {
     std::cout << "    Memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
     std::cout << "    L3 tiles: " << config.accelerators[0].kpu_config->memory.l3_tiles.size() << "\n";
     std::cout << "    L2 banks: " << config.accelerators[0].kpu_config->memory.l2_banks.size() << "\n";
+    std::cout << "    L1 buffers: " << config.accelerators[0].kpu_config->memory.l1_buffers.size() << "\n";
     std::cout << "    Scratchpads: " << config.accelerators[0].kpu_config->memory.scratchpads.size() << "\n";
     std::cout << "    Compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
     std::cout << "    DMA engines: " << config.accelerators[0].kpu_config->data_movement.dma_engines.size() << "\n";
@@ -653,11 +662,12 @@ bool run_autonomous_test(const SystemConfig& config) {
 
     std::cout << "KPU[0] details:\n";
     std::cout << "  Memory banks: " << kpu->get_memory_bank_count() << "\n";
+    std::cout << "  L3 tiles: " << kpu->get_l3_tile_count() << "\n";
+    std::cout << "  L2 banks: " << kpu->get_l2_bank_count() << "\n";
+    std::cout << "  L1 buffers: " << kpu->get_l1_buffer_count() << "\n";
     std::cout << "  Scratchpads: " << kpu->get_scratchpad_count() << "\n";
     std::cout << "  Compute tiles: " << kpu->get_compute_tile_count() << "\n";
     std::cout << "  DMA engines: " << kpu->get_dma_engine_count() << "\n";
-    std::cout << "  L3 tiles: " << kpu->get_l3_tile_count() << "\n";
-    std::cout << "  L2 banks: " << kpu->get_l2_bank_count() << "\n";
     std::cout << "  Block movers: " << kpu->get_block_mover_count() << "\n";
     std::cout << "  Streamers: " << kpu->get_streamer_count() << "\n";
 
@@ -724,10 +734,25 @@ bool run_autonomous_test(const SystemConfig& config) {
         }
     }
 
-    // Scratchpads (L1)
+    // L1 streaming buffers (compute fabric)
+    if (kpu->get_l1_buffer_count() > 0) {
+        std::cout << "  +---------------------------------------------------------+\n";
+        std::cout << "  | L1 Streaming Buffers (Compute Fabric)                   |\n";
+        for (size_t i = 0; i < kpu->get_l1_buffer_count(); ++i) {
+            auto base = kpu->get_l1_buffer_base(i);
+            auto capacity = kpu->get_l1_buffer_capacity(i);
+            std::ostringstream line;
+            line << "  |   L1[" << i << "]:      0x" << std::hex << std::setfill('0')
+                 << std::setw(10) << base << std::dec << "  ("
+                 << (capacity / 1024) << " KB)";
+            std::cout << std::left << std::setw(60) << std::setfill(' ') << line.str() << "|\n";
+        }
+    }
+
+    // Scratchpads (memory controller page buffers)
     if (kpu->get_scratchpad_count() > 0) {
         std::cout << "  +---------------------------------------------------------+\n";
-        std::cout << "  | Scratchpads (L1)                                        |\n";
+        std::cout << "  | Scratchpad Page Buffers (Memory Controller)             |\n";
         for (size_t i = 0; i < kpu->get_scratchpad_count(); ++i) {
             auto base = kpu->get_scratchpad_base(i);
             auto capacity = kpu->get_scratchpad_capacity(i);

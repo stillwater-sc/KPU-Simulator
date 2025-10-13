@@ -32,13 +32,19 @@ namespace sw::memory {
  *
  * Used internally by AddressDecoder for routing DMA operations.
  * Applications should use addresses directly, not these types.
+ *
+ * Architecture notes:
+ * - L3 → L2 → L1 → Compute: Standard cache hierarchy for compute datapath
+ * - SCRATCHPAD: Memory controller buffers for external memory aggregation/disaggregation
+ *   (separate from cache hierarchy, used for row/column batching)
  */
 enum class MemoryType {
     HOST_MEMORY,      // Host DDR (CPU-side)
     EXTERNAL,         // KPU external memory banks (GDDR6/HBM)
     L3_TILE,          // L3 cache tiles
     L2_BANK,          // L2 cache banks
-    SCRATCHPAD        // L1 scratchpad (software-managed)
+    L1,               // L1 streaming buffers (compute fabric, fed by Streamers)
+    SCRATCHPAD        // Scratchpad buffers (memory controller, for external memory efficiency)
 };
 
 /**

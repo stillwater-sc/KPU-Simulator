@@ -187,6 +187,7 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
         // On-chip memory hierarchy
         total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024ULL;
         total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024ULL;
+        total_space += config.l1_buffer_count * config.l1_buffer_capacity_kb * 1024ULL;
         total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024ULL;
 
         Address invalid_src = total_space + 100000;  // Way beyond address space
@@ -224,6 +225,7 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
         // On-chip memory hierarchy
         total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024ULL;
         total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024ULL;
+        total_space += config.l1_buffer_count * config.l1_buffer_capacity_kb * 1024ULL;
         total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024ULL;
 
         Address invalid_dst = total_space + 100000;  // Way beyond address space

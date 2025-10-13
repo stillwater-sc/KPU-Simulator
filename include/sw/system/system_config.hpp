@@ -92,9 +92,14 @@ struct KPUTileConfig {
     uint32_t capacity_kb{128};
 };
 
+struct KPUL1Config {
+    std::string id;
+    uint32_t capacity_kb{32};  // L1 streaming buffers (compute fabric)
+};
+
 struct KPUScratchpadConfig {
     std::string id;
-    uint32_t capacity_kb{64};
+    uint32_t capacity_kb{64};  // Memory controller aggregation buffers
 };
 
 struct KPUMemoryConfig {
@@ -103,7 +108,8 @@ struct KPUMemoryConfig {
     std::vector<KPUMemoryBankConfig> banks;
     std::vector<KPUTileConfig> l3_tiles;
     std::vector<KPUTileConfig> l2_banks;
-    std::vector<KPUScratchpadConfig> scratchpads;
+    std::vector<KPUL1Config> l1_buffers;       // L1 streaming buffers (part of compute fabric)
+    std::vector<KPUScratchpadConfig> scratchpads;  // Separate scratchpad buffers (memory controller)
 };
 
 struct ComputeTileConfig {

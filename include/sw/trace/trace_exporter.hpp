@@ -156,9 +156,10 @@ private:
             case ComponentType::BLOCK_MOVER:        return 6;  // L3->L2 movement
             case ComponentType::L2_BANK:            return 7;  // L2 cache
             case ComponentType::STREAMER:           return 8;  // L2<->L1 movement
-            case ComponentType::SCRATCHPAD:         return 9;  // L1 scratchpad
+            case ComponentType::L1:                 return 9;  // L1 streaming buffers
             case ComponentType::COMPUTE_FABRIC:     return 10; // Compute orchestrator
             case ComponentType::SYSTOLIC_ARRAY:     return 11; // Compute engine
+            case ComponentType::SCRATCHPAD:         return 15; // Memory controller buffers
             case ComponentType::STORAGE_SCHEDULER:  return 20; // System services
             case ComponentType::MEMORY_ORCHESTRATOR: return 21;
             default: return 99;  // Unknown/other components

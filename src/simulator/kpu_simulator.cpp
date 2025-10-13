@@ -35,7 +35,13 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         l2_banks.emplace_back(i, config.l2_bank_capacity_kb);
     }
 
-    // Initialize scratchpads (L1) - fastest, closest to compute
+    // Initialize L1 streaming buffers - part of compute fabric
+    l1_buffers.reserve(config.l1_buffer_count);
+    for (size_t i = 0; i < config.l1_buffer_count; ++i) {
+        l1_buffers.emplace_back(i, config.l1_buffer_capacity_kb);
+    }
+
+    // Initialize scratchpads - memory controller page buffers (NOT L1!)
     scratchpads.reserve(config.scratchpad_count);
     for (size_t i = 0; i < config.scratchpad_count; ++i) {
         scratchpads.emplace_back(config.scratchpad_capacity_kb);
@@ -135,7 +141,18 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         current_addr += capacity;
     }
 
-    // Scratchpads (L1)
+    // L1 streaming buffers (compute fabric)
+    if (config.l1_buffer_base != 0) {
+        current_addr = config.l1_buffer_base;
+    }
+    for (size_t i = 0; i < config.l1_buffer_count; ++i) {
+        Size capacity = config.l1_buffer_capacity_kb * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::L1, i,
+                                  "L1 Buffer " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // Scratchpads (memory controller page buffers)
     if (config.scratchpad_base != 0) {
         current_addr = config.scratchpad_base;
     }
@@ -207,6 +224,16 @@ void KPUSimulator::read_l2_bank(size_t bank_id, Address addr, void* data, Size s
 void KPUSimulator::write_l2_bank(size_t bank_id, Address addr, const void* data, Size size) {
     validate_l2_bank_id(bank_id);
     l2_banks[bank_id].write(addr, data, size);
+}
+
+void KPUSimulator::read_l1_buffer(size_t buffer_id, Address addr, void* data, Size size) {
+    validate_l1_buffer_id(buffer_id);
+    l1_buffers[buffer_id].read(addr, data, size);
+}
+
+void KPUSimulator::write_l1_buffer(size_t buffer_id, Address addr, const void* data, Size size) {
+    validate_l1_buffer_id(buffer_id);
+    l1_buffers[buffer_id].write(addr, data, size);
 }
 
 // ===========================================
@@ -406,6 +433,9 @@ void KPUSimulator::reset() {
     for (auto& l2_bank : l2_banks) {
         l2_bank.reset();
     }
+    for (auto& l1_buffer : l1_buffers) {
+        l1_buffer.reset();
+    }
     for (auto& pad : scratchpads) {
         pad.reset();
     }
@@ -513,6 +543,11 @@ Size KPUSimulator::get_l2_bank_capacity(size_t bank_id) const {
     return l2_banks[bank_id].get_capacity();
 }
 
+Size KPUSimulator::get_l1_buffer_capacity(size_t buffer_id) const {
+    validate_l1_buffer_id(buffer_id);
+    return l1_buffers[buffer_id].get_capacity();
+}
+
 Size KPUSimulator::get_scratchpad_capacity(size_t pad_id) const {
     validate_scratchpad_id(pad_id);
     return scratchpads[pad_id].get_capacity();
@@ -609,9 +644,10 @@ void KPUSimulator::print_stats() const {
     std::cout << "Simulation cycles: " << current_cycle << std::endl;
     std::cout << "Wall-clock time: " << get_elapsed_time_ms() << " ms" << std::endl;
     std::cout << "Memory banks: " << memory_banks.size() << std::endl;
-    std::cout << "Scratchpads: " << scratchpads.size() << std::endl;
     std::cout << "L3 tiles: " << l3_tiles.size() << std::endl;
     std::cout << "L2 banks: " << l2_banks.size() << std::endl;
+    std::cout << "L1 buffers: " << l1_buffers.size() << std::endl;
+    std::cout << "Scratchpads: " << scratchpads.size() << std::endl;
     std::cout << "Compute tiles: " << compute_tiles.size() << std::endl;
     std::cout << "DMA engines: " << dma_engines.size() << std::endl;
     std::cout << "Block movers: " << block_movers.size() << std::endl;
@@ -652,6 +688,12 @@ void KPUSimulator::print_component_status() const {
                   << " KB, Ready: " << (l2_banks[i].is_ready() ? "Yes" : "No") << std::endl;
     }
 
+    std::cout << "L1 Buffers (Compute Fabric):" << std::endl;
+    for (size_t i = 0; i < l1_buffers.size(); ++i) {
+        std::cout << "  L1Buffer[" << i << "]: " << l1_buffers[i].get_capacity() / 1024
+                  << " KB, Ready: " << (l1_buffers[i].is_ready() ? "Yes" : "No") << std::endl;
+    }
+
     std::cout << "Block Movers:" << std::endl;
     for (size_t i = 0; i < block_movers.size(); ++i) {
         const auto& mover = block_movers[i];
@@ -687,6 +729,11 @@ bool KPUSimulator::is_l3_tile_ready(size_t tile_id) const {
 bool KPUSimulator::is_l2_bank_ready(size_t bank_id) const {
     validate_l2_bank_id(bank_id);
     return l2_banks[bank_id].is_ready();
+}
+
+bool KPUSimulator::is_l1_buffer_ready(size_t buffer_id) const {
+    validate_l1_buffer_id(buffer_id);
+    return l1_buffers[buffer_id].is_ready();
 }
 
 bool KPUSimulator::is_scratchpad_ready(size_t pad_id) const {
@@ -734,6 +781,12 @@ void KPUSimulator::validate_l3_tile_id(size_t tile_id) const {
 void KPUSimulator::validate_l2_bank_id(size_t bank_id) const {
     if (bank_id >= l2_banks.size()) {
         throw std::out_of_range("Invalid L2 bank ID: " + std::to_string(bank_id));
+    }
+}
+
+void KPUSimulator::validate_l1_buffer_id(size_t buffer_id) const {
+    if (buffer_id >= l1_buffers.size()) {
+        throw std::out_of_range("Invalid L1 buffer ID: " + std::to_string(buffer_id));
     }
 }
 
@@ -981,9 +1034,9 @@ Address KPUSimulator::get_l2_bank_base(size_t bank_id) const {
     return base;
 }
 
-Address KPUSimulator::get_scratchpad_base(size_t pad_id) const {
-    validate_scratchpad_id(pad_id);
-    // Scratchpads start after all host memory regions, external banks, L3 tiles, and L2 banks
+Address KPUSimulator::get_l1_buffer_base(size_t buffer_id) const {
+    validate_l1_buffer_id(buffer_id);
+    // L1 buffers start after all host memory regions, external banks, L3 tiles, and L2 banks
     Address base = 0;
     for (const auto& region : host_memory_regions) {
         base += region.get_capacity();
@@ -996,6 +1049,32 @@ Address KPUSimulator::get_scratchpad_base(size_t pad_id) const {
     }
     for (const auto& bank : l2_banks) {
         base += bank.get_capacity();
+    }
+    // Then add offsets for L1 buffers before this one
+    for (size_t i = 0; i < buffer_id; ++i) {
+        base += l1_buffers[i].get_capacity();
+    }
+    return base;
+}
+
+Address KPUSimulator::get_scratchpad_base(size_t pad_id) const {
+    validate_scratchpad_id(pad_id);
+    // Scratchpads start after all host memory regions, external banks, L3 tiles, L2 banks, and L1 buffers
+    Address base = 0;
+    for (const auto& region : host_memory_regions) {
+        base += region.get_capacity();
+    }
+    for (const auto& bank : memory_banks) {
+        base += bank.get_capacity();
+    }
+    for (const auto& tile : l3_tiles) {
+        base += tile.get_capacity();
+    }
+    for (const auto& bank : l2_banks) {
+        base += bank.get_capacity();
+    }
+    for (const auto& buffer : l1_buffers) {
+        base += buffer.get_capacity();
     }
     // Then add offsets for scratchpads before this one
     for (size_t i = 0; i < pad_id; ++i) {

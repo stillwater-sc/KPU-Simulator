@@ -9,6 +9,7 @@ set(MEMORY_COMPONENT_SOURCES
     scratchpad.cpp
     l3_tile.cpp
     l2_bank.cpp
+    l1_buffer.cpp
     cache.cpp
     storage_scheduler.cpp
     memory_orchestrator_integration.cpp
