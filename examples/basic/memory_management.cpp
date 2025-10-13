@@ -85,10 +85,11 @@ int main() {
     const size_t transfer_size = 256 * sizeof(float);
 
     std::cout << "  Starting DMA transfer...\n";
-    kpu.start_dma_external_to_scratchpad(
+    Address global_src = kpu.get_external_bank_base(bank_id) + addr;
+    Address global_dst = kpu.get_scratchpad_base(scratchpad_id) + 0;
+    kpu.dma_external_to_scratchpad(
         dma_id,
-        bank_id, addr,
-        scratchpad_id, 0,
+        global_src, global_dst,
         transfer_size
     );
 
@@ -125,10 +126,11 @@ int main() {
 
     // DMA back to a different memory location
     const size_t new_addr = 64 * 1024; // 64KB offset
-    kpu.start_dma_scratchpad_to_external(
+    Address global_scratch_src = kpu.get_scratchpad_base(scratchpad_id) + 0;
+    Address global_ext_dst = kpu.get_external_bank_base(bank_id) + new_addr;
+    kpu.dma_scratchpad_to_external(
         dma_id,
-        scratchpad_id, 0,
-        bank_id, new_addr,
+        global_scratch_src, global_ext_dst,
         new_data.size() * sizeof(float)
     );
 

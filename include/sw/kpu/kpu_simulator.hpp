@@ -39,17 +39,29 @@ namespace sw::kpu {
 class KPU_API KPUSimulator {
 public:
     struct Config {
+        // Host memory configuration (external to KPU, models NUMA regions)
+        Size host_memory_region_count;
+        Size host_memory_region_capacity_mb;
+        Size host_memory_bandwidth_gbps;
+
+        // External memory (local to KPU)
         Size memory_bank_count;
         Size memory_bank_capacity_mb;
         Size memory_bandwidth_gbps;
-        Size scratchpad_count;
-        Size scratchpad_capacity_kb;
-        Size compute_tile_count;
-        Size dma_engine_count;
+
+        // On-chip memory hierarchy
         Size l3_tile_count;
         Size l3_tile_capacity_kb;
         Size l2_bank_count;
         Size l2_bank_capacity_kb;
+        Size scratchpad_count;
+        Size scratchpad_capacity_kb;
+
+        // Compute resources
+        Size compute_tile_count;
+
+        // Data movement engines
+        Size dma_engine_count;
         Size block_mover_count;
         Size streamer_count;
 
@@ -58,31 +70,55 @@ public:
         Size systolic_array_cols;
         bool use_systolic_arrays;
 
-        Config() : memory_bank_count(2), memory_bank_capacity_mb(1024),
-                   memory_bandwidth_gbps(100), scratchpad_count(2),
-                   scratchpad_capacity_kb(64), compute_tile_count(2),
-                   dma_engine_count(2), l3_tile_count(4), l3_tile_capacity_kb(128),
-                   l2_bank_count(8), l2_bank_capacity_kb(64), block_mover_count(4),
-                   streamer_count(8), systolic_array_rows(16), systolic_array_cols(16),
-                   use_systolic_arrays(true) {}
+        // Programmable memory map base addresses (for debugging/testing)
+        // If set to 0, addresses are automatically computed sequentially
+        // If non-zero, that specific base address is used (allows sparse/custom layouts)
+        Address host_memory_base;
+        Address external_memory_base;
+        Address l3_tile_base;
+        Address l2_bank_base;
+        Address scratchpad_base;
+
+        Config()
+            : host_memory_region_count(1), host_memory_region_capacity_mb(4096),
+              host_memory_bandwidth_gbps(50),  // Typical DDR4 bandwidth
+              memory_bank_count(2), memory_bank_capacity_mb(1024),
+              memory_bandwidth_gbps(100),
+              l3_tile_count(4), l3_tile_capacity_kb(128),
+              l2_bank_count(8), l2_bank_capacity_kb(64),
+              scratchpad_count(2), scratchpad_capacity_kb(64),
+              compute_tile_count(2),
+              dma_engine_count(2), block_mover_count(4), streamer_count(8),
+              systolic_array_rows(16), systolic_array_cols(16),
+              use_systolic_arrays(true),
+              host_memory_base(0), external_memory_base(0), l3_tile_base(0),
+              l2_bank_base(0), scratchpad_base(0) {}
+
 		Config(const Config&) = default;
 		Config& operator=(const Config&) = default;
 		Config(Config&&) = default;
 		Config& operator=(Config&&) = default;
 		~Config() = default;
 
+        // Legacy constructor for backward compatibility
         Config (Size mem_banks, Size mem_cap, Size mem_bw,
                 Size pads, Size pad_cap,
                 Size tiles, Size dmas, Size l3_tiles = 4, Size l3_cap = 128,
                 Size l2_banks = 8, Size l2_cap = 64, Size block_movers = 4, Size streamers = 8,
                 Size systolic_rows = 16, Size systolic_cols = 16, bool use_systolic = true)
-            : memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
-              memory_bandwidth_gbps(mem_bw), scratchpad_count(pads),
-              scratchpad_capacity_kb(pad_cap), compute_tile_count(tiles),
-              dma_engine_count(dmas), l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
-              l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap), block_mover_count(block_movers),
-              streamer_count(streamers), systolic_array_rows(systolic_rows),
-              systolic_array_cols(systolic_cols), use_systolic_arrays(use_systolic) {
+            : host_memory_region_count(1), host_memory_region_capacity_mb(4096),
+              host_memory_bandwidth_gbps(50),
+              memory_bank_count(mem_banks), memory_bank_capacity_mb(mem_cap),
+              memory_bandwidth_gbps(mem_bw),
+              l3_tile_count(l3_tiles), l3_tile_capacity_kb(l3_cap),
+              l2_bank_count(l2_banks), l2_bank_capacity_kb(l2_cap),
+              scratchpad_count(pads), scratchpad_capacity_kb(pad_cap),
+              compute_tile_count(tiles),
+              dma_engine_count(dmas), block_mover_count(block_movers), streamer_count(streamers),
+              systolic_array_rows(systolic_rows), systolic_array_cols(systolic_cols),
+              use_systolic_arrays(use_systolic),
+              host_memory_base(0), external_memory_base(0), l3_tile_base(0),
+              l2_bank_base(0), scratchpad_base(0) {
 		}
     };
     
@@ -96,12 +132,13 @@ public:
     
 private:
     // Component vectors - value semantics, addressable
-    std::vector<ExternalMemory> memory_banks;
+    std::vector<ExternalMemory> host_memory_regions;  // Host system memory (NUMA regions)
+    std::vector<ExternalMemory> memory_banks;  // KPU local memory banks
+    std::vector<L3Tile> l3_tiles;
+    std::vector<L2Bank> l2_banks;
     std::vector<Scratchpad> scratchpads;
     std::vector<DMAEngine> dma_engines;
     std::vector<ComputeFabric> compute_tiles;
-    std::vector<L3Tile> l3_tiles;
-    std::vector<L2Bank> l2_banks;
     std::vector<BlockMover> block_movers;
     std::vector<Streamer> streamers;
 
@@ -125,30 +162,69 @@ public:
     KPUSimulator& operator=(KPUSimulator&&) noexcept = default;
 
     // Memory operations - clean delegation API
+    void read_host_memory(size_t region_id, Address addr, void* data, Size size);
+    void write_host_memory(size_t region_id, Address addr, const void* data, Size size);
     void read_memory_bank(size_t bank_id, Address addr, void* data, Size size);
     void write_memory_bank(size_t bank_id, Address addr, const void* data, Size size);
+    void read_l3_tile(size_t tile_id, Address addr, void* data, Size size);
+    void write_l3_tile(size_t tile_id, Address addr, const void* data, Size size);
+    void read_l2_bank(size_t bank_id, Address addr, void* data, Size size);
+    void write_l2_bank(size_t bank_id, Address addr, const void* data, Size size);
     void read_scratchpad(size_t pad_id, Address addr, void* data, Size size);
     void write_scratchpad(size_t pad_id, Address addr, const void* data, Size size);
     
-    // DMA operations - address-based API (modern, recommended)
+    // ===========================================
+    // DMA Operations - Address-Based API
+    // ===========================================
+
+    /**
+     * @brief Primary DMA API - transfer between any two global addresses
+     *
+     * This is the most flexible API. The address decoder automatically routes
+     * based on address ranges. All convenience helpers below delegate to this.
+     */
     void start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr, Size size,
                            std::function<void()> callback = nullptr);
 
-    // DMA operations - type-based API (legacy, for backward compatibility)
-    void start_dma_transfer(size_t dma_id,
-                           DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
-                           DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
-                           Size size, std::function<void()> callback = nullptr);
-
-    // Convenience methods for common transfer patterns (use type-based API internally)
-    void start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
-                                          size_t pad_id, Address dst_addr, Size size,
-                                          std::function<void()> callback = nullptr);
-    void start_dma_scratchpad_to_external(size_t dma_id, size_t pad_id, Address src_addr,
-                                          size_t bank_id, Address dst_addr, Size size,
-                                          std::function<void()> callback = nullptr);
-
     bool is_dma_busy(size_t dma_id);
+
+    // ===========================================
+    // DMA Convenience Helpers - All DMA Patterns
+    // ===========================================
+
+    // Pattern (a): Host ↔ External
+    void dma_host_to_external(size_t dma_id, Address host_addr, Address external_addr,
+                              Size size, std::function<void()> callback = nullptr);
+    void dma_external_to_host(size_t dma_id, Address external_addr, Address host_addr,
+                              Size size, std::function<void()> callback = nullptr);
+
+    // Pattern (b): Host ↔ L3
+    void dma_host_to_l3(size_t dma_id, Address host_addr, Address l3_addr,
+                        Size size, std::function<void()> callback = nullptr);
+    void dma_l3_to_host(size_t dma_id, Address l3_addr, Address host_addr,
+                        Size size, std::function<void()> callback = nullptr);
+
+    // Pattern (c): External ↔ L3
+    void dma_external_to_l3(size_t dma_id, Address external_addr, Address l3_addr,
+                            Size size, std::function<void()> callback = nullptr);
+    void dma_l3_to_external(size_t dma_id, Address l3_addr, Address external_addr,
+                            Size size, std::function<void()> callback = nullptr);
+
+    // Pattern (d): Host ↔ Scratchpad
+    void dma_host_to_scratchpad(size_t dma_id, Address host_addr, Address scratchpad_addr,
+                                Size size, std::function<void()> callback = nullptr);
+    void dma_scratchpad_to_host(size_t dma_id, Address scratchpad_addr, Address host_addr,
+                                Size size, std::function<void()> callback = nullptr);
+
+    // Pattern (e): External ↔ Scratchpad
+    void dma_external_to_scratchpad(size_t dma_id, Address external_addr, Address scratchpad_addr,
+                                    Size size, std::function<void()> callback = nullptr);
+    void dma_scratchpad_to_external(size_t dma_id, Address scratchpad_addr, Address external_addr,
+                                    Size size, std::function<void()> callback = nullptr);
+
+    // Pattern (f): Scratchpad ↔ Scratchpad (data reshuffling)
+    void dma_scratchpad_to_scratchpad(size_t dma_id, Address src_scratchpad_addr, Address dst_scratchpad_addr,
+                                      Size size, std::function<void()> callback = nullptr);
 
     // BlockMover operations - L3 to L2 data movement with transformations
     void start_block_transfer(size_t block_mover_id, size_t src_l3_tile_id, Address src_offset,
@@ -174,12 +250,6 @@ public:
 
     bool is_streamer_busy(size_t streamer_id);
 
-    // L3 and L2 memory operations
-    void read_l3_tile(size_t tile_id, Address addr, void* data, Size size);
-    void write_l3_tile(size_t tile_id, Address addr, const void* data, Size size);
-    void read_l2_bank(size_t bank_id, Address addr, void* data, Size size);
-    void write_l2_bank(size_t bank_id, Address addr, const void* data, Size size);
-
     // Compute operations
     void start_matmul(size_t tile_id, size_t scratchpad_id, Size m, Size n, Size k,
                      Address a_addr, Address b_addr, Address c_addr,
@@ -198,19 +268,21 @@ public:
     void run_until_idle(); // Run until all components are idle
     
     // Configuration queries
+    size_t get_host_memory_region_count() const { return host_memory_regions.size(); }
     size_t get_memory_bank_count() const { return memory_banks.size(); }
+    size_t get_l3_tile_count() const { return l3_tiles.size(); }
+    size_t get_l2_bank_count() const { return l2_banks.size(); }
     size_t get_scratchpad_count() const { return scratchpads.size(); }
     size_t get_compute_tile_count() const { return compute_tiles.size(); }
     size_t get_dma_engine_count() const { return dma_engines.size(); }
-    size_t get_l3_tile_count() const { return l3_tiles.size(); }
-    size_t get_l2_bank_count() const { return l2_banks.size(); }
     size_t get_block_mover_count() const { return block_movers.size(); }
     size_t get_streamer_count() const { return streamers.size(); }
-    
+
+    Size get_host_memory_region_capacity(size_t region_id) const;
     Size get_memory_bank_capacity(size_t bank_id) const;
-    Size get_scratchpad_capacity(size_t pad_id) const;
     Size get_l3_tile_capacity(size_t tile_id) const;
     Size get_l2_bank_capacity(size_t bank_id) const;
+    Size get_scratchpad_capacity(size_t pad_id) const;
     
     // High-level test operations
     bool run_matmul_test(const MatMulTest& test, size_t memory_bank_id = 0, 
@@ -223,13 +295,27 @@ public:
     void print_component_status() const;
     
     // Component status queries
+    bool is_host_memory_region_ready(size_t region_id) const;
     bool is_memory_bank_ready(size_t bank_id) const;
-    bool is_scratchpad_ready(size_t pad_id) const;
     bool is_l3_tile_ready(size_t tile_id) const;
     bool is_l2_bank_ready(size_t bank_id) const;
+    bool is_scratchpad_ready(size_t pad_id) const;
 
-    // Address computation helpers for unified address space
-    // These allow external code to compute global addresses for address-based DMA API
+    // ===========================================
+    // Address Computation Helpers
+    // ===========================================
+
+    /**
+     * @brief Get base address of a host memory region in unified address space
+     *
+     * Example:
+     * @code
+     * Address host_addr = kpu.get_host_memory_region_base(0) + offset;
+     * Address ext_addr = kpu.get_external_bank_base(0) + offset;
+     * kpu.dma_host_to_external(0, host_addr, ext_addr, size, callback);
+     * @endcode
+     */
+    Address get_host_memory_region_base(size_t region_id) const;
     Address get_external_bank_base(size_t bank_id) const;
     Address get_l3_tile_base(size_t tile_id) const;
     Address get_l2_bank_base(size_t bank_id) const;
@@ -246,12 +332,13 @@ public:
     void disable_compute_fabric_tracing(size_t tile_id);
 
 private:
+    void validate_host_memory_region_id(size_t region_id) const;
     void validate_bank_id(size_t bank_id) const;
+    void validate_l3_tile_id(size_t tile_id) const;
+    void validate_l2_bank_id(size_t bank_id) const;
     void validate_scratchpad_id(size_t pad_id) const;
     void validate_dma_id(size_t dma_id) const;
     void validate_tile_id(size_t tile_id) const;
-    void validate_l3_tile_id(size_t tile_id) const;
-    void validate_l2_bank_id(size_t bank_id) const;
     void validate_block_mover_id(size_t mover_id) const;
     void validate_streamer_id(size_t streamer_id) const;
 };

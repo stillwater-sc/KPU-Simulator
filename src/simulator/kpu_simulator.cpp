@@ -10,13 +10,32 @@ namespace sw::kpu {
 
 // KPUSimulator implementation - clean delegation-based API
 KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
-    // Initialize memory banks
+    // Initialize host memory regions (NUMA)
+    host_memory_regions.reserve(config.host_memory_region_count);
+    for (size_t i = 0; i < config.host_memory_region_count; ++i) {
+        host_memory_regions.emplace_back(config.host_memory_region_capacity_mb,
+                                         config.host_memory_bandwidth_gbps);
+    }
+
+    // Initialize external memory banks (KPU local memory)
     memory_banks.reserve(config.memory_bank_count);
     for (size_t i = 0; i < config.memory_bank_count; ++i) {
         memory_banks.emplace_back(config.memory_bank_capacity_mb, config.memory_bandwidth_gbps);
     }
 
-    // Initialize scratchpads
+    // Initialize L3 tiles - software-managed on-chip buffers
+    l3_tiles.reserve(config.l3_tile_count);
+    for (size_t i = 0; i < config.l3_tile_count; ++i) {
+        l3_tiles.emplace_back(i, config.l3_tile_capacity_kb);
+    }
+
+    // Initialize L2 banks - software-managed on-chip buffers
+    l2_banks.reserve(config.l2_bank_count);
+    for (size_t i = 0; i < config.l2_bank_count; ++i) {
+        l2_banks.emplace_back(i, config.l2_bank_capacity_kb);
+    }
+
+    // Initialize scratchpads (L1) - fastest, closest to compute
     scratchpads.reserve(config.scratchpad_count);
     for (size_t i = 0; i < config.scratchpad_count; ++i) {
         scratchpads.emplace_back(config.scratchpad_capacity_kb);
@@ -34,47 +53,59 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
                                   config.systolic_array_cols);
     }
 
-    // Initialize DMA engines - now bidirectional, configured per-transfer
+    // Initialize DMA engines - general-purpose data movement
     dma_engines.reserve(config.dma_engine_count);
     for (size_t i = 0; i < config.dma_engine_count; ++i) {
-        dma_engines.emplace_back(i);  // Just pass engine ID for identification
+        dma_engines.emplace_back(i);
     }
 
-    // Initialize L3 tiles - distributed L3 cache tiles
-    l3_tiles.reserve(config.l3_tile_count);
-    for (size_t i = 0; i < config.l3_tile_count; ++i) {
-        l3_tiles.emplace_back(i, config.l3_tile_capacity_kb);
-    }
-
-    // Initialize L2 banks - L2 cache banks
-    l2_banks.reserve(config.l2_bank_count);
-    for (size_t i = 0; i < config.l2_bank_count; ++i) {
-        l2_banks.emplace_back(i, config.l2_bank_capacity_kb);
-    }
-
-    // Initialize BlockMovers - L3↔L2 data movement engines
+    // Initialize BlockMovers - L3↔L2 data movement with transformations
     block_movers.reserve(config.block_mover_count);
     for (size_t i = 0; i < config.block_mover_count; ++i) {
-        // Associate each BlockMover with an L3 tile (simple 1:1 mapping for now)
         size_t associated_l3_tile = i % config.l3_tile_count;
         block_movers.emplace_back(i, associated_l3_tile);
     }
 
-    // Initialize Streamers - L2↔L1 data movement for systolic arrays
+    // Initialize Streamers - L2↔L1 streaming for compute fabric
     streamers.reserve(config.streamer_count);
     for (size_t i = 0; i < config.streamer_count; ++i) {
         streamers.emplace_back(i);
     }
 
-    // Initialize address decoder with unified address space
-    // Memory map layout (dynamically computed to avoid overlaps):
-    //   Start at 0x0000'0000 - External memory banks (each bank gets its capacity)
-    //   Then L3 tiles (after external banks)
-    //   Then L2 banks (after L3 tiles)
-    //   Then Scratchpads (after L2 banks)
-    Address current_addr = 0x0000'0000;
+    // ===========================================
+    // Initialize Programmable Memory Map
+    // ===========================================
 
-    // External memory banks - start at 0
+    /**
+     * Memory map strategy:
+     * - If config base address is 0: auto-compute (sequential layout)
+     * - If config base address is non-zero: use that address (custom layout)
+     *
+     * This allows two modes:
+     * 1. Default: Sequential, contiguous address space starting at 0
+     * 2. Custom: Sparse address space for easier debugging (e.g., 0x4_0000_0000 for external)
+     */
+
+    Address current_addr;
+
+    // Host memory regions (NUMA)
+    if (config.host_memory_base != 0) {
+        current_addr = config.host_memory_base;
+    } else {
+        current_addr = 0x0000'0000;  // Default: start at 0
+    }
+    for (size_t i = 0; i < config.host_memory_region_count; ++i) {
+        Size capacity = config.host_memory_region_capacity_mb * 1024 * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::HOST_MEMORY, i,
+                                  "Host Memory Region " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // External memory banks (KPU local)
+    if (config.external_memory_base != 0) {
+        current_addr = config.external_memory_base;
+    }
+    // else: continue from previous region (sequential)
     for (size_t i = 0; i < config.memory_bank_count; ++i) {
         Size capacity = config.memory_bank_capacity_mb * 1024 * 1024;
         address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::EXTERNAL, i,
@@ -82,7 +113,10 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         current_addr += capacity;
     }
 
-    // L3 tiles - start after external banks
+    // L3 tiles
+    if (config.l3_tile_base != 0) {
+        current_addr = config.l3_tile_base;
+    }
     for (size_t i = 0; i < config.l3_tile_count; ++i) {
         Size capacity = config.l3_tile_capacity_kb * 1024;
         address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::L3_TILE, i,
@@ -90,7 +124,10 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         current_addr += capacity;
     }
 
-    // L2 banks - start after L3 tiles
+    // L2 banks
+    if (config.l2_bank_base != 0) {
+        current_addr = config.l2_bank_base;
+    }
     for (size_t i = 0; i < config.l2_bank_count; ++i) {
         Size capacity = config.l2_bank_capacity_kb * 1024;
         address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::L2_BANK, i,
@@ -98,7 +135,10 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         current_addr += capacity;
     }
 
-    // Scratchpads - start after L2 banks
+    // Scratchpads (L1)
+    if (config.scratchpad_base != 0) {
+        current_addr = config.scratchpad_base;
+    }
     for (size_t i = 0; i < config.scratchpad_count; ++i) {
         Size capacity = config.scratchpad_capacity_kb * 1024;
         address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::SCRATCHPAD, i,
@@ -114,7 +154,20 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
     sim_start_time = std::chrono::high_resolution_clock::now();
 }
 
-// Memory operations - clean delegation
+// ===========================================
+// Memory Operations
+// ===========================================
+
+void KPUSimulator::read_host_memory(size_t region_id, Address addr, void* data, Size size) {
+    validate_host_memory_region_id(region_id);
+    host_memory_regions[region_id].read(addr, data, size);
+}
+
+void KPUSimulator::write_host_memory(size_t region_id, Address addr, const void* data, Size size) {
+    validate_host_memory_region_id(region_id);
+    host_memory_regions[region_id].write(addr, data, size);
+}
+
 void KPUSimulator::read_memory_bank(size_t bank_id, Address addr, void* data, Size size) {
     validate_bank_id(bank_id);
     memory_banks[bank_id].read(addr, data, size);
@@ -156,82 +209,84 @@ void KPUSimulator::write_l2_bank(size_t bank_id, Address addr, const void* data,
     l2_banks[bank_id].write(addr, data, size);
 }
 
-// DMA operations - address-based API (modern, recommended)
+// ===========================================
+// DMA Operations
+// ===========================================
+
 void KPUSimulator::start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr,
                                      Size size, std::function<void()> callback) {
     validate_dma_id(dma_id);
-    // Direct pass-through to DMA engine's address-based API
     dma_engines[dma_id].enqueue_transfer(src_addr, dst_addr, size, std::move(callback));
-}
-
-// DMA operations - type-based API (legacy, for backward compatibility)
-void KPUSimulator::start_dma_transfer(size_t dma_id,
-                                     DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
-                                     DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
-                                     Size size, std::function<void()> callback) {
-    validate_dma_id(dma_id);
-
-    // Convert to address-based API: compute global addresses from (type, id, offset) tuples
-    Address global_src_addr = 0;
-    Address global_dst_addr = 0;
-
-    switch (src_type) {
-        case DMAEngine::MemoryType::EXTERNAL:
-            global_src_addr = get_external_bank_base(src_id) + src_addr;
-            break;
-        case DMAEngine::MemoryType::L3_TILE:
-            global_src_addr = get_l3_tile_base(src_id) + src_addr;
-            break;
-        case DMAEngine::MemoryType::L2_BANK:
-            global_src_addr = get_l2_bank_base(src_id) + src_addr;
-            break;
-        case DMAEngine::MemoryType::SCRATCHPAD:
-            global_src_addr = get_scratchpad_base(src_id) + src_addr;
-            break;
-        default:
-            throw std::runtime_error("Unsupported source memory type");
-    }
-
-    switch (dst_type) {
-        case DMAEngine::MemoryType::EXTERNAL:
-            global_dst_addr = get_external_bank_base(dst_id) + dst_addr;
-            break;
-        case DMAEngine::MemoryType::L3_TILE:
-            global_dst_addr = get_l3_tile_base(dst_id) + dst_addr;
-            break;
-        case DMAEngine::MemoryType::L2_BANK:
-            global_dst_addr = get_l2_bank_base(dst_id) + dst_addr;
-            break;
-        case DMAEngine::MemoryType::SCRATCHPAD:
-            global_dst_addr = get_scratchpad_base(dst_id) + dst_addr;
-            break;
-        default:
-            throw std::runtime_error("Unsupported destination memory type");
-    }
-
-    // Use the address-based API (delegate to the modern overload)
-    start_dma_transfer(dma_id, global_src_addr, global_dst_addr, size, std::move(callback));
-}
-
-void KPUSimulator::start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
-                                                    size_t pad_id, Address dst_addr, Size size,
-                                                    std::function<void()> callback) {
-    start_dma_transfer(dma_id, DMAEngine::MemoryType::EXTERNAL, bank_id, src_addr,
-                      DMAEngine::MemoryType::SCRATCHPAD, pad_id, dst_addr,
-                      size, std::move(callback));
-}
-
-void KPUSimulator::start_dma_scratchpad_to_external(size_t dma_id, size_t pad_id, Address src_addr,
-                                                    size_t bank_id, Address dst_addr, Size size,
-                                                    std::function<void()> callback) {
-    start_dma_transfer(dma_id, DMAEngine::MemoryType::SCRATCHPAD, pad_id, src_addr,
-                      DMAEngine::MemoryType::EXTERNAL, bank_id, dst_addr,
-                      size, std::move(callback));
 }
 
 bool KPUSimulator::is_dma_busy(size_t dma_id) {
     validate_dma_id(dma_id);
     return dma_engines[dma_id].is_busy();
+}
+
+// ===========================================
+// DMA Convenience Helpers
+// ===========================================
+
+// Pattern (a): Host ↔ External
+void KPUSimulator::dma_host_to_external(size_t dma_id, Address host_addr, Address external_addr,
+                                        Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, host_addr, external_addr, size, std::move(callback));
+}
+
+void KPUSimulator::dma_external_to_host(size_t dma_id, Address external_addr, Address host_addr,
+                                        Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, external_addr, host_addr, size, std::move(callback));
+}
+
+// Pattern (b): Host ↔ L3
+void KPUSimulator::dma_host_to_l3(size_t dma_id, Address host_addr, Address l3_addr,
+                                 Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, host_addr, l3_addr, size, std::move(callback));
+}
+
+void KPUSimulator::dma_l3_to_host(size_t dma_id, Address l3_addr, Address host_addr,
+                                 Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, l3_addr, host_addr, size, std::move(callback));
+}
+
+// Pattern (c): External ↔ L3
+void KPUSimulator::dma_external_to_l3(size_t dma_id, Address external_addr, Address l3_addr,
+                                     Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, external_addr, l3_addr, size, std::move(callback));
+}
+
+void KPUSimulator::dma_l3_to_external(size_t dma_id, Address l3_addr, Address external_addr,
+                                     Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, l3_addr, external_addr, size, std::move(callback));
+}
+
+// Pattern (d): Host ↔ Scratchpad
+void KPUSimulator::dma_host_to_scratchpad(size_t dma_id, Address host_addr, Address scratchpad_addr,
+                                         Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, host_addr, scratchpad_addr, size, std::move(callback));
+}
+
+void KPUSimulator::dma_scratchpad_to_host(size_t dma_id, Address scratchpad_addr, Address host_addr,
+                                         Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, scratchpad_addr, host_addr, size, std::move(callback));
+}
+
+// Pattern (e): External ↔ Scratchpad
+void KPUSimulator::dma_external_to_scratchpad(size_t dma_id, Address external_addr, Address scratchpad_addr,
+                                             Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, external_addr, scratchpad_addr, size, std::move(callback));
+}
+
+void KPUSimulator::dma_scratchpad_to_external(size_t dma_id, Address scratchpad_addr, Address external_addr,
+                                             Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, scratchpad_addr, external_addr, size, std::move(callback));
+}
+
+// Pattern (f): Scratchpad ↔ Scratchpad
+void KPUSimulator::dma_scratchpad_to_scratchpad(size_t dma_id, Address src_scratchpad_addr, Address dst_scratchpad_addr,
+                                               Size size, std::function<void()> callback) {
+    start_dma_transfer(dma_id, src_scratchpad_addr, dst_scratchpad_addr, size, std::move(callback));
 }
 
 // BlockMover operations
@@ -339,8 +394,17 @@ bool KPUSimulator::is_compute_busy(size_t tile_id) {
 
 // Simulation control
 void KPUSimulator::reset() {
+    for (auto& region : host_memory_regions) {
+        region.reset();
+    }
     for (auto& bank : memory_banks) {
         bank.reset();
+    }
+    for (auto& l3_tile : l3_tiles) {
+        l3_tile.reset();
+    }
+    for (auto& l2_bank : l2_banks) {
+        l2_bank.reset();
     }
     for (auto& pad : scratchpads) {
         pad.reset();
@@ -350,12 +414,6 @@ void KPUSimulator::reset() {
     }
     for (auto& tile : compute_tiles) {
         tile.reset();
-    }
-    for (auto& l3_tile : l3_tiles) {
-        l3_tile.reset();
-    }
-    for (auto& l2_bank : l2_banks) {
-        l2_bank.reset();
     }
     for (auto& block_mover : block_movers) {
         block_mover.reset();
@@ -385,8 +443,9 @@ void KPUSimulator::step() {
     }
 
     // Then process/update all components
+    // DMA engines now have access to host memory regions
     for (auto& dma : dma_engines) {
-        dma.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
     }
     for (auto& block_mover : block_movers) {
         block_mover.process_transfers(l3_tiles, l2_banks);
@@ -434,14 +493,14 @@ void KPUSimulator::run_until_idle() {
 }
 
 // Configuration queries
+Size KPUSimulator::get_host_memory_region_capacity(size_t region_id) const {
+    validate_host_memory_region_id(region_id);
+    return host_memory_regions[region_id].get_capacity();
+}
+
 Size KPUSimulator::get_memory_bank_capacity(size_t bank_id) const {
     validate_bank_id(bank_id);
     return memory_banks[bank_id].get_capacity();
-}
-
-Size KPUSimulator::get_scratchpad_capacity(size_t pad_id) const {
-    validate_scratchpad_id(pad_id);
-    return scratchpads[pad_id].get_capacity();
 }
 
 Size KPUSimulator::get_l3_tile_capacity(size_t tile_id) const {
@@ -452,6 +511,11 @@ Size KPUSimulator::get_l3_tile_capacity(size_t tile_id) const {
 Size KPUSimulator::get_l2_bank_capacity(size_t bank_id) const {
     validate_l2_bank_id(bank_id);
     return l2_banks[bank_id].get_capacity();
+}
+
+Size KPUSimulator::get_scratchpad_capacity(size_t pad_id) const {
+    validate_scratchpad_id(pad_id);
+    return scratchpads[pad_id].get_capacity();
 }
 
 // High-level test operation
@@ -481,10 +545,16 @@ bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id
         // Set up computation pipeline
         bool dma_a_complete = false, dma_b_complete = false, compute_complete = false;
 
+        // Compute global addresses for DMA transfers
+        Address global_ext_a_addr = get_external_bank_base(memory_bank_id) + ext_a_addr;
+        Address global_ext_b_addr = get_external_bank_base(memory_bank_id) + ext_b_addr;
+        Address global_scratch_a_addr = get_scratchpad_base(scratchpad_id) + scratch_a_addr;
+        Address global_scratch_b_addr = get_scratchpad_base(scratchpad_id) + scratch_b_addr;
+
         // DMA A and B matrices to scratchpad using convenience methods
-        start_dma_external_to_scratchpad(0, memory_bank_id, ext_a_addr, scratchpad_id, scratch_a_addr, a_size,
+        dma_external_to_scratchpad(0, global_ext_a_addr, global_scratch_a_addr, a_size,
             [&dma_a_complete]() { dma_a_complete = true; });
-        start_dma_external_to_scratchpad(0, memory_bank_id, ext_b_addr, scratchpad_id, scratch_b_addr, b_size,
+        dma_external_to_scratchpad(0, global_ext_b_addr, global_scratch_b_addr, b_size,
             [&dma_b_complete]() { dma_b_complete = true; });
 
         // Wait for data to be loaded
@@ -504,7 +574,9 @@ bool KPUSimulator::run_matmul_test(const MatMulTest& test, size_t memory_bank_id
 
         // DMA result back to external memory using convenience method
         bool dma_c_complete = false;
-        start_dma_scratchpad_to_external(0, scratchpad_id, scratch_c_addr, memory_bank_id, ext_c_addr, c_size,
+        Address global_ext_c_addr = get_external_bank_base(memory_bank_id) + ext_c_addr;
+        Address global_scratch_c_addr = get_scratchpad_base(scratchpad_id) + scratch_c_addr;
+        dma_scratchpad_to_external(0, global_scratch_c_addr, global_ext_c_addr, c_size,
             [&dma_c_complete]() { dma_c_complete = true; });
 
         // Wait for result transfer
@@ -597,14 +669,14 @@ void KPUSimulator::print_component_status() const {
 }
 
 // Component status queries
+bool KPUSimulator::is_host_memory_region_ready(size_t region_id) const {
+    validate_host_memory_region_id(region_id);
+    return host_memory_regions[region_id].is_ready();
+}
+
 bool KPUSimulator::is_memory_bank_ready(size_t bank_id) const {
     validate_bank_id(bank_id);
     return memory_banks[bank_id].is_ready();
-}
-
-bool KPUSimulator::is_scratchpad_ready(size_t pad_id) const {
-    validate_scratchpad_id(pad_id);
-    return scratchpads[pad_id].is_ready();
 }
 
 bool KPUSimulator::is_l3_tile_ready(size_t tile_id) const {
@@ -617,7 +689,18 @@ bool KPUSimulator::is_l2_bank_ready(size_t bank_id) const {
     return l2_banks[bank_id].is_ready();
 }
 
+bool KPUSimulator::is_scratchpad_ready(size_t pad_id) const {
+    validate_scratchpad_id(pad_id);
+    return scratchpads[pad_id].is_ready();
+}
+
 // Validation helpers
+void KPUSimulator::validate_host_memory_region_id(size_t region_id) const {
+    if (region_id >= host_memory_regions.size()) {
+        throw std::out_of_range("Invalid host memory region ID: " + std::to_string(region_id));
+    }
+}
+
 void KPUSimulator::validate_bank_id(size_t bank_id) const {
     if (bank_id >= memory_banks.size()) {
         throw std::out_of_range("Invalid memory bank ID: " + std::to_string(bank_id));
@@ -832,12 +915,29 @@ void KPUSimulator::disable_compute_fabric_tracing(size_t tile_id) {
     compute_tiles[tile_id].disable_tracing();
 }
 
-// Address computation helpers for unified address space
+// ===========================================
+// Address Computation Helpers
+// ===========================================
+
 // These must match the memory map layout in the constructor
+Address KPUSimulator::get_host_memory_region_base(size_t region_id) const {
+    validate_host_memory_region_id(region_id);
+    // Host memory regions start at 0 (or config.host_memory_base), each gets its full capacity
+    Address base = 0;
+    for (size_t i = 0; i < region_id; ++i) {
+        base += host_memory_regions[i].get_capacity();
+    }
+    return base;
+}
+
 Address KPUSimulator::get_external_bank_base(size_t bank_id) const {
     validate_bank_id(bank_id);
-    // External banks start at 0, each gets its full capacity
+    // External banks start after all host memory regions
     Address base = 0;
+    for (const auto& region : host_memory_regions) {
+        base += region.get_capacity();
+    }
+    // Then add offsets for external banks before this one
     for (size_t i = 0; i < bank_id; ++i) {
         base += memory_banks[i].get_capacity();
     }
@@ -846,8 +946,11 @@ Address KPUSimulator::get_external_bank_base(size_t bank_id) const {
 
 Address KPUSimulator::get_l3_tile_base(size_t tile_id) const {
     validate_l3_tile_id(tile_id);
-    // L3 tiles start after all external banks
+    // L3 tiles start after all host memory regions and external banks
     Address base = 0;
+    for (const auto& region : host_memory_regions) {
+        base += region.get_capacity();
+    }
     for (const auto& bank : memory_banks) {
         base += bank.get_capacity();
     }
@@ -860,8 +963,11 @@ Address KPUSimulator::get_l3_tile_base(size_t tile_id) const {
 
 Address KPUSimulator::get_l2_bank_base(size_t bank_id) const {
     validate_l2_bank_id(bank_id);
-    // L2 banks start after all external banks and L3 tiles
+    // L2 banks start after all host memory regions, external banks, and L3 tiles
     Address base = 0;
+    for (const auto& region : host_memory_regions) {
+        base += region.get_capacity();
+    }
     for (const auto& bank : memory_banks) {
         base += bank.get_capacity();
     }
@@ -877,8 +983,11 @@ Address KPUSimulator::get_l2_bank_base(size_t bank_id) const {
 
 Address KPUSimulator::get_scratchpad_base(size_t pad_id) const {
     validate_scratchpad_id(pad_id);
-    // Scratchpads start after all external banks, L3 tiles, and L2 banks
+    // Scratchpads start after all host memory regions, external banks, L3 tiles, and L2 banks
     Address base = 0;
+    for (const auto& region : host_memory_regions) {
+        base += region.get_capacity();
+    }
     for (const auto& bank : memory_banks) {
         base += bank.get_capacity();
     }

@@ -37,8 +37,11 @@ public:
 
         auto start_time = std::chrono::high_resolution_clock::now();
 
+        Address global_src = sim->get_external_bank_base(0);
+        Address global_dst = sim->get_scratchpad_base(0);
+
         bool complete = false;
-        sim->start_dma_external_to_scratchpad(dma_id, 0, 0, 0, 0, transfer_size,
+        sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, transfer_size,
             [&complete]() { complete = true; });
 
         size_t cycles = 0;
@@ -87,8 +90,11 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Transfer Size Scaling
         auto start_time = std::chrono::high_resolution_clock::now();
         size_t start_cycle = sim->get_current_cycle();
 
+        Address global_src = sim->get_external_bank_base(0);
+        Address global_dst = sim->get_scratchpad_base(0);
+
         bool complete = false;
-        sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, size,
+        sim->dma_external_to_scratchpad(0, global_src, global_dst, size,
             [&complete]() { complete = true; });
 
         while (!complete) {
@@ -141,7 +147,10 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Concurrent Transfer S
             size_t src_bank = i % config.memory_bank_count;
             size_t dst_offset = i * transfer_size;
 
-            sim->start_dma_external_to_scratchpad(i, src_bank, i * transfer_size, 0, dst_offset, transfer_size,
+            Address global_src = sim->get_external_bank_base(src_bank) + i * transfer_size;
+            Address global_dst = sim->get_scratchpad_base(0) + dst_offset;
+
+            sim->dma_external_to_scratchpad(i, global_src, global_dst, transfer_size,
                 [&completions, i]() { completions[i] = true; });
         }
 
@@ -187,8 +196,11 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Memory Bank Distribut
         std::iota(test_data.begin(), test_data.end(), 0);
         sim->write_memory_bank(0, 0, test_data.data(), transfer_size);
 
+        Address global_src = sim->get_external_bank_base(0);
+        Address global_dst = sim->get_scratchpad_base(0);
+
         bool complete = false;
-        sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, transfer_size,
+        sim->dma_external_to_scratchpad(0, global_src, global_dst, transfer_size,
             [&complete]() { complete = true; });
 
         while (!complete) {
@@ -225,7 +237,9 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Memory Bank Distribut
 
             // Use different DMA engines for different banks
             size_t dma_id = bank % config.dma_engine_count;
-            sim->start_dma_external_to_scratchpad(dma_id, bank, 0, 0, bank * per_bank_size, per_bank_size,
+            Address global_src = sim->get_external_bank_base(bank);
+            Address global_dst = sim->get_scratchpad_base(0) + bank * per_bank_size;
+            sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, per_bank_size,
                 [&completions, bank]() { completions[bank] = true; });
         }
 
@@ -279,8 +293,11 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Large Dataset Streami
         size_t src_offset = (chunk / config.memory_bank_count) * chunk_size;
         size_t dma_id = chunk % config.dma_engine_count;
 
+        Address global_src = sim->get_external_bank_base(src_bank) + src_offset;
+        Address global_dst = sim->get_scratchpad_base(0);
+
         bool chunk_complete = false;
-        sim->start_dma_external_to_scratchpad(dma_id, src_bank, src_offset, 0, 0, chunk_size,
+        sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, chunk_size,
             [&chunk_complete, &chunks_completed]() {
                 chunk_complete = true;
                 chunks_completed++;
@@ -337,8 +354,11 @@ TEST_CASE_METHOD(DMAPerformanceFixture, "DMA Performance - Benchmark Test", "[dm
         auto start_time = std::chrono::high_resolution_clock::now();
         size_t start_cycle = sim->get_current_cycle();
 
+        Address global_src = sim->get_external_bank_base(0);
+        Address global_dst = sim->get_scratchpad_base(0);
+
         bool complete = false;
-        sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, transfer_size,
+        sim->dma_external_to_scratchpad(0, global_src, global_dst, transfer_size,
             [&complete]() { complete = true; });
 
         while (!complete) {

@@ -21,6 +21,7 @@ using namespace sw::trace;
 // Test fixture for DMA tracing tests
 class DMATracingFixture {
 public:
+    std::vector<ExternalMemory> host_memory_regions;  // Host memory (empty for these tests)
     std::vector<ExternalMemory> memory_banks;
     std::vector<L3Tile> l3_tiles;  // Empty for these tests
     std::vector<L2Bank> l2_banks;  // Empty for these tests
@@ -32,6 +33,8 @@ public:
         : dma_engine(0, 1.0, 100.0)  // Engine 0, 1 GHz, 100 GB/s
         , logger(TraceLogger::instance())
     {
+        // Host memory regions remain empty for these tests (only testing EXTERNAL <-> SCRATCHPAD)
+
         // Create 2 memory banks of 64MB each
         memory_banks.emplace_back(64, 100);  // 64 MB capacity, 100 Gbps bandwidth
         memory_banks.emplace_back(64, 100);
@@ -83,7 +86,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Single DMA Transfer - External to Sc
 
     // Process the transfer (cycle-accurate: may take multiple calls)
     while (dma_engine.is_busy()) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -150,7 +153,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Multiple DMA Transfers", "[trace][dm
 
     // Process all transfers (cycle-accurate: advance cycle each iteration)
     while (dma_engine.is_busy()) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -194,7 +197,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to CSV", "[trace][dma][export
 
         // Process until this transfer completes
         while (dma_engine.is_busy()) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
     }
@@ -225,7 +228,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to JSON", "[trace][dma][expor
 
         // Process until this transfer completes
         while (dma_engine.is_busy()) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
     }
@@ -260,7 +263,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to Chrome Trace Format", "[tr
 
         // Process until this transfer completes
         while (dma_engine.is_busy()) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
     }
@@ -294,7 +297,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Cycle Range Query", "[trace][dma][qu
 
         // Process until this transfer completes
         while (dma_engine.is_busy()) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
     }
@@ -334,7 +337,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Bandwidth Analysis", "[trace][dma][a
 
         // Process until this transfer completes
         while (dma_engine.is_busy()) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
     }

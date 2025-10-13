@@ -62,8 +62,12 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Basic Transfer - External to Scratchpad", 
     sim->write_memory_bank(0, src_addr, test_data.data(), transfer_size);
 
     // Start DMA transfer (External[0] -> Scratchpad[0])
+    // Compute global addresses
+    Address global_src_addr = sim->get_external_bank_base(0) + src_addr;
+    Address global_dst_addr = sim->get_scratchpad_base(0) + dst_addr;
+
     bool transfer_complete = false;
-    sim->start_dma_external_to_scratchpad(0, 0, src_addr, 0, dst_addr, transfer_size,
+    sim->dma_external_to_scratchpad(0, global_src_addr, global_dst_addr, transfer_size,
         [&transfer_complete]() { transfer_complete = true; });
 
     // Process until transfer completes
@@ -86,8 +90,12 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Basic Transfer - Scratchpad to External", 
     sim->write_scratchpad(0, src_addr, test_data.data(), transfer_size);
 
     // Start DMA transfer (Scratchpad[0] -> External[0])
+    // Compute global addresses
+    Address global_src_addr = sim->get_scratchpad_base(0) + src_addr;
+    Address global_dst_addr = sim->get_external_bank_base(0) + dst_addr;
+
     bool transfer_complete = false;
-    sim->start_dma_scratchpad_to_external(0, 0, src_addr, 0, dst_addr, transfer_size,
+    sim->dma_scratchpad_to_external(0, global_src_addr, global_dst_addr, transfer_size,
         [&transfer_complete]() { transfer_complete = true; });
 
     // Process until transfer completes
@@ -117,9 +125,13 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Queue Management - Multiple Transfers", "[
     int completions = 0;
     auto completion_callback = [&completions]() { completions++; };
 
-    sim->start_dma_external_to_scratchpad(0, 0, 0x1000, 0, 0x0, transfer_size, completion_callback);
-    sim->start_dma_external_to_scratchpad(0, 0, 0x1000 + transfer_size, 0, transfer_size, transfer_size, completion_callback);
-    sim->start_dma_external_to_scratchpad(0, 0, 0x1000 + 2*transfer_size, 0, 2*transfer_size, transfer_size, completion_callback);
+    // Compute base addresses once
+    Address external_base = sim->get_external_bank_base(0);
+    Address scratchpad_base = sim->get_scratchpad_base(0);
+
+    sim->dma_external_to_scratchpad(0, external_base + 0x1000, scratchpad_base + 0x0, transfer_size, completion_callback);
+    sim->dma_external_to_scratchpad(0, external_base + 0x1000 + transfer_size, scratchpad_base + transfer_size, transfer_size, completion_callback);
+    sim->dma_external_to_scratchpad(0, external_base + 0x1000 + 2*transfer_size, scratchpad_base + 2*transfer_size, transfer_size, completion_callback);
 
     REQUIRE(sim->is_dma_busy(0));
 
@@ -148,7 +160,9 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Data Integrity - Various Sizes", "[dma][in
             sim->write_memory_bank(0, 0, test_data.data(), size);
 
             bool complete = false;
-            sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, size, [&complete]() { complete = true; });
+            Address global_src = sim->get_external_bank_base(0) + 0;
+            Address global_dst = sim->get_scratchpad_base(0) + 0;
+            sim->dma_external_to_scratchpad(0, global_src, global_dst, size, [&complete]() { complete = true; });
 
             while (!complete) {
                 sim->step();
@@ -164,21 +178,25 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
 
     SECTION("Source address out of bounds") {
         // Use an address way beyond the entire unified address space
-        // Compute total address space size
+        // Compute total address space size (must include ALL memory types)
         Address total_space = 0;
-        for (size_t i = 0; i < config.memory_bank_count; ++i) {
-            total_space += config.memory_bank_capacity_mb * 1024 * 1024;
-        }
-        total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024;
-        total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024;
-        total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024;
+        // Host memory
+        total_space += config.host_memory_region_count * config.host_memory_region_capacity_mb * 1024ULL * 1024ULL;
+        // External memory banks
+        total_space += config.memory_bank_count * config.memory_bank_capacity_mb * 1024ULL * 1024ULL;
+        // On-chip memory hierarchy
+        total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024ULL;
+        total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024ULL;
+        total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024ULL;
 
         Address invalid_src = total_space + 100000;  // Way beyond address space
 
         // With address-based API, validation may happen during queuing or processing
         bool exception_thrown = false;
         try {
-            sim->start_dma_external_to_scratchpad(0, 0, invalid_src, 0, 0, transfer_size);
+            // Try to use invalid global source address (destination is valid)
+            Address valid_dst = sim->get_scratchpad_base(0);
+            sim->dma_external_to_scratchpad(0, invalid_src, valid_dst, transfer_size);
             // If queuing succeeded, error should occur during processing
             for (int i = 0; i < 100 && !exception_thrown; ++i) {
                 try {
@@ -197,20 +215,25 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
 
     SECTION("Destination address out of bounds") {
         // Use an address way beyond the entire unified address space
+        // Compute total address space size (must include ALL memory types)
         Address total_space = 0;
-        for (size_t i = 0; i < config.memory_bank_count; ++i) {
-            total_space += config.memory_bank_capacity_mb * 1024 * 1024;
-        }
-        total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024;
-        total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024;
-        total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024;
+        // Host memory
+        total_space += config.host_memory_region_count * config.host_memory_region_capacity_mb * 1024ULL * 1024ULL;
+        // External memory banks
+        total_space += config.memory_bank_count * config.memory_bank_capacity_mb * 1024ULL * 1024ULL;
+        // On-chip memory hierarchy
+        total_space += config.l3_tile_count * config.l3_tile_capacity_kb * 1024ULL;
+        total_space += config.l2_bank_count * config.l2_bank_capacity_kb * 1024ULL;
+        total_space += config.scratchpad_count * config.scratchpad_capacity_kb * 1024ULL;
 
         Address invalid_dst = total_space + 100000;  // Way beyond address space
 
         // With address-based API, validation may happen during queuing or processing
         bool exception_thrown = false;
         try {
-            sim->start_dma_external_to_scratchpad(0, 0, 0, 0, invalid_dst, transfer_size);
+            // Try to use invalid global destination address (source is valid)
+            Address valid_src = sim->get_external_bank_base(0);
+            sim->dma_external_to_scratchpad(0, valid_src, invalid_dst, transfer_size);
             // If queuing succeeded, error should occur during processing
             for (int i = 0; i < 100 && !exception_thrown; ++i) {
                 try {
@@ -235,7 +258,9 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
         // With address-based API, validation may happen during queuing or processing
         bool exception_thrown = false;
         try {
-            sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, oversized_transfer);
+            Address valid_src = sim->get_external_bank_base(0);
+            Address valid_dst = sim->get_scratchpad_base(0);
+            sim->dma_external_to_scratchpad(0, valid_src, valid_dst, oversized_transfer);
             // If queuing succeeded, error should occur during processing
             for (int i = 0; i < 100 && !exception_thrown; ++i) {
                 try {
@@ -255,8 +280,10 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
 
 TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid IDs", "[dma][error]") {
     SECTION("Invalid DMA engine ID") {
+        Address valid_src = sim->get_external_bank_base(0);
+        Address valid_dst = sim->get_scratchpad_base(0);
         REQUIRE_THROWS_AS(
-            sim->start_dma_external_to_scratchpad(99, 0, 0, 0, 0, 1024),
+            sim->dma_external_to_scratchpad(99, valid_src, valid_dst, 1024),
             std::out_of_range
         );
 
@@ -273,7 +300,9 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Reset Functionality", "[dma][reset]") {
 
     // Queue a transfer
     sim->write_memory_bank(0, 0, test_data.data(), transfer_size);
-    sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, transfer_size);
+    Address global_src = sim->get_external_bank_base(0);
+    Address global_dst = sim->get_scratchpad_base(0);
+    sim->dma_external_to_scratchpad(0, global_src, global_dst, transfer_size);
 
     REQUIRE(sim->is_dma_busy(0));
 
@@ -300,12 +329,16 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Concurrent Operations", "[dma][concurrent]
     bool transfer2_complete = false;
 
     // DMA 0: Bank0 -> Scratchpad0
-    sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, transfer_size,
+    Address bank0_base = sim->get_external_bank_base(0);
+    Address bank1_base = sim->get_external_bank_base(1);
+    Address scratch_base = sim->get_scratchpad_base(0);
+
+    sim->dma_external_to_scratchpad(0, bank0_base, scratch_base, transfer_size,
         [&transfer1_complete]() { transfer1_complete = true; });
 
     // DMA 1: Bank1 -> Scratchpad0 (different section)
     if (sim->get_scratchpad_capacity(0) >= 2 * transfer_size) {
-        sim->start_dma_external_to_scratchpad(1, 1, 0, 0, transfer_size, transfer_size,
+        sim->dma_external_to_scratchpad(1, bank1_base, scratch_base + transfer_size, transfer_size,
             [&transfer2_complete]() { transfer2_complete = true; });
     }
 
@@ -355,9 +388,12 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Matrix Data Movement", "[dma][matrix]") {
     bool transfer_a_complete = false;
     bool transfer_b_complete = false;
 
-    sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, matrix_size,
+    Address ext_base = sim->get_external_bank_base(0);
+    Address scratch_base = sim->get_scratchpad_base(0);
+
+    sim->dma_external_to_scratchpad(0, ext_base, scratch_base, matrix_size,
         [&transfer_a_complete]() { transfer_a_complete = true; });
-    sim->start_dma_external_to_scratchpad(0, 0, matrix_size, 0, matrix_size, matrix_size,
+    sim->dma_external_to_scratchpad(0, ext_base + matrix_size, scratch_base + matrix_size, matrix_size,
         [&transfer_b_complete]() { transfer_b_complete = true; });
 
     // Process transfers

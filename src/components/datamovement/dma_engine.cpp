@@ -106,7 +106,8 @@ void DMAEngine::enqueue_transfer(MemoryType src_type, size_t src_id, Address src
     transfer_queue.emplace_back(std::move(transfer));
 }
 
-bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
+bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regions,
+                                  std::vector<ExternalMemory>& memory_banks,
                                   std::vector<L3Tile>& l3_tiles,
                                   std::vector<L2Bank>& l2_banks,
                                   std::vector<Scratchpad>& scratchpads) {
@@ -194,8 +195,10 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
         // Read from source into buffer
         switch (transfer.src_type) {
             case MemoryType::HOST_MEMORY:
-                // Host memory is external - for simulation, this is a no-op
-                // The data should already be in the destination from functional model
+                if (transfer.src_id >= host_memory_regions.size()) {
+                    throw std::out_of_range("Invalid source host memory region ID: " + std::to_string(transfer.src_id));
+                }
+                host_memory_regions[transfer.src_id].read(transfer.src_addr, transfer_buffer.data(), transfer.size);
                 break;
 
             case MemoryType::EXTERNAL:
@@ -242,7 +245,10 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
             // Write to destination
             switch (transfer.dst_type) {
                 case MemoryType::HOST_MEMORY:
-                    // Host memory is external - for simulation, this is a no-op
+                    if (transfer.dst_id >= host_memory_regions.size()) {
+                        throw std::out_of_range("Invalid destination host memory region ID: " + std::to_string(transfer.dst_id));
+                    }
+                    host_memory_regions[transfer.dst_id].write(transfer.dst_addr, transfer_buffer.data(), transfer.size);
                     break;
 
                 case MemoryType::EXTERNAL:

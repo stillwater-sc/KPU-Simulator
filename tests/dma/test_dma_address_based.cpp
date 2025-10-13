@@ -27,6 +27,7 @@ using namespace sw::memory;
 class AddressBasedDMAFixture {
 public:
     // Hardware components
+    std::vector<ExternalMemory> host_memory_regions;  // Empty for these tests
     std::vector<ExternalMemory> memory_banks;
     std::vector<L3Tile> l3_tiles;
     std::vector<L2Bank> l2_banks;
@@ -122,7 +123,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Basic Transfer", "[
 
     // Process until complete
     while (!complete) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -159,7 +160,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Hardware Topology I
 
     // Process transfers
     while (completions < 2) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -257,7 +258,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Multiple Transfers 
 
     // Process first transfer
     while (completions < 1) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -265,7 +266,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Multiple Transfers 
     dma_engine.enqueue_transfer(l3_addr, l2_addr, transfer_size, callback);
 
     while (completions < 2) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -273,7 +274,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Multiple Transfers 
     dma_engine.enqueue_transfer(l2_addr, scratch_addr, transfer_size, callback);
 
     while (completions < 3) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -298,7 +299,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Comparison with Typ
             [&complete]() { complete = true; });
 
         while (!complete) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
 
@@ -314,18 +315,30 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Comparison with Typ
         auto src_route = decoder.decode(src_addr);
         auto dst_route = decoder.decode(dst_addr);
 
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        // Suppress deprecation warnings for legacy API demonstration
+        #ifdef _MSC_VER
+            #pragma warning(push)
+            #pragma warning(disable: 4996)  // 'function': was declared deprecated
+        #else
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+        #endif
+
         dma_engine.enqueue_transfer(
             DMAEngine::MemoryType::EXTERNAL, src_route.id, src_route.offset,
             DMAEngine::MemoryType::SCRATCHPAD, dst_route.id, dst_route.offset,
             transfer_size,
             [&complete]() { complete = true; }
         );
-        #pragma GCC diagnostic pop
+
+        #ifdef _MSC_VER
+            #pragma warning(pop)
+        #else
+            #pragma GCC diagnostic pop
+        #endif
 
         while (!complete) {
-            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
             dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
         }
 
@@ -374,7 +387,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Virtual Memory Simu
     // The DMA code stays the same! This is the key benefit.
 
     while (completions < 2) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
@@ -430,7 +443,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Dynamic Memory Allo
     dma_engine.enqueue_transfer(large_tensor, scratch_large, large_tensor_size, callback);
 
     while (completions < 2) {
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.process_transfers(host_memory_regions, memory_banks, l3_tiles, l2_banks, scratchpads);
         dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 

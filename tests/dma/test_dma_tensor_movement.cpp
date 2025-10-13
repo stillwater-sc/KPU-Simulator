@@ -111,8 +111,11 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Basic Matrix Transfer",
     sim->write_memory_bank(0, 0, matrix.data(), matrix_size);
 
     // Transfer to scratchpad (L3 cache)
+    Address global_src = sim->get_external_bank_base(0);
+    Address global_dst = sim->get_scratchpad_base(0);
+
     bool transfer_complete = false;
-    sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, matrix_size,
+    sim->dma_external_to_scratchpad(0, global_src, global_dst, matrix_size,
         [&transfer_complete]() { transfer_complete = true; });
 
     while (!transfer_complete) {
@@ -144,12 +147,15 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Multi-Matrix Batch Tran
     // Transfer entire batch using multiple DMA engines
     std::vector<bool> completions(batch_size, false);
 
+    Address ext_base = sim->get_external_bank_base(0);
+    Address scratch_base = sim->get_scratchpad_base(0);
+
     for (size_t i = 0; i < batch_size; ++i) {
         size_t dma_id = i % config.dma_engine_count;
         Address src_addr = i * matrix_size;
         Address dst_addr = i * matrix_size;
 
-        sim->start_dma_external_to_scratchpad(dma_id, 0, src_addr, 0, dst_addr, matrix_size,
+        sim->dma_external_to_scratchpad(dma_id, ext_base + src_addr, scratch_base + dst_addr, matrix_size,
             [&completions, i]() { completions[i] = true; });
     }
 
@@ -208,6 +214,8 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Tiled Matrix Transfer",
 
     // Transfer tiles using multiple DMA engines
     std::vector<bool> tile_completions(tiles.size(), false);
+    Address ext_base = sim->get_external_bank_base(0);
+    Address scratch_base = sim->get_scratchpad_base(0);
 
     for (size_t i = 0; i < tiles.size(); ++i) {
         const auto& tile = tiles[i];
@@ -217,7 +225,7 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Tiled Matrix Transfer",
         // This is a simplified version - real hardware would use 2D DMA
         size_t tile_data_size = tile.height * tile.width * sizeof(float);
 
-        sim->start_dma_external_to_scratchpad(dma_id, 0, tile.memory_addr, 0, tile.scratch_addr, tile_data_size,
+        sim->dma_external_to_scratchpad(dma_id, ext_base + tile.memory_addr, scratch_base + tile.scratch_addr, tile_data_size,
             [&tile_completions, i]() { tile_completions[i] = true; });
     }
 
@@ -278,13 +286,16 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Convolution Data Moveme
     std::cout << "Streaming " << input_channels << " feature maps of "
               << input_height << "x" << input_width << "\n";
 
+    Address ext_base = sim->get_external_bank_base(0);
+    Address scratch_base = sim->get_scratchpad_base(0);
     size_t channels_processed = 0;
+
     for (size_t c = 0; c < input_channels; ++c) {
         bool channel_complete = false;
         Address src_addr = c * feature_map_size;
         size_t dma_id = c % config.dma_engine_count;
 
-        sim->start_dma_external_to_scratchpad(dma_id, 0, src_addr, 0, 0, feature_map_size,
+        sim->dma_external_to_scratchpad(dma_id, ext_base + src_addr, scratch_base, feature_map_size,
             [&channel_complete, &channels_processed]() {
                 channel_complete = true;
                 channels_processed++;
@@ -335,13 +346,18 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Pipeline Simulation", "
     };
 
     // Start all stages concurrently (simulating pipeline)
+    Address scratch_base = sim->get_scratchpad_base(0);
+
     for (size_t stage = 0; stage < stage_count; ++stage) {
         size_t src_bank = stage % config.memory_bank_count;
         size_t dma_id = stage % config.dma_engine_count;
         Address src_addr = stage * matrix_size_per_stage;
         Address dst_addr = stage * matrix_size_per_stage;
 
-        sim->start_dma_external_to_scratchpad(dma_id, src_bank, src_addr, 0, dst_addr, matrix_size_per_stage,
+        Address global_src = sim->get_external_bank_base(src_bank) + src_addr;
+        Address global_dst = scratch_base + dst_addr;
+
+        sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, matrix_size_per_stage,
             [&stage_completions, stage, callback = completion_callback(stage)]() {
                 stage_completions[stage] = true;
                 callback();
@@ -402,13 +418,18 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Memory Bank Optimizatio
         // Check if all tensors fit in scratchpad
         if (tensor_count * tensor_size > sim->get_scratchpad_capacity(0)) {
             // Process tensors one by one if they don't all fit
+            Address scratch_base = sim->get_scratchpad_base(0);
+
             for (size_t i = 0; i < tensor_count; ++i) {
                 size_t bank_id = i % config.memory_bank_count;
                 size_t dma_id = i % config.dma_engine_count;
                 size_t src_offset = (i / config.memory_bank_count) * tensor_size;
                 size_t dst_offset = 0; // Overwrite scratchpad for each tensor
 
-                sim->start_dma_external_to_scratchpad(dma_id, bank_id, src_offset, 0, dst_offset, tensor_size,
+                Address global_src = sim->get_external_bank_base(bank_id) + src_offset;
+                Address global_dst = scratch_base + dst_offset;
+
+                sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, tensor_size,
                     [&completions, i]() { completions[i] = true; });
 
                 // Process this transfer individually for timing
@@ -424,13 +445,18 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Memory Bank Optimizatio
             }
         } else {
             // All tensors fit - transfer to different scratchpad areas
+            Address scratch_base = sim->get_scratchpad_base(0);
+
             for (size_t i = 0; i < tensor_count; ++i) {
                 size_t bank_id = i % config.memory_bank_count;
                 size_t dma_id = i % config.dma_engine_count;
                 size_t src_offset = (i / config.memory_bank_count) * tensor_size;
                 size_t dst_offset = i * tensor_size; // Different area per tensor
 
-                sim->start_dma_external_to_scratchpad(dma_id, bank_id, src_offset, 0, dst_offset, tensor_size,
+                Address global_src = sim->get_external_bank_base(bank_id) + src_offset;
+                Address global_dst = scratch_base + dst_offset;
+
+                sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, tensor_size,
                     [&completions, i]() { completions[i] = true; });
             }
 
@@ -473,6 +499,8 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Memory Bank Optimizatio
         auto start_time = std::chrono::high_resolution_clock::now();
 
         // Transfer tensors with interleaved access
+        Address scratch_base = sim->get_scratchpad_base(0);
+
         for (size_t i = 0; i < tensor_count; ++i) {
             std::vector<bool> bank_completions(config.memory_bank_count, false);
 
@@ -482,8 +510,10 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Memory Bank Optimizatio
                 size_t bank_data_size = elements_per_bank_actual * sizeof(float);
                 size_t dma_id = bank % config.dma_engine_count;
 
-                sim->start_dma_external_to_scratchpad(dma_id, bank, i * bank_data_size, 0,
-                                      bank * bank_data_size, bank_data_size,
+                Address global_src = sim->get_external_bank_base(bank) + i * bank_data_size;
+                Address global_dst = scratch_base + bank * bank_data_size;
+
+                sim->dma_external_to_scratchpad(dma_id, global_src, global_dst, bank_data_size,
                     [&bank_completions, bank]() { bank_completions[bank] = true; });
             }
 

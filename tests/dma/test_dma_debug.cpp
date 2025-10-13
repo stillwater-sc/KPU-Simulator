@@ -61,8 +61,11 @@ TEST_CASE("DMA Debug - Simple Transfer", "[dma][debug]") {
     std::cout << "DMA 0 busy before transfer: " << (sim.is_dma_busy(0) ? "YES" : "NO") << "\n";
 
     // Start transfer using DMA 0
+    Address global_src = sim.get_external_bank_base(0);
+    Address global_dst = sim.get_scratchpad_base(0);
+
     bool transfer_complete = false;
-    sim.start_dma_external_to_scratchpad(0, 0, 0, 0, 0, transfer_size,
+    sim.dma_external_to_scratchpad(0, global_src, global_dst, transfer_size,
         [&transfer_complete]() {
             std::cout << "Transfer completion callback called\n";
             transfer_complete = true;

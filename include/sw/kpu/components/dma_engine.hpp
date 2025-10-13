@@ -178,7 +178,8 @@ public:
                          Size size, std::function<void()> callback = nullptr);
 
     // Process transfers with full memory hierarchy access
-    bool process_transfers(std::vector<ExternalMemory>& memory_banks,
+    bool process_transfers(std::vector<ExternalMemory>& host_memory_regions,
+                          std::vector<ExternalMemory>& memory_banks,
                           std::vector<L3Tile>& l3_tiles,
                           std::vector<L2Bank>& l2_banks,
                           std::vector<Scratchpad>& scratchpads);
