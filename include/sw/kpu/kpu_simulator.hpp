@@ -24,6 +24,7 @@
 
 #include <sw/concepts.hpp>
 #include <sw/memory/external_memory.hpp>
+#include <sw/memory/address_decoder.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
 #include <sw/kpu/components/dma_engine.hpp>
 #include <sw/kpu/components/l3_tile.hpp>
@@ -103,7 +104,10 @@ private:
     std::vector<L2Bank> l2_banks;
     std::vector<BlockMover> block_movers;
     std::vector<Streamer> streamers;
-    
+
+    // Address decoder for unified address space
+    sw::memory::AddressDecoder address_decoder;
+
     // Simulation state
     Cycle current_cycle;
     std::chrono::high_resolution_clock::time_point sim_start_time;
@@ -126,13 +130,17 @@ public:
     void read_scratchpad(size_t pad_id, Address addr, void* data, Size size);
     void write_scratchpad(size_t pad_id, Address addr, const void* data, Size size);
     
-    // DMA operations - now bidirectional with per-transfer configuration
+    // DMA operations - address-based API (modern, recommended)
+    void start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr, Size size,
+                           std::function<void()> callback = nullptr);
+
+    // DMA operations - type-based API (legacy, for backward compatibility)
     void start_dma_transfer(size_t dma_id,
                            DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
                            DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
                            Size size, std::function<void()> callback = nullptr);
 
-    // Convenience methods for common transfer patterns
+    // Convenience methods for common transfer patterns (use type-based API internally)
     void start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
                                           size_t pad_id, Address dst_addr, Size size,
                                           std::function<void()> callback = nullptr);
@@ -219,6 +227,13 @@ public:
     bool is_scratchpad_ready(size_t pad_id) const;
     bool is_l3_tile_ready(size_t tile_id) const;
     bool is_l2_bank_ready(size_t bank_id) const;
+
+    // Address computation helpers for unified address space
+    // These allow external code to compute global addresses for address-based DMA API
+    Address get_external_bank_base(size_t bank_id) const;
+    Address get_l3_tile_base(size_t tile_id) const;
+    Address get_l2_bank_base(size_t bank_id) const;
+    Address get_scratchpad_base(size_t pad_id) const;
 
     // Tracing control
     void enable_dma_tracing(size_t dma_id);

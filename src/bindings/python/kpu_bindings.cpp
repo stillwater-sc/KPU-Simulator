@@ -143,6 +143,16 @@ PYBIND11_MODULE(stillwater_kpu, m) {
         .def("get_dma_engine_count", &sw::kpu::KPUSimulator::get_dma_engine_count)
         .def("get_memory_bank_capacity", &sw::kpu::KPUSimulator::get_memory_bank_capacity)
         .def("get_scratchpad_capacity", &sw::kpu::KPUSimulator::get_scratchpad_capacity)
+
+        // Address computation helpers for unified address space
+        .def("get_external_bank_base", &sw::kpu::KPUSimulator::get_external_bank_base,
+             "Get the base address of an external memory bank in the unified address space")
+        .def("get_l3_tile_base", &sw::kpu::KPUSimulator::get_l3_tile_base,
+             "Get the base address of an L3 tile in the unified address space")
+        .def("get_l2_bank_base", &sw::kpu::KPUSimulator::get_l2_bank_base,
+             "Get the base address of an L2 bank in the unified address space")
+        .def("get_scratchpad_base", &sw::kpu::KPUSimulator::get_scratchpad_base,
+             "Get the base address of a scratchpad in the unified address space")
         
         // High-level operations
         .def("run_matmul_test", &sw::kpu::KPUSimulator::run_matmul_test,

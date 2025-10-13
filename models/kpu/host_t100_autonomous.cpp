@@ -284,23 +284,29 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     // These await Phase 1 completion
 
     orch.await(DMA_INPUT_DONE, [&]() {
-        // Use REAL DMA engine for Bank→L3 transfer
-        // This will take actual cycles and generate proper traces automatically
+        // Use address-based DMA API - compute global addresses
+        // External bank base + offset → L3 tile base + offset
+        Address global_src_addr = kpu->get_external_bank_base(bank_id) + bank_input_addr;
+        Address global_dst_addr = kpu->get_l3_tile_base(l3_tile_id) + l3_input_addr;
+
         kpu->start_dma_transfer(
             dma_id,
-            DMAEngine::MemoryType::EXTERNAL, bank_id, bank_input_addr,
-            DMAEngine::MemoryType::L3_TILE, l3_tile_id, l3_input_addr,
+            global_src_addr,
+            global_dst_addr,
             host_input.size() * sizeof(float),
             [&]() { orch.signal(L3_INPUT_DONE); }  // Signal when DMA actually completes
         );
     }, "DMA Phase2: Bank→L3 (input)");
 
     orch.await(DMA_WEIGHTS_DONE, [&]() {
-        // Use REAL DMA engine for Bank→L3 transfer
+        // Use address-based DMA API - compute global addresses
+        Address global_src_addr = kpu->get_external_bank_base(bank_id) + bank_weights_addr;
+        Address global_dst_addr = kpu->get_l3_tile_base(l3_tile_id) + l3_weights_addr;
+
         kpu->start_dma_transfer(
             dma_id,
-            DMAEngine::MemoryType::EXTERNAL, bank_id, bank_weights_addr,
-            DMAEngine::MemoryType::L3_TILE, l3_tile_id, l3_weights_addr,
+            global_src_addr,
+            global_dst_addr,
             host_weights.size() * sizeof(float),
             [&]() { orch.signal(L3_WEIGHTS_DONE); }  // Signal when DMA actually completes
         );

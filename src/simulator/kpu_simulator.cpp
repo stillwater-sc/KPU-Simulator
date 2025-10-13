@@ -66,6 +66,51 @@ KPUSimulator::KPUSimulator(const Config& config) : current_cycle(0) {
         streamers.emplace_back(i);
     }
 
+    // Initialize address decoder with unified address space
+    // Memory map layout (dynamically computed to avoid overlaps):
+    //   Start at 0x0000'0000 - External memory banks (each bank gets its capacity)
+    //   Then L3 tiles (after external banks)
+    //   Then L2 banks (after L3 tiles)
+    //   Then Scratchpads (after L2 banks)
+    Address current_addr = 0x0000'0000;
+
+    // External memory banks - start at 0
+    for (size_t i = 0; i < config.memory_bank_count; ++i) {
+        Size capacity = config.memory_bank_capacity_mb * 1024 * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::EXTERNAL, i,
+                                  "External Bank " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // L3 tiles - start after external banks
+    for (size_t i = 0; i < config.l3_tile_count; ++i) {
+        Size capacity = config.l3_tile_capacity_kb * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::L3_TILE, i,
+                                  "L3 Tile " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // L2 banks - start after L3 tiles
+    for (size_t i = 0; i < config.l2_bank_count; ++i) {
+        Size capacity = config.l2_bank_capacity_kb * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::L2_BANK, i,
+                                  "L2 Bank " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // Scratchpads - start after L2 banks
+    for (size_t i = 0; i < config.scratchpad_count; ++i) {
+        Size capacity = config.scratchpad_capacity_kb * 1024;
+        address_decoder.add_region(current_addr, capacity, sw::memory::MemoryType::SCRATCHPAD, i,
+                                  "Scratchpad " + std::to_string(i));
+        current_addr += capacity;
+    }
+
+    // Attach address decoder to all DMA engines
+    for (auto& dma : dma_engines) {
+        dma.set_address_decoder(&address_decoder);
+    }
+
     sim_start_time = std::chrono::high_resolution_clock::now();
 }
 
@@ -111,15 +156,61 @@ void KPUSimulator::write_l2_bank(size_t bank_id, Address addr, const void* data,
     l2_banks[bank_id].write(addr, data, size);
 }
 
-// DMA operations
+// DMA operations - address-based API (modern, recommended)
+void KPUSimulator::start_dma_transfer(size_t dma_id, Address src_addr, Address dst_addr,
+                                     Size size, std::function<void()> callback) {
+    validate_dma_id(dma_id);
+    // Direct pass-through to DMA engine's address-based API
+    dma_engines[dma_id].enqueue_transfer(src_addr, dst_addr, size, std::move(callback));
+}
+
+// DMA operations - type-based API (legacy, for backward compatibility)
 void KPUSimulator::start_dma_transfer(size_t dma_id,
                                      DMAEngine::MemoryType src_type, size_t src_id, Address src_addr,
                                      DMAEngine::MemoryType dst_type, size_t dst_id, Address dst_addr,
                                      Size size, std::function<void()> callback) {
     validate_dma_id(dma_id);
-    dma_engines[dma_id].enqueue_transfer(src_type, src_id, src_addr,
-                                        dst_type, dst_id, dst_addr,
-                                        size, std::move(callback));
+
+    // Convert to address-based API: compute global addresses from (type, id, offset) tuples
+    Address global_src_addr = 0;
+    Address global_dst_addr = 0;
+
+    switch (src_type) {
+        case DMAEngine::MemoryType::EXTERNAL:
+            global_src_addr = get_external_bank_base(src_id) + src_addr;
+            break;
+        case DMAEngine::MemoryType::L3_TILE:
+            global_src_addr = get_l3_tile_base(src_id) + src_addr;
+            break;
+        case DMAEngine::MemoryType::L2_BANK:
+            global_src_addr = get_l2_bank_base(src_id) + src_addr;
+            break;
+        case DMAEngine::MemoryType::SCRATCHPAD:
+            global_src_addr = get_scratchpad_base(src_id) + src_addr;
+            break;
+        default:
+            throw std::runtime_error("Unsupported source memory type");
+    }
+
+    switch (dst_type) {
+        case DMAEngine::MemoryType::EXTERNAL:
+            global_dst_addr = get_external_bank_base(dst_id) + dst_addr;
+            break;
+        case DMAEngine::MemoryType::L3_TILE:
+            global_dst_addr = get_l3_tile_base(dst_id) + dst_addr;
+            break;
+        case DMAEngine::MemoryType::L2_BANK:
+            global_dst_addr = get_l2_bank_base(dst_id) + dst_addr;
+            break;
+        case DMAEngine::MemoryType::SCRATCHPAD:
+            global_dst_addr = get_scratchpad_base(dst_id) + dst_addr;
+            break;
+        default:
+            throw std::runtime_error("Unsupported destination memory type");
+    }
+
+    // Use the address-based API (delegate to the modern overload)
+    start_dma_transfer(dma_id, global_src_addr, global_dst_addr, size, std::move(callback));
 }
 
 void KPUSimulator::start_dma_external_to_scratchpad(size_t dma_id, size_t bank_id, Address src_addr,
@@ -739,6 +830,69 @@ void KPUSimulator::disable_streamer_tracing(size_t streamer_id) {
 void KPUSimulator::disable_compute_fabric_tracing(size_t tile_id) {
     validate_tile_id(tile_id);
     compute_tiles[tile_id].disable_tracing();
+}
+
+// Address computation helpers for unified address space
+// These must match the memory map layout in the constructor
+Address KPUSimulator::get_external_bank_base(size_t bank_id) const {
+    validate_bank_id(bank_id);
+    // External banks start at 0, each gets its full capacity
+    Address base = 0;
+    for (size_t i = 0; i < bank_id; ++i) {
+        base += memory_banks[i].get_capacity();
+    }
+    return base;
+}
+
+Address KPUSimulator::get_l3_tile_base(size_t tile_id) const {
+    validate_l3_tile_id(tile_id);
+    // L3 tiles start after all external banks
+    Address base = 0;
+    for (const auto& bank : memory_banks) {
+        base += bank.get_capacity();
+    }
+    // Then add offsets for L3 tiles before this one
+    for (size_t i = 0; i < tile_id; ++i) {
+        base += l3_tiles[i].get_capacity();
+    }
+    return base;
+}
+
+Address KPUSimulator::get_l2_bank_base(size_t bank_id) const {
+    validate_l2_bank_id(bank_id);
+    // L2 banks start after all external banks and L3 tiles
+    Address base = 0;
+    for (const auto& bank : memory_banks) {
+        base += bank.get_capacity();
+    }
+    for (const auto& tile : l3_tiles) {
+        base += tile.get_capacity();
+    }
+    // Then add offsets for L2 banks before this one
+    for (size_t i = 0; i < bank_id; ++i) {
+        base += l2_banks[i].get_capacity();
+    }
+    return base;
+}
+
+Address KPUSimulator::get_scratchpad_base(size_t pad_id) const {
+    validate_scratchpad_id(pad_id);
+    // Scratchpads start after all external banks, L3 tiles, and L2 banks
+    Address base = 0;
+    for (const auto& bank : memory_banks) {
+        base += bank.get_capacity();
+    }
+    for (const auto& tile : l3_tiles) {
+        base += tile.get_capacity();
+    }
+    for (const auto& bank : l2_banks) {
+        base += bank.get_capacity();
+    }
+    // Then add offsets for scratchpads before this one
+    for (size_t i = 0; i < pad_id; ++i) {
+        base += scratchpads[i].get_capacity();
+    }
+    return base;
 }
 
 } // namespace sw::kpu
