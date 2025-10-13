@@ -62,6 +62,18 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
         // Set the actual start cycle now that processing begins
         transfer.start_cycle = current_cycle_;
 
+        // Validate destination capacity before starting the transfer
+        if (transfer.dst_type == MemoryType::SCRATCHPAD) {
+            if (transfer.dst_id >= scratchpads.size()) {
+                throw std::out_of_range("Invalid destination scratchpad ID: " + std::to_string(transfer.dst_id));
+            }
+            if (transfer.dst_addr + transfer.size > scratchpads[transfer.dst_id].get_capacity()) {
+                throw std::out_of_range("DMA transfer would exceed scratchpad capacity: addr=" +
+                    std::to_string(transfer.dst_addr) + " size=" + std::to_string(transfer.size) +
+                    " capacity=" + std::to_string(scratchpads[transfer.dst_id].get_capacity()));
+            }
+        }
+
         // Calculate transfer latency in cycles based on bandwidth
         // bandwidth_gb_s_ is in GB/s, size is in bytes
         // bytes_per_cycle = (bandwidth_gb_s * 1e9) / (clock_freq_ghz * 1e9)
@@ -195,6 +207,12 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& memory_banks,
                 case MemoryType::SCRATCHPAD:
                     if (transfer.dst_id >= scratchpads.size()) {
                         throw std::out_of_range("Invalid destination scratchpad ID: " + std::to_string(transfer.dst_id));
+                    }
+                    // Validate transfer doesn't exceed destination capacity
+                    if (transfer.dst_addr + transfer.size > scratchpads[transfer.dst_id].get_capacity()) {
+                        throw std::out_of_range("DMA transfer would exceed scratchpad capacity: addr=" +
+                            std::to_string(transfer.dst_addr) + " size=" + std::to_string(transfer.size) +
+                            " capacity=" + std::to_string(scratchpads[transfer.dst_id].get_capacity()));
                     }
                     scratchpads[transfer.dst_id].write(transfer.dst_addr, transfer_buffer.data(), transfer.size);
                     break;

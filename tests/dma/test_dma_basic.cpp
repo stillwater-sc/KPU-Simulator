@@ -168,11 +168,18 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
         // Queuing should succeed (lazy validation)
         sim->start_dma_external_to_scratchpad(0, 0, invalid_src, 0, 0, transfer_size);
 
-        // The error should occur during processing
-        REQUIRE_THROWS_AS(
-            sim->step(),
-            std::out_of_range
-        );
+        // The error should occur during processing (may take multiple steps to start)
+        bool exception_thrown = false;
+        // Step until exception is thrown or timeout
+        for (int i = 0; i < 100 && !exception_thrown; ++i) {
+            try {
+                sim->step();
+            } catch (const std::out_of_range&) {
+                exception_thrown = true;
+                break;
+            }
+        }
+        REQUIRE(exception_thrown);
     }
 
     SECTION("Destination address out of bounds") {
@@ -180,11 +187,18 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
 
         sim->start_dma_external_to_scratchpad(0, 0, 0, 0, invalid_dst, transfer_size);
 
-        // The error should occur during processing
-        REQUIRE_THROWS_AS(
-            sim->step(),
-            std::out_of_range
-        );
+        // The error should occur during processing (may take multiple steps to start)
+        bool exception_thrown = false;
+        // Step until exception is thrown or timeout
+        for (int i = 0; i < 100 && !exception_thrown; ++i) {
+            try {
+                sim->step();
+            } catch (const std::out_of_range&) {
+                exception_thrown = true;
+                break;
+            }
+        }
+        REQUIRE(exception_thrown);
     }
 
     SECTION("Transfer size exceeds destination capacity") {
@@ -192,10 +206,18 @@ TEST_CASE_METHOD(DMATestFixture, "DMA Error Handling - Invalid Addresses", "[dma
 
         sim->start_dma_external_to_scratchpad(0, 0, 0, 0, 0, oversized_transfer);
 
-        REQUIRE_THROWS_AS(
-            sim->step(),
-            std::out_of_range
-        );
+        // The error should occur during processing (may take multiple steps to start)
+        bool exception_thrown = false;
+        // Step until exception is thrown or timeout
+        for (int i = 0; i < 100 && !exception_thrown; ++i) {
+            try {
+                sim->step();
+            } catch (const std::out_of_range&) {
+                exception_thrown = true;
+                break;
+            }
+        }
+        REQUIRE(exception_thrown);
     }
 }
 

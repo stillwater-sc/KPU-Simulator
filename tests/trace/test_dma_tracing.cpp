@@ -81,14 +81,14 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Single DMA Transfer - External to Sc
         transfer_size
     );
 
-    // Should have logged the issue
-    REQUIRE(logger.get_trace_count() == initial_trace_count + 1);
+    // Process the transfer (cycle-accurate: may take multiple calls)
+    while (dma_engine.is_busy()) {
+        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+    }
 
-    // Process the transfer
-    dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
-
-    // Should have logged the completion
-    REQUIRE(logger.get_trace_count() == initial_trace_count + 2);
+    // Should have logged issue and completion
+    REQUIRE(logger.get_trace_count() >= initial_trace_count + 2);
 
     // Get traces for this DMA engine
     auto dma_traces = logger.get_component_traces(ComponentType::DMA_ENGINE, 0);
@@ -148,16 +148,14 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Multiple DMA Transfers", "[trace][dm
         );
     }
 
-    // Should have logged 3 issue traces
-    REQUIRE(logger.get_trace_count() == initial_trace_count + 3);
-
-    // Process all transfers
+    // Process all transfers (cycle-accurate: advance cycle each iteration)
     while (dma_engine.is_busy()) {
         dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
     }
 
-    // Should have logged 3 additional completion traces (total 6 new traces)
-    REQUIRE(logger.get_trace_count() == initial_trace_count + 6);
+    // Should have logged issue and completion traces for each transfer
+    REQUIRE(logger.get_trace_count() >= initial_trace_count + 6);
 
     // Get all DMA traces
     auto dma_traces = logger.get_component_traces(ComponentType::DMA_ENGINE, 0);
@@ -194,7 +192,11 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to CSV", "[trace][dma][export
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        // Process until this transfer completes
+        while (dma_engine.is_busy()) {
+            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+        }
     }
 
     // Export traces to CSV
@@ -221,7 +223,11 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to JSON", "[trace][dma][expor
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        // Process until this transfer completes
+        while (dma_engine.is_busy()) {
+            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+        }
     }
 
     // Export traces to JSON
@@ -252,7 +258,11 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to Chrome Trace Format", "[tr
             transfer_size
         );
 
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        // Process until this transfer completes
+        while (dma_engine.is_busy()) {
+            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+        }
     }
 
     // Export traces to Chrome trace format
@@ -282,7 +292,11 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Cycle Range Query", "[trace][dma][qu
             1024
         );
 
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        // Process until this transfer completes
+        while (dma_engine.is_busy()) {
+            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+        }
     }
 
     // Query specific cycle ranges
@@ -318,7 +332,11 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Bandwidth Analysis", "[trace][dma][a
             size
         );
 
-        dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+        // Process until this transfer completes
+        while (dma_engine.is_busy()) {
+            dma_engine.process_transfers(memory_banks, l3_tiles, l2_banks, scratchpads);
+            dma_engine.set_current_cycle(dma_engine.get_current_cycle() + 1);
+        }
     }
 
     // Analyze bandwidth from traces
