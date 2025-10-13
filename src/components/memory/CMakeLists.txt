@@ -12,6 +12,7 @@ set(MEMORY_COMPONENT_SOURCES
     cache.cpp
     storage_scheduler.cpp
     memory_orchestrator_integration.cpp
+    address_decoder.cpp
 )
 
 # Create the memory components library

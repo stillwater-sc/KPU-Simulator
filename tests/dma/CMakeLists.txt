@@ -30,3 +30,13 @@ set_tests_properties(dma_tensor_test PROPERTIES
 kpu_add_component_test(dma_debug_test "dma"
     test_dma_debug.cpp
 )
+
+# Address-based DMA API tests (new industry-standard API)
+kpu_add_component_test(dma_address_based_test "dma"
+    test_dma_address_based.cpp
+)
+
+# Mark as demonstrating new API
+set_tests_properties(dma_address_based_test PROPERTIES
+    LABELS "dma;address;new_api"
+)

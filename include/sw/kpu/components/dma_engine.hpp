@@ -24,6 +24,10 @@
 #include <sw/kpu/components/scratchpad.hpp>
 #include <sw/trace/trace_logger.hpp>
 
+namespace sw::memory {
+    class AddressDecoder;
+}
+
 namespace sw::kpu {
 
 // Forward declarations
@@ -75,6 +79,9 @@ private:
     // Current cycle (for timing)
     trace::CycleCount current_cycle_;
 
+    // Address decoder for address-based API (optional)
+    sw::memory::AddressDecoder* address_decoder_;
+
 public:
     explicit DMAEngine(size_t engine_id = 0, double clock_freq_ghz = 1.0, double bandwidth_gb_s = 100.0);
     ~DMAEngine() = default;
@@ -94,7 +101,78 @@ public:
         return current_cycle_;
     }
 
-    // Transfer operations - now cycle-aware
+    // Set address decoder for address-based API
+    void set_address_decoder(sw::memory::AddressDecoder* decoder) {
+        address_decoder_ = decoder;
+    }
+
+    sw::memory::AddressDecoder* get_address_decoder() const {
+        return address_decoder_;
+    }
+
+    // ===========================================
+    // Address-Based API (Recommended - Industry Standard)
+    // ===========================================
+
+    /**
+     * @brief Enqueue a DMA transfer using pure addresses (recommended)
+     *
+     * This is the industry-standard DMA API that uses pure physical addresses.
+     * The address decoder automatically routes transfers based on address ranges,
+     * following the design of Intel IOAT, ARM PL330, AMD SDMA, and other
+     * commercial DMA controllers.
+     *
+     * Benefits:
+     * - Compatible with virtual memory systems
+     * - Hardware topology independent
+     * - Portable across different KPU configurations
+     * - Enables dynamic memory management
+     *
+     * @param src_addr Source physical address
+     * @param dst_addr Destination physical address
+     * @param size Transfer size in bytes
+     * @param callback Optional completion callback
+     *
+     * @throws std::runtime_error if address decoder is not configured
+     * @throws std::out_of_range if addresses are not mapped
+     *
+     * Example:
+     * @code
+     * // Configure decoder once during initialization
+     * decoder.add_region(0x0000'0000, 512_MB, EXTERNAL, 0);
+     * decoder.add_region(0xFFFF'0000, 64_KB, SCRATCHPAD, 0);
+     * dma.set_address_decoder(&decoder);
+     *
+     * // Use addresses directly - routing is automatic
+     * dma.enqueue_transfer(0x0000'1000, 0xFFFF'0000, 4096);
+     * @endcode
+     */
+    void enqueue_transfer(Address src_addr, Address dst_addr, Size size,
+                         std::function<void()> callback = nullptr);
+
+    // ===========================================
+    // Type-Based API (Legacy - Deprecated)
+    // ===========================================
+
+    /**
+     * @brief Enqueue a DMA transfer using memory types and IDs (deprecated)
+     *
+     * @deprecated Use address-based enqueue_transfer(Address, Address, Size) instead.
+     * This API tightly couples code to physical memory topology and prevents
+     * virtual memory implementation. It will be removed in a future release.
+     *
+     * Migration example:
+     * @code
+     * // Old (deprecated):
+     * dma.enqueue_transfer(EXTERNAL, 0, 0x1000, SCRATCHPAD, 0, 0x0, 4096);
+     *
+     * // New (recommended):
+     * Address src = 0x0000'1000;  // EXTERNAL[0] base + 0x1000
+     * Address dst = 0xFFFF'0000;  // SCRATCHPAD[0] base
+     * dma.enqueue_transfer(src, dst, 4096);
+     * @endcode
+     */
+    [[deprecated("Use address-based API: enqueue_transfer(Address src, Address dst, Size size)")]]
     void enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
                          MemoryType dst_type, size_t dst_id, Address dst_addr,
                          Size size, std::function<void()> callback = nullptr);

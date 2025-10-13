@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include <sw/memory/external_memory.hpp>
+#include <sw/memory/address_decoder.hpp>
 #include <sw/kpu/components/dma_engine.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
 #include <sw/kpu/components/l3_tile.hpp>
@@ -22,8 +23,69 @@ DMAEngine::DMAEngine(size_t engine_id, double clock_freq_ghz, double bandwidth_g
     , clock_freq_ghz_(clock_freq_ghz)
     , bandwidth_gb_s_(bandwidth_gb_s)
     , current_cycle_(0)
+    , address_decoder_(nullptr)
 {
 }
+
+// ===========================================
+// Address-Based API Implementation (Recommended)
+// ===========================================
+
+void DMAEngine::enqueue_transfer(Address src_addr, Address dst_addr, Size size,
+                                 std::function<void()> callback) {
+    // Validate that address decoder is configured
+    if (!address_decoder_) {
+        throw std::runtime_error(
+            "AddressDecoder not configured. Call set_address_decoder() before using address-based API. "
+            "See docs/dma-architecture-comparison.md for migration guide."
+        );
+    }
+
+    // Validate source address range
+    if (!address_decoder_->is_valid_range(src_addr, size)) {
+        throw std::out_of_range(
+            "Source address range [0x" + std::to_string(src_addr) + ", 0x" +
+            std::to_string(src_addr + size) + ") is invalid or crosses region boundaries"
+        );
+    }
+
+    // Validate destination address range
+    if (!address_decoder_->is_valid_range(dst_addr, size)) {
+        throw std::out_of_range(
+            "Destination address range [0x" + std::to_string(dst_addr) + ", 0x" +
+            std::to_string(dst_addr + size) + ") is invalid or crosses region boundaries"
+        );
+    }
+
+    // Decode source and destination addresses
+    auto src_route = address_decoder_->decode(src_addr);
+    auto dst_route = address_decoder_->decode(dst_addr);
+
+    // Convert sw::memory::MemoryType to sw::kpu::DMAEngine::MemoryType
+    auto convert_memory_type = [](sw::memory::MemoryType type) -> MemoryType {
+        switch (type) {
+            case sw::memory::MemoryType::HOST_MEMORY: return MemoryType::HOST_MEMORY;
+            case sw::memory::MemoryType::EXTERNAL:    return MemoryType::EXTERNAL;
+            case sw::memory::MemoryType::L3_TILE:     return MemoryType::L3_TILE;
+            case sw::memory::MemoryType::L2_BANK:     return MemoryType::L2_BANK;
+            case sw::memory::MemoryType::SCRATCHPAD:  return MemoryType::SCRATCHPAD;
+            default:
+                throw std::runtime_error("Unknown memory type in address decoder");
+        }
+    };
+
+    // Call the legacy type-based API with decoded routing information
+    // This ensures all existing logic (validation, tracing, etc.) is reused
+    enqueue_transfer(
+        convert_memory_type(src_route.type), src_route.id, src_route.offset,
+        convert_memory_type(dst_route.type), dst_route.id, dst_route.offset,
+        size, std::move(callback)
+    );
+}
+
+// ===========================================
+// Type-Based API Implementation (Legacy - Deprecated)
+// ===========================================
 
 void DMAEngine::enqueue_transfer(MemoryType src_type, size_t src_id, Address src_addr,
                                 MemoryType dst_type, size_t dst_id, Address dst_addr,
