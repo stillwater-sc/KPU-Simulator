@@ -6,6 +6,7 @@
 
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
+#include <sw/system/config_formatter.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
 #include <iostream>
 #include <filesystem>

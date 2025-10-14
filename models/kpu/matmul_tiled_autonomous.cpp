@@ -12,6 +12,7 @@
 
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
+#include <sw/system/config_formatter.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
 #include "autonomous_orchestrator.hpp"
 #include "kpu_profiler.hpp"
@@ -682,14 +683,7 @@ void create_minimal_kpu_config(SystemConfig& config) {
     config.interconnect.host_to_accelerator.pcie_config = pcie;
 
     std::cout << "\nConfiguration created:\n";
-    std::cout << "  Memory banks: 1 (256MB)\n";
-    std::cout << "  L3 tiles: 1 (1MB - hundreds of 16x16 tiles)\n";
-    std::cout << "  L2 banks: 1\n";
-    std::cout << "  Scratchpads: 1\n";
-    std::cout << "  Compute tiles: 1 (16x16 systolic array)\n";
-    std::cout << "  Block movers: 1\n";
-    std::cout << "  Streamers: 2\n";
-    std::cout << "========================================\n";
+    std::cout << config;
 }
 
 void print_usage(const char* prog_name) {

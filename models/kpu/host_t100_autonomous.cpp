@@ -16,6 +16,7 @@
 
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
+#include <sw/system/config_formatter.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
 #include <sw/trace/trace_logger.hpp>
 #include <sw/trace/trace_exporter.hpp>
@@ -625,19 +626,8 @@ void create_t100_system(SystemConfig& config) {
     config.interconnect.host_to_accelerator.pcie_config = pcie;
 
     std::cout << "\nCreated configuration:\n";
-    std::cout << "  System: " << config.system.name << "\n";
-    std::cout << "  KPU Components:\n";
-    std::cout << "    Memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
-    std::cout << "    L3 tiles: " << config.accelerators[0].kpu_config->memory.l3_tiles.size() << "\n";
-    std::cout << "    L2 banks: " << config.accelerators[0].kpu_config->memory.l2_banks.size() << "\n";
-    std::cout << "    L1 buffers: " << config.accelerators[0].kpu_config->memory.l1_buffers.size() << "\n";
-    std::cout << "    Scratchpads: " << config.accelerators[0].kpu_config->memory.scratchpads.size() << "\n";
-    std::cout << "    Compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
-    std::cout << "    DMA engines: " << config.accelerators[0].kpu_config->data_movement.dma_engines.size() << "\n";
-    std::cout << "    Block movers: " << config.accelerators[0].kpu_config->data_movement.block_movers.size() << "\n";
-    std::cout << "    Streamers: " << config.accelerators[0].kpu_config->data_movement.streamers.size() << "\n";
-
-    std::cout << "\nValidation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
+    std::cout << config;
+    std::cout << "Validation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
 }
 
 bool run_autonomous_test(const SystemConfig& config) {

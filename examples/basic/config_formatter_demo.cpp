@@ -61,21 +61,21 @@ int main() {
         std::cout << "Full system report written to: system_report.txt\n";
     }
 
-    // Demo 5: Compare before/after
-    std::cout << "\nDemo 5: The Old Way vs The New Way\n";
-    std::cout << "===================================\n";
+    // Compare before/after
+    //std::cout << "\nDemo 5: The Old Way vs The New Way\n";
+    //std::cout << "===================================\n";
 
-    std::cout << "\nOLD WAY (error-prone, manual):\n";
-    std::cout << "-------------------------------\n";
-    std::cout << "  std::cout << \"  System: \" << config.system.name << \"\\n\";\n";
-    std::cout << "  std::cout << \"  Memory banks: \" \n";
-    std::cout << "            << config.accelerators[0].kpu_config->memory.banks.size() << \"\\n\";\n";
-    std::cout << "  // ... 10+ more lines of manual formatting ...\n";
+    //std::cout << "\nOLD WAY (error-prone, manual):\n";
+    //std::cout << "-------------------------------\n";
+    //std::cout << "  std::cout << \"  System: \" << config.system.name << \"\\n\";\n";
+    //std::cout << "  std::cout << \"  Memory banks: \" \n";
+    //std::cout << "            << config.accelerators[0].kpu_config->memory.banks.size() << \"\\n\";\n";
+    //std::cout << "  // ... 10+ more lines of manual formatting ...\n";
 
-    std::cout << "\nNEW WAY (clean, automatic):\n";
-    std::cout << "----------------------------\n";
-    std::cout << "  std::cout << config;  // Done!\n";
-    std::cout << "  std::cout << sim.get_memory_map();  // Memory map included!\n";
+    //std::cout << "\nNEW WAY (clean, automatic):\n";
+    //std::cout << "----------------------------\n";
+    //std::cout << "  std::cout << config;  // Done!\n";
+    //std::cout << "  std::cout << sim.get_memory_map();  // Memory map included!\n";
 
     sim.shutdown();
 

@@ -12,6 +12,7 @@
 
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
+#include <sw/system/config_formatter.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
 #include <iostream>
 #include <filesystem>
@@ -174,14 +175,8 @@ void demo_programmatic_config() {
     config.interconnect.host_to_accelerator.pcie_config = pcie;
 
     std::cout << "\nCreated configuration:\n";
-    std::cout << "  System: " << config.system.name << "\n";
-    std::cout << "  Host cores: " << config.host.cpu.core_count << "\n";
-    std::cout << "  Host memory: " << config.host.memory.modules[0].capacity_gb << " GB\n";
-    std::cout << "  KPU memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
-    std::cout << "  KPU compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
-
-    // Validate
-    std::cout << "\nValidation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
+    std::cout << config;
+    std::cout << "Validation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
 }
 
 void demo_json_round_trip() {
