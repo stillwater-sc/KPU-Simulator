@@ -6,6 +6,7 @@ set(SYSTEM_SOURCES
     toplevel.cpp
     system_config.cpp
     config_loader.cpp
+    config_formatter.cpp
 )
 
 # Find required system packages

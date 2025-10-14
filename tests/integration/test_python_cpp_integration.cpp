@@ -12,10 +12,24 @@ using namespace sw::sim;
 
 TEST_CASE("C++ SystemSimulator functionality", "[integration][cpp]") {
     SystemSimulator simulator;
-    
+
     SECTION("Basic C++ functionality") {
         REQUIRE(simulator.initialize());
         REQUIRE(simulator.is_initialized());
+
+        // Test the new reporting API
+        INFO("Testing config formatter and memory map reporting");
+        std::string system_report = simulator.get_system_report();
+        REQUIRE_FALSE(system_report.empty());
+        REQUIRE(system_report.find("System:") != std::string::npos);
+
+        // Test memory map reporting for KPU
+        if (simulator.get_kpu_count() > 0) {
+            std::string memory_map = simulator.get_memory_map(0);
+            REQUIRE_FALSE(memory_map.empty());
+            REQUIRE(memory_map.find("Memory Map") != std::string::npos);
+        }
+
         REQUIRE(simulator.run_self_test());
         simulator.shutdown();
         REQUIRE_FALSE(simulator.is_initialized());

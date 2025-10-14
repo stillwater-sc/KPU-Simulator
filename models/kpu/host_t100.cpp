@@ -198,22 +198,12 @@ void create_system(SystemConfig& config) {
     pcie.bandwidth_gbps = 32.0f;
     config.interconnect.host_to_accelerator.pcie_config = pcie;
 
+    // Print configuration using new formatter
     std::cout << "\nCreated configuration:\n";
-    std::cout << "  System: " << config.system.name << "\n";
-    std::cout << "  Host cores: " << config.host.cpu.core_count << "\n";
-    std::cout << "  Host memory: " << config.host.memory.modules[0].capacity_gb << " GB\n";
-    std::cout << "\n  KPU Components:\n";
-    std::cout << "    Memory banks: " << config.accelerators[0].kpu_config->memory.banks.size() << "\n";
-    std::cout << "    L3 tiles: " << config.accelerators[0].kpu_config->memory.l3_tiles.size() << "\n";
-    std::cout << "    L2 banks: " << config.accelerators[0].kpu_config->memory.l2_banks.size() << "\n";
-    std::cout << "    Scratchpads: " << config.accelerators[0].kpu_config->memory.scratchpads.size() << "\n";
-    std::cout << "    Compute tiles: " << config.accelerators[0].kpu_config->compute_fabric.tiles.size() << "\n";
-    std::cout << "    DMA engines: " << config.accelerators[0].kpu_config->data_movement.dma_engines.size() << "\n";
-    std::cout << "    Block movers: " << config.accelerators[0].kpu_config->data_movement.block_movers.size() << "\n";
-    std::cout << "    Streamers: " << config.accelerators[0].kpu_config->data_movement.streamers.size() << "\n";
+    std::cout << config;
 
     // Validate
-    std::cout << "\nValidation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
+    std::cout << "Validation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
 }
 
 void demo_json_round_trip() {
@@ -472,6 +462,9 @@ bool bist(const SystemConfig& config) {
             std::cout << "  L2 banks: " << kpu->get_l2_bank_count() << "\n";
             std::cout << "  Block movers: " << kpu->get_block_mover_count() << "\n";
             std::cout << "  Streamers: " << kpu->get_streamer_count() << "\n";
+
+            // Show memory map
+            std::cout << sim.get_memory_map(0);
 
             // Run MLP layer execution demo
             execute_mlp_layer(kpu, 4, 8, 4);  // Small test: 4 batch, 8 input dim, 4 output dim

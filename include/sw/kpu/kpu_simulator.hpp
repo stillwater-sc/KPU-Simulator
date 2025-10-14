@@ -345,6 +345,14 @@ public:
     void disable_streamer_tracing(size_t streamer_id);
     void disable_compute_fabric_tracing(size_t tile_id);
 
+    /**
+     * @brief Get address decoder for memory map inspection
+     * @return Const pointer to address decoder
+     */
+    const sw::memory::AddressDecoder* get_address_decoder() const {
+        return &address_decoder;
+    }
+
 private:
     void validate_host_memory_region_id(size_t region_id) const;
     void validate_bank_id(size_t bank_id) const;

@@ -108,39 +108,70 @@ Size AddressDecoder::get_total_mapped_size() const {
 
 std::string AddressDecoder::to_string() const {
     std::ostringstream oss;
+
+    // Find maximum address to determine hex width needed
+    Address max_addr = 0;
+    for (const auto& region : regions_) {
+        Address end = region.base + region.size - 1;
+        if (end > max_addr) max_addr = end;
+    }
+
+    // Calculate hex digits needed (minimum 8 for 32-bit compatibility)
+    int hex_width = 8;
+    Address temp = max_addr;
+    while (temp > 0xFFFFFFFF) {
+        hex_width++;
+        temp >>= 4;
+    }
+
     oss << "Memory Map (" << regions_.size() << " regions):\n";
-    oss << "  Address Range          | Size      | Type        | ID | Name\n";
-    oss << "  ---------------------- | --------- | ----------- | -- | ----\n";
+    oss << "  Address Range";
+    // Adjust header spacing based on hex width
+    int addr_range_width = 2 + hex_width + 3 + 2 + hex_width; // "0x" + digits + " - " + "0x" + digits
+    for (int i = 13; i < addr_range_width; ++i) oss << " ";
+    oss << " | Size      | Type        | ID | Name\n";
+
+    oss << "  ";
+    for (int i = 0; i < addr_range_width; ++i) oss << "-";
+    oss << " | --------- | ----------- | -- | ----\n";
 
     for (const auto& region : regions_) {
-        oss << "  0x" << std::hex << std::setfill('0') << std::setw(8) << region.base
-            << " - 0x" << std::setw(8) << (region.base + region.size - 1)
-            << " | ";
+        // Address range with proper width
+        oss << "  0x" << std::hex << std::setfill('0') << std::setw(hex_width) << region.base
+            << " - 0x" << std::setw(hex_width) << (region.base + region.size - 1);
 
-        // Format size
-        oss << std::dec;
-        if (region.size >= (1024 * 1024 * 1024)) {
-            oss << (region.size / (1024 * 1024 * 1024)) << " GB    ";
-        } else if (region.size >= (1024 * 1024)) {
-            oss << (region.size / (1024 * 1024)) << " MB    ";
-        } else if (region.size >= 1024) {
-            oss << (region.size / 1024) << " KB    ";
-        } else {
-            oss << region.size << " B     ";
-        }
-
-        // Type name
+        // Size column - fixed 9 characters
         oss << " | ";
-        switch (region.type) {
-            case MemoryType::HOST_MEMORY: oss << "HOST       "; break;
-            case MemoryType::EXTERNAL:    oss << "EXTERNAL   "; break;
-            case MemoryType::L3_TILE:     oss << "L3_TILE    "; break;
-            case MemoryType::L2_BANK:     oss << "L2_BANK    "; break;
-            case MemoryType::SCRATCHPAD:  oss << "SCRATCHPAD "; break;
+        std::ostringstream size_stream;
+        size_stream << std::dec;
+        if (region.size >= (1024ULL * 1024 * 1024)) {
+            size_stream << (region.size / (1024ULL * 1024 * 1024)) << " GB";
+        } else if (region.size >= (1024 * 1024)) {
+            size_stream << (region.size / (1024 * 1024)) << " MB";
+        } else if (region.size >= 1024) {
+            size_stream << (region.size / 1024) << " KB";
+        } else {
+            size_stream << region.size << " B";
         }
+        oss << std::left << std::setw(9) << std::setfill(' ') << size_stream.str();
 
-        oss << " | " << std::setw(2) << region.id;
+        // Type name - fixed 11 characters
+        oss << " | ";
+        std::string type_str;
+        switch (region.type) {
+            case MemoryType::HOST_MEMORY: type_str = "HOST"; break;
+            case MemoryType::EXTERNAL:    type_str = "EXTERNAL"; break;
+            case MemoryType::L3_TILE:     type_str = "L3_TILE"; break;
+            case MemoryType::L2_BANK:     type_str = "L2_BANK"; break;
+            case MemoryType::L1:          type_str = "L1"; break;
+            case MemoryType::SCRATCHPAD:  type_str = "SCRATCHPAD"; break;
+        }
+        oss << std::left << std::setw(11) << type_str;
 
+        // ID - fixed 2 characters, right-aligned
+        oss << " | " << std::dec << std::right << std::setfill('0') << std::setw(2) << region.id;
+
+        // Name
         if (!region.name.empty()) {
             oss << " | " << region.name;
         }
@@ -159,6 +190,7 @@ std::string AddressDecoder::to_string() const {
     } else {
         oss << total << " B";
     }
+    oss << "\n";  // Add newline at the end
 
     return oss.str();
 }

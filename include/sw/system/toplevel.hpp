@@ -119,6 +119,25 @@ public:
      */
     void print_status() const;
 
+    /**
+     * @brief Get memory map for a specific KPU accelerator
+     * @param kpu_index Index of KPU (0-based)
+     * @return Memory map as formatted string, or error message if invalid
+     */
+    std::string get_memory_map(size_t kpu_index = 0) const;
+
+    /**
+     * @brief Get comprehensive system report (config + memory maps + runtime state)
+     * @return Complete system information as formatted string
+     */
+    std::string get_system_report() const;
+
+    /**
+     * @brief Print complete system report to stream
+     * @param os Output stream to write to
+     */
+    void print_full_report(std::ostream& os) const;
+
 private:
     bool initialized_{false};
     SystemConfig config_;

@@ -67,3 +67,14 @@ kpu_add_example(system_config_demo
 target_link_libraries(example_system_config_demo PRIVATE
     StillwaterKPU::System
 )
+
+kpu_add_example(config_formatter_demo
+    FOLDER "basic"
+    DESCRIPTION "Config formatting and memory map API demonstration"
+    SOURCES config_formatter_demo.cpp
+)
+
+# Link config formatter demo against system library
+target_link_libraries(example_config_formatter_demo PRIVATE
+    StillwaterKPU::System
+)

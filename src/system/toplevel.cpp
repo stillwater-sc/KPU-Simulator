@@ -1,8 +1,10 @@
 #include "sw/system/toplevel.hpp"
 #include "sw/system/config_loader.hpp"
+#include "sw/system/config_formatter.hpp"
 #include "sw/kpu/kpu_simulator.hpp"
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 
 namespace sw::sim {
 
@@ -247,54 +249,8 @@ bool SystemSimulator::run_self_test() {
 }
 
 void SystemSimulator::print_config() const {
-    std::cout << "\n========================================\n";
-    std::cout << "System Configuration: " << config_.system.name << "\n";
-    std::cout << "========================================\n";
-
-    // Host
-    std::cout << "\nHost CPU:\n";
-    std::cout << "  Cores: " << config_.host.cpu.core_count << " @ "
-              << config_.host.cpu.frequency_mhz << " MHz\n";
-    std::cout << "  Cache: L1=" << config_.host.cpu.cache_l1_kb << "KB, "
-              << "L2=" << config_.host.cpu.cache_l2_kb << "KB, "
-              << "L3=" << config_.host.cpu.cache_l3_kb << "KB\n";
-
-    std::cout << "\nHost Memory:\n";
-    for (const auto& mem : config_.host.memory.modules) {
-        std::cout << "  " << mem.id << ": " << mem.capacity_gb << "GB "
-                  << mem.type << " @ " << mem.bandwidth_gbps << " GB/s\n";
-    }
-
-    // Accelerators
-    std::cout << "\nAccelerators: " << config_.accelerators.size() << "\n";
-    for (const auto& accel : config_.accelerators) {
-        std::cout << "  " << accel.id << " (";
-        switch (accel.type) {
-            case AcceleratorType::KPU: std::cout << "KPU"; break;
-            case AcceleratorType::GPU: std::cout << "GPU"; break;
-            case AcceleratorType::NPU: std::cout << "NPU"; break;
-            default: std::cout << "Unknown"; break;
-        }
-        std::cout << ")\n";
-
-        if (accel.kpu_config.has_value()) {
-            const auto& kpu = accel.kpu_config.value();
-            std::cout << "    Memory: " << kpu.memory.banks.size() << " banks, "
-                      << kpu.memory.type << "\n";
-            std::cout << "    Compute: " << kpu.compute_fabric.tiles.size() << " tiles\n";
-        }
-    }
-
-    // Interconnect
-    std::cout << "\nInterconnect:\n";
-    std::cout << "  Host-to-Accelerator: " << config_.interconnect.host_to_accelerator.type << "\n";
-    if (config_.interconnect.host_to_accelerator.pcie_config.has_value()) {
-        const auto& pcie = config_.interconnect.host_to_accelerator.pcie_config.value();
-        std::cout << "    PCIe Gen" << pcie.generation << " x" << pcie.lanes
-                  << " (" << pcie.bandwidth_gbps << " GB/s)\n";
-    }
-
-    std::cout << "========================================\n\n";
+    // Use the new config formatter for comprehensive output
+    std::cout << config_;
 }
 
 void SystemSimulator::print_status() const {
@@ -304,6 +260,85 @@ void SystemSimulator::print_status() const {
     std::cout << "Initialized: " << (initialized_ ? "Yes" : "No") << "\n";
     std::cout << "KPU Instances: " << kpu_instances_.size() << "\n";
     std::cout << "========================================\n\n";
+}
+
+//=============================================================================
+// Memory Map and System Reporting
+//=============================================================================
+
+std::string SystemSimulator::get_memory_map(size_t kpu_index) const {
+    if (!initialized_) {
+        return "System not initialized\n";
+    }
+
+    if (kpu_index >= kpu_instances_.size()) {
+        std::ostringstream oss;
+        oss << "Invalid KPU index: " << kpu_index << " (available: 0-"
+            << (kpu_instances_.size() - 1) << ")\n";
+        return oss.str();
+    }
+
+    auto* kpu = kpu_instances_[kpu_index].get();
+    auto* decoder = kpu->get_address_decoder();
+
+    if (!decoder) {
+        return "No address decoder available for this KPU\n";
+    }
+
+    std::ostringstream oss;
+    oss << "\n========================================\n";
+    oss << "KPU[" << kpu_index << "] Memory Map\n";
+    oss << "========================================\n";
+    oss << decoder->to_string();
+    oss << "========================================\n";
+
+    return oss.str();
+}
+
+std::string SystemSimulator::get_system_report() const {
+    std::ostringstream oss;
+
+    // Configuration
+    oss << config_;
+
+    // Runtime status
+    oss << "\n========================================\n";
+    oss << "Runtime Status\n";
+    oss << "========================================\n";
+    oss << "Initialized: " << (initialized_ ? "Yes" : "No") << "\n";
+    oss << "KPU Instances: " << kpu_instances_.size() << "\n";
+
+    if (initialized_ && !kpu_instances_.empty()) {
+        oss << "\nKPU Details:\n";
+        for (size_t i = 0; i < kpu_instances_.size(); ++i) {
+            auto* kpu = kpu_instances_[i].get();
+            oss << "  KPU[" << i << "]:\n";
+            oss << "    Memory Banks: " << kpu->get_memory_bank_count() << "\n";
+            oss << "    L3 Tiles: " << kpu->get_l3_tile_count() << "\n";
+            oss << "    L2 Banks: " << kpu->get_l2_bank_count() << "\n";
+            oss << "    L1 Buffers: " << kpu->get_l1_buffer_count() << "\n";
+            oss << "    Scratchpads: " << kpu->get_scratchpad_count() << "\n";
+            oss << "    Compute Tiles: " << kpu->get_compute_tile_count() << "\n";
+            oss << "    DMA Engines: " << kpu->get_dma_engine_count() << "\n";
+            oss << "    Block Movers: " << kpu->get_block_mover_count() << "\n";
+            oss << "    Streamers: " << kpu->get_streamer_count() << "\n";
+        }
+    }
+
+    oss << "========================================\n";
+
+    // Memory maps for each KPU
+    if (initialized_) {
+        for (size_t i = 0; i < kpu_instances_.size(); ++i) {
+            oss << "\n" << get_memory_map(i);
+        }
+    }
+
+    return oss.str();
+}
+
+void SystemSimulator::print_full_report(std::ostream& os) const {
+    os << get_system_report();
 }
 
 } // namespace sw::sim

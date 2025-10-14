@@ -17,3 +17,11 @@ target_link_libraries(test_system_config
     PRIVATE
     StillwaterKPU::System
 )
+
+# Config formatting tests
+kpu_add_component_test(test_config_formatting "system" test_config_formatting.cpp)
+
+target_link_libraries(test_config_formatting
+    PRIVATE
+    StillwaterKPU::System
+)
