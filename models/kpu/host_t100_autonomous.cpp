@@ -25,8 +25,111 @@
 #include <sstream>
 #include <iomanip>
 #include <filesystem>
+#include <queue>
+#include <cstring>
 
 using namespace sw::sim;
+
+// ============================================================================
+// HOST-SIDE SIMULATION STRUCTURES
+// ============================================================================
+
+/**
+ * @brief Simulated host DDR memory
+ *
+ * Represents the host system's main memory where the CPU allocates and
+ * initializes tensors before transferring them to the KPU.
+ */
+struct HostMemory {
+    std::vector<uint8_t> ddr_buffer;
+    sw::kpu::Address base_address;
+    sw::kpu::Size capacity;
+
+    HostMemory(sw::kpu::Address base, sw::kpu::Size cap)
+        : base_address(base), capacity(cap) {
+        ddr_buffer.resize(capacity);
+        std::cout << "  HOST_MEMORY: Allocated " << (capacity / (1024*1024)) << " MB at 0x"
+                  << std::hex << base << std::dec << "\n";
+    }
+
+    void write(sw::kpu::Address addr, const void* data, sw::kpu::Size size) {
+        if (addr < base_address || addr + size > base_address + capacity) {
+            throw std::runtime_error("HOST_MEMORY: Write out of bounds");
+        }
+        sw::kpu::Address offset = addr - base_address;
+        std::memcpy(&ddr_buffer[offset], data, size);
+    }
+
+    void read(sw::kpu::Address addr, void* data, sw::kpu::Size size) const {
+        if (addr < base_address || addr + size > base_address + capacity) {
+            throw std::runtime_error("HOST_MEMORY: Read out of bounds");
+        }
+        sw::kpu::Address offset = addr - base_address;
+        std::memcpy(data, &ddr_buffer[offset], size);
+    }
+};
+
+/**
+ * @brief PCIe DMA descriptor for host-to-device transfers
+ *
+ * The host CPU creates these descriptors and writes them to a mailbox.
+ * The KPU DMA engine polls the mailbox and executes the transfers autonomously.
+ */
+struct PCIeDMADescriptor {
+    sw::kpu::Address host_src_addr;      // Source address in HOST_MEMORY
+    sw::kpu::Address kpu_dest_addr;      // Destination address in KPU EXTERNAL_MEMORY
+    sw::kpu::Size transfer_size;         // Number of bytes to transfer
+    uint32_t descriptor_id;              // Unique ID for tracking
+    std::string description;             // Human-readable description
+    bool valid;                          // Descriptor ready for processing
+
+    PCIeDMADescriptor() : host_src_addr(0), kpu_dest_addr(0), transfer_size(0),
+                          descriptor_id(0), valid(false) {}
+
+    PCIeDMADescriptor(sw::kpu::Address src, sw::kpu::Address dst, sw::kpu::Size size,
+                      uint32_t id, const std::string& desc)
+        : host_src_addr(src), kpu_dest_addr(dst), transfer_size(size),
+          descriptor_id(id), description(desc), valid(true) {}
+};
+
+/**
+ * @brief PCIe mailbox for DMA descriptor communication
+ *
+ * The host CPU writes descriptors to this mailbox, and the KPU DMA engine
+ * reads and processes them. This models the actual hardware mechanism for
+ * host-initiated device DMA.
+ */
+struct PCIeMailbox {
+    std::queue<PCIeDMADescriptor> descriptor_queue;
+
+    bool has_pending_descriptor() const {
+        return !descriptor_queue.empty();
+    }
+
+    void push_descriptor(const PCIeDMADescriptor& desc) {
+        descriptor_queue.push(desc);
+        std::cout << "  HOST_CPU -> PCIe Mailbox: Enqueued descriptor " << desc.descriptor_id
+                  << " (" << desc.description << ", "
+                  << (desc.transfer_size / 1024.0f) << " KB)\n";
+    }
+
+    PCIeDMADescriptor pop_descriptor() {
+        if (descriptor_queue.empty()) {
+            throw std::runtime_error("PCIe mailbox is empty");
+        }
+        auto desc = descriptor_queue.front();
+        descriptor_queue.pop();
+        return desc;
+    }
+
+    size_t get_pending_count() const {
+        return descriptor_queue.size();
+    }
+};
+
+// ============================================================================
+// TRACING AND DATA TRANSFER FUNCTIONS
+// ============================================================================
 
 /**
  * @brief Simulate DMA transfer from host memory to KPU memory with full tracing
@@ -198,11 +301,29 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     const std::string ALL_DONE = "all_done";
 
     // ========================================
-    // Step 1: Allocate and initialize tensors in HOST MEMORY
+    // Infrastructure Setup: HOST_MEMORY and PCIe Mailbox
     // ========================================
-    std::cout << "\n[1] Host Memory Allocation (HOST_MEMORY)\n";
+    std::cout << "\n[Infrastructure] Creating HOST_MEMORY and PCIe mailbox\n";
 
-    // Host memory buffers (simulated DDR on host side)
+    // Create simulated host DDR memory (16 GB capacity)
+    const sw::kpu::Address host_mem_base = 0x0;
+    const sw::kpu::Size host_mem_capacity = 16ULL * 1024 * 1024 * 1024;  // 16 GB
+    HostMemory host_memory(host_mem_base, host_mem_capacity);
+
+    // Create PCIe mailbox for DMA descriptor communication
+    PCIeMailbox pcie_mailbox;
+
+    // ========================================
+    // Step 1: HOST_CPU allocates and initializes tensors in HOST_MEMORY
+    // ========================================
+    std::cout << "\n[1] HOST_CPU: Allocate and Initialize Tensors\n";
+
+    // Host memory addresses for tensors
+    const sw::kpu::Address host_input_addr = host_mem_base + 0x100000;
+    const sw::kpu::Address host_weights_addr = host_mem_base + 0x200000;
+    const sw::kpu::Address host_bias_addr = host_mem_base + 0x300000;
+
+    // Temporary host buffers for tensor creation
     std::vector<float> host_input(batch_size * input_dim);
     std::vector<float> host_weights(input_dim * output_dim);
     std::vector<float> host_bias(output_dim);
@@ -219,14 +340,9 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         host_bias[i] = 0.5f;
     }
 
-    std::cout << "  Input tensor: " << host_input.size() * sizeof(float) / 1024.0f << " KB (host DDR)\n";
-    std::cout << "  Weight matrix: " << host_weights.size() * sizeof(float) / 1024.0f << " KB (host DDR)\n";
-    std::cout << "  Bias vector: " << host_bias.size() * sizeof(float) / 1024.0f << " KB (host DDR)\n";
-
-    // Simulated host memory addresses (for tracing purposes)
-    const sw::kpu::Address host_input_addr = 0x100000;
-    const sw::kpu::Address host_weights_addr = 0x200000;
-    const sw::kpu::Address host_bias_addr = 0x300000;
+    std::cout << "  Input tensor: " << host_input.size() * sizeof(float) / 1024.0f << " KB\n";
+    std::cout << "  Weight matrix: " << host_weights.size() * sizeof(float) / 1024.0f << " KB\n";
+    std::cout << "  Bias vector: " << host_bias.size() * sizeof(float) / 1024.0f << " KB\n";
 
     // ========================================
     // Step 2: Define memory addresses
@@ -254,36 +370,113 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     // ========================================
     // AUTONOMOUS PIPELINE PROGRAMMING
     // ========================================
-    std::cout << "\n[2] Programming autonomous DMA pipeline\n";
+    std::cout << "\n[2] Programming autonomous pipeline with host-initiated protocol\n";
 
     const size_t dma_id = 0;
     const size_t block_mover_id = 0;
 
-    // DMA PHASE 1: Host -> KPU Local Memory (via PCIe)
-    // These start immediately (no dependencies)
+    // ========================================
+    // PHASE 0: HOST_CPU Setup
+    // ========================================
+    // HOST_CPU writes tensors to HOST_MEMORY and enqueues DMA descriptors
 
-    // DMA Phase 1a: Transfer input from host to KPU bank
-    // Use real DMA engine - no manual trace generation needed
     orch.await(std::vector<std::string>{}, [&]() {
-        // First, write data to host memory (functional model)
-        kpu->write_memory_bank(bank_id, bank_input_addr, host_input.data(), host_input.size() * sizeof(float));
+        std::cout << "  HOST_CPU: Writing tensors to HOST_MEMORY\n";
 
-        // Note: Real hardware would use DMA here, but we don't have actual HOST_MEMORY component yet
-        // For now, data is already in KPU bank, so signal completion
-        orch.signal(DMA_INPUT_DONE);
-    }, "DMA Phase1: Host->Bank (input)");
+        // Write tensors to host memory
+        host_memory.write(host_input_addr, host_input.data(), host_input.size() * sizeof(float));
+        host_memory.write(host_weights_addr, host_weights.data(), host_weights.size() * sizeof(float));
+        host_memory.write(host_bias_addr, host_bias.data(), host_bias.size() * sizeof(float));
 
-    // DMA Phase 1b: Transfer weights from host to KPU bank
-    orch.await(std::vector<std::string>{}, [&]() {
-        // Write data to KPU bank (functional model)
-        kpu->write_memory_bank(bank_id, bank_weights_addr, host_weights.data(), host_weights.size() * sizeof(float));
+        std::cout << "  HOST_CPU: Creating DMA descriptors\n";
 
-        // Note: Real hardware would use DMA here, but we don't have actual HOST_MEMORY component yet
-        // For now, data is already in KPU bank, so signal completion
-        orch.signal(DMA_WEIGHTS_DONE);
-    }, "DMA Phase1: Host->Bank (weights)");
+        // Create DMA descriptors for each tensor
+        PCIeDMADescriptor desc_input(
+            host_input_addr,
+            kpu->get_external_bank_base(bank_id) + bank_input_addr,
+            host_input.size() * sizeof(float),
+            0,
+            "Input tensor"
+        );
 
-    // DMA PHASE 2: KPU Local Memory -> L3 (via DMA_ENGINE)
+        PCIeDMADescriptor desc_weights(
+            host_weights_addr,
+            kpu->get_external_bank_base(bank_id) + bank_weights_addr,
+            host_weights.size() * sizeof(float),
+            1,
+            "Weight matrix"
+        );
+
+        // Enqueue descriptors to PCIe mailbox
+        pcie_mailbox.push_descriptor(desc_input);
+        pcie_mailbox.push_descriptor(desc_weights);
+
+        std::cout << "  HOST_CPU: Descriptors enqueued, signaling setup complete\n";
+        orch.signal("HOST_SETUP_DONE");
+    }, "PHASE 0: HOST_CPU setup and descriptor enqueue");
+
+    // ========================================
+    // PHASE 1: KPU DMA Autonomous Polling and Transfer
+    // ========================================
+    // KPU DMA engine polls mailbox and executes transfers
+
+    // Phase 1a: Process input tensor descriptor
+    orch.await("HOST_SETUP_DONE", [&]() {
+        std::cout << "  KPU_DMA: Polling mailbox for work\n";
+
+        if (pcie_mailbox.has_pending_descriptor()) {
+            auto desc = pcie_mailbox.pop_descriptor();
+            std::cout << "  KPU_DMA: Processing descriptor " << desc.descriptor_id
+                      << " (" << desc.description << ")\n";
+
+            // Transfer: HOST_MEMORY → PCIE → KPU EXTERNAL_MEMORY
+            std::vector<uint8_t> transfer_buffer(desc.transfer_size);
+            host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
+
+            // Write to KPU external memory (using global address already in descriptor)
+            kpu->write_memory_bank(bank_id, bank_input_addr, transfer_buffer.data(), desc.transfer_size);
+
+            // Generate trace events for realistic timeline
+            traced_host_to_kpu_dma(kpu, transfer_buffer.data(), desc.host_src_addr,
+                                   bank_id, bank_input_addr, desc.transfer_size,
+                                   trace_logger, kpu->get_current_cycle(), desc.description);
+
+            std::cout << "  KPU_DMA: Transfer complete, signaling DMA_INPUT_DONE\n";
+            orch.signal(DMA_INPUT_DONE);
+        }
+    }, "PHASE 1a: KPU DMA process input descriptor");
+
+    // Phase 1b: Process weights tensor descriptor
+    orch.await(DMA_INPUT_DONE, [&]() {
+        std::cout << "  KPU_DMA: Polling mailbox for next descriptor\n";
+
+        if (pcie_mailbox.has_pending_descriptor()) {
+            auto desc = pcie_mailbox.pop_descriptor();
+            std::cout << "  KPU_DMA: Processing descriptor " << desc.descriptor_id
+                      << " (" << desc.description << ")\n";
+
+            // Transfer: HOST_MEMORY → PCIE → KPU EXTERNAL_MEMORY
+            std::vector<uint8_t> transfer_buffer(desc.transfer_size);
+            host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
+
+            // Write to KPU external memory
+            kpu->write_memory_bank(bank_id, bank_weights_addr, transfer_buffer.data(), desc.transfer_size);
+
+            // Generate trace events
+            traced_host_to_kpu_dma(kpu, transfer_buffer.data(), desc.host_src_addr,
+                                   bank_id, bank_weights_addr, desc.transfer_size,
+                                   trace_logger, kpu->get_current_cycle(), desc.description);
+
+            std::cout << "  KPU_DMA: Transfer complete, signaling DMA_WEIGHTS_DONE\n";
+            orch.signal(DMA_WEIGHTS_DONE);
+        }
+    }, "PHASE 1b: KPU DMA process weights descriptor");
+
+    std::cout << "  Pipeline Phase 0-1: HOST_CPU → PCIe Mailbox → KPU DMA\n";
+
+    // ========================================
+    // PHASE 2: KPU Internal DMA (EXTERNAL → L3)
+    // ========================================
     // These await Phase 1 completion
 
     orch.await(DMA_INPUT_DONE, [&]() {
