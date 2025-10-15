@@ -7,6 +7,7 @@ set(SYSTEM_SOURCES
     system_config.cpp
     config_loader.cpp
     config_formatter.cpp
+    pcie_arbiter.cpp
 )
 
 # Find required system packages

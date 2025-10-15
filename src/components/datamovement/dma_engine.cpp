@@ -229,6 +229,45 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                 scratchpads[transfer.src_id].read(transfer.src_addr, transfer_buffer.data(), transfer.size);
                 break;
         }
+
+        // Log source READ event
+        if (tracing_enabled_ && trace_logger_) {
+            // Map MemoryType to ComponentType
+            auto to_component_type = [](MemoryType type) {
+                switch (type) {
+                    case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
+                    case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                    case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
+                    case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
+                    case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;
+                    default: return trace::ComponentType::UNKNOWN;
+                }
+            };
+
+            // Calculate source read latency (model realistic memory access time)
+            trace::CycleCount read_latency = 1;  // Minimum 1 cycle for memory access
+
+            trace::TraceEntry read_entry(
+                current_cycle_,
+                to_component_type(transfer.src_type),
+                static_cast<uint32_t>(transfer.src_id),
+                trace::TransactionType::READ,
+                transfer.transaction_id
+            );
+            read_entry.clock_freq_ghz = clock_freq_ghz_;
+            read_entry.complete(current_cycle_ + read_latency, trace::TransactionStatus::COMPLETED);
+
+            trace::MemoryPayload payload;
+            payload.location = trace::MemoryLocation(
+                transfer.src_addr, transfer.size, static_cast<uint32_t>(transfer.src_id),
+                to_component_type(transfer.src_type)
+            );
+            payload.is_hit = true;
+            payload.latency_cycles = static_cast<uint32_t>(read_latency);
+            read_entry.payload = payload;
+            read_entry.description = "DMA source read";
+            trace_logger_->log(std::move(read_entry));
+        }
     }
 
     // Process one cycle of the current transfer
@@ -284,6 +323,45 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                     }
                     scratchpads[transfer.dst_id].write(transfer.dst_addr, transfer_buffer.data(), transfer.size);
                     break;
+            }
+
+            // Log destination WRITE event
+            if (tracing_enabled_ && trace_logger_) {
+                // Map MemoryType to ComponentType
+                auto to_component_type = [](MemoryType type) {
+                    switch (type) {
+                        case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
+                        case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                        case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
+                        case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
+                        case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;
+                        default: return trace::ComponentType::UNKNOWN;
+                    }
+                };
+
+                // Calculate destination write latency (model realistic memory access time)
+                trace::CycleCount write_latency = 1;  // Minimum 1 cycle for memory access
+
+                trace::TraceEntry write_entry(
+                    current_cycle_,
+                    to_component_type(transfer.dst_type),
+                    static_cast<uint32_t>(transfer.dst_id),
+                    trace::TransactionType::WRITE,
+                    transfer.transaction_id
+                );
+                write_entry.clock_freq_ghz = clock_freq_ghz_;
+                write_entry.complete(current_cycle_ + write_latency, trace::TransactionStatus::COMPLETED);
+
+                trace::MemoryPayload payload;
+                payload.location = trace::MemoryLocation(
+                    transfer.dst_addr, transfer.size, static_cast<uint32_t>(transfer.dst_id),
+                    to_component_type(transfer.dst_type)
+                );
+                payload.is_hit = true;
+                payload.latency_cycles = static_cast<uint32_t>(write_latency);
+                write_entry.payload = payload;
+                write_entry.description = "DMA destination write";
+                trace_logger_->log(std::move(write_entry));
             }
 
             // Log trace entry for transfer completion

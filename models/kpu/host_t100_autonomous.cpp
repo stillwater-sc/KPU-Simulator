@@ -17,6 +17,7 @@
 #include <sw/system/toplevel.hpp>
 #include <sw/system/config_loader.hpp>
 #include <sw/system/config_formatter.hpp>
+#include <sw/system/pcie_arbiter.hpp>
 #include <sw/kpu/kpu_simulator.hpp>
 #include <sw/trace/trace_logger.hpp>
 #include <sw/trace/trace_exporter.hpp>
@@ -160,12 +161,27 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
 
     uint64_t txn_id = logger.next_transaction_id();
 
-    // Step 1: HOST_MEMORY read event
+    // Step 1: HOST_CPU initiates transfer (sets up DMA descriptor)
     {
-        TraceEntry entry(current_cycle, ComponentType::HOST_MEMORY, 0,
-                        TransactionType::READ, txn_id);
+        TraceEntry entry(current_cycle, ComponentType::HOST_CPU, 0,
+                        TransactionType::TRANSFER, txn_id);
         entry.clock_freq_ghz = clock_freq_ghz;
         entry.complete(current_cycle + 1, TransactionStatus::COMPLETED);
+
+        ControlPayload payload;
+        payload.command = "DMA_SETUP";
+        payload.parameter = transfer_size;
+        entry.payload = payload;
+        entry.description = "CPU initiates PCIe DMA: " + description;
+        logger.log(std::move(entry));
+    }
+
+    // Step 2: HOST_MEMORY read event (DMA reads from memory)
+    {
+        TraceEntry entry(current_cycle + 1, ComponentType::HOST_MEMORY, 0,
+                        TransactionType::READ, txn_id);
+        entry.clock_freq_ghz = clock_freq_ghz;
+        entry.complete(current_cycle + 2, TransactionStatus::COMPLETED);
 
         MemoryPayload payload;
         payload.location = MemoryLocation(host_addr, transfer_size, 0, ComponentType::HOST_MEMORY);
@@ -173,21 +189,6 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
         payload.latency_cycles = 1;
         entry.payload = payload;
         entry.description = "Host DDR read: " + description;
-        logger.log(std::move(entry));
-    }
-
-    // Step 2: HOST_CPU initiates transfer
-    {
-        TraceEntry entry(current_cycle + 1, ComponentType::HOST_CPU, 0,
-                        TransactionType::TRANSFER, txn_id);
-        entry.clock_freq_ghz = clock_freq_ghz;
-        entry.complete(current_cycle + 2, TransactionStatus::COMPLETED);
-
-        ControlPayload payload;
-        payload.command = "DMA_SETUP";
-        payload.parameter = transfer_size;
-        entry.payload = payload;
-        entry.description = "CPU initiates PCIe DMA: " + description;
         logger.log(std::move(entry));
     }
 
@@ -281,7 +282,17 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     kpu->enable_streamer_tracing(1);
     kpu->enable_compute_fabric_tracing(0);
 
+    // Create PCIe arbiter for proper bus serialization
+    const double clock_freq_ghz = 1.0;
+    const double command_bandwidth_gb_s = 2.0;    // Command phase (descriptor writes, config)
+    const double data_bandwidth_gb_s = 32.0;      // Data phase (PCIe Gen4 x16)
+    sw::system::PCIeArbiter pcie_arbiter(clock_freq_ghz, command_bandwidth_gb_s,
+                                         data_bandwidth_gb_s, 32);
+    pcie_arbiter.enable_tracing(true, &trace_logger);
+
     std::cout << "  Tracing enabled on all components\n";
+    std::cout << "  PCIe arbiter created (cmd: " << command_bandwidth_gb_s
+              << " GB/s, data: " << data_bandwidth_gb_s << " GB/s)\n";
 
     // Define signal names for the pipeline
     const std::string DMA_INPUT_DONE = "dma_input_done";
@@ -433,16 +444,42 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             std::vector<uint8_t> transfer_buffer(desc.transfer_size);
             host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
 
-            // Write to KPU external memory (using global address already in descriptor)
+            // Write to KPU external memory (functional model - actual data movement)
             kpu->write_memory_bank(bank_id, bank_input_addr, transfer_buffer.data(), desc.transfer_size);
 
-            // Generate trace events for realistic timeline
-            traced_host_to_kpu_dma(kpu, transfer_buffer.data(), desc.host_src_addr,
-                                   bank_id, bank_input_addr, desc.transfer_size,
-                                   trace_logger, kpu->get_current_cycle(), desc.description);
+            // Enqueue PCIe transactions for trace modeling
+            // Command phase: DMA descriptor write
+            sw::system::PCIeArbiter::TransactionRequest cmd_req;
+            cmd_req.type = sw::system::PCIeArbiter::TransactionType::CONFIG_WRITE;
+            cmd_req.transfer_size = 32;  // Descriptor size
+            cmd_req.requester_id = 0;
+            cmd_req.description = "DMA descriptor: " + desc.description;
+            cmd_req.src_addr = 0;
+            cmd_req.dst_addr = 0;
+            cmd_req.src_component = sw::trace::ComponentType::HOST_CPU;
+            cmd_req.dst_component = sw::trace::ComponentType::DMA_ENGINE;
+            cmd_req.src_id = 0;
+            cmd_req.dst_id = 0;
+            pcie_arbiter.set_current_cycle(kpu->get_current_cycle());
+            pcie_arbiter.enqueue_request(cmd_req);
 
-            std::cout << "  KPU_DMA: Transfer complete, signaling DMA_INPUT_DONE\n";
-            orch.signal(DMA_INPUT_DONE);
+            // Data phase: actual memory transfer
+            sw::system::PCIeArbiter::TransactionRequest data_req;
+            data_req.type = sw::system::PCIeArbiter::TransactionType::MEMORY_WRITE;
+            data_req.transfer_size = desc.transfer_size;
+            data_req.requester_id = 0;
+            data_req.description = desc.description;
+            data_req.src_addr = desc.host_src_addr;
+            data_req.dst_addr = desc.kpu_dest_addr;
+            data_req.src_component = sw::trace::ComponentType::HOST_MEMORY;
+            data_req.dst_component = sw::trace::ComponentType::EXTERNAL_MEMORY;
+            data_req.src_id = 0;
+            data_req.dst_id = static_cast<uint32_t>(bank_id);
+            data_req.completion_callback = [&]() {
+                std::cout << "  PCIe: Transfer complete, signaling DMA_INPUT_DONE\n";
+                orch.signal(DMA_INPUT_DONE);
+            };
+            pcie_arbiter.enqueue_request(data_req);
         }
     }, "PHASE 1a: KPU DMA process input descriptor");
 
@@ -459,16 +496,42 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             std::vector<uint8_t> transfer_buffer(desc.transfer_size);
             host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
 
-            // Write to KPU external memory
+            // Write to KPU external memory (functional model - actual data movement)
             kpu->write_memory_bank(bank_id, bank_weights_addr, transfer_buffer.data(), desc.transfer_size);
 
-            // Generate trace events
-            traced_host_to_kpu_dma(kpu, transfer_buffer.data(), desc.host_src_addr,
-                                   bank_id, bank_weights_addr, desc.transfer_size,
-                                   trace_logger, kpu->get_current_cycle(), desc.description);
+            // Enqueue PCIe transactions for trace modeling
+            // Command phase: DMA descriptor write
+            sw::system::PCIeArbiter::TransactionRequest cmd_req;
+            cmd_req.type = sw::system::PCIeArbiter::TransactionType::CONFIG_WRITE;
+            cmd_req.transfer_size = 32;  // Descriptor size
+            cmd_req.requester_id = 0;
+            cmd_req.description = "DMA descriptor: " + desc.description;
+            cmd_req.src_addr = 0;
+            cmd_req.dst_addr = 0;
+            cmd_req.src_component = sw::trace::ComponentType::HOST_CPU;
+            cmd_req.dst_component = sw::trace::ComponentType::DMA_ENGINE;
+            cmd_req.src_id = 0;
+            cmd_req.dst_id = 0;
+            pcie_arbiter.set_current_cycle(kpu->get_current_cycle());
+            pcie_arbiter.enqueue_request(cmd_req);
 
-            std::cout << "  KPU_DMA: Transfer complete, signaling DMA_WEIGHTS_DONE\n";
-            orch.signal(DMA_WEIGHTS_DONE);
+            // Data phase: actual memory transfer
+            sw::system::PCIeArbiter::TransactionRequest data_req;
+            data_req.type = sw::system::PCIeArbiter::TransactionType::MEMORY_WRITE;
+            data_req.transfer_size = desc.transfer_size;
+            data_req.requester_id = 0;
+            data_req.description = desc.description;
+            data_req.src_addr = desc.host_src_addr;
+            data_req.dst_addr = desc.kpu_dest_addr;
+            data_req.src_component = sw::trace::ComponentType::HOST_MEMORY;
+            data_req.dst_component = sw::trace::ComponentType::EXTERNAL_MEMORY;
+            data_req.src_id = 0;
+            data_req.dst_id = static_cast<uint32_t>(bank_id);
+            data_req.completion_callback = [&]() {
+                std::cout << "  PCIe: Transfer complete, signaling DMA_WEIGHTS_DONE\n";
+                orch.signal(DMA_WEIGHTS_DONE);
+            };
+            pcie_arbiter.enqueue_request(data_req);
         }
     }, "PHASE 1b: KPU DMA process weights descriptor");
 
@@ -618,8 +681,9 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     const size_t progress_interval = 1000;
 
     while (!orch.is_complete()) {
-        kpu->step();        // Advance all hardware engines by one cycle
-        orch.step();        // Check dependencies, launch ready operations
+        kpu->step();            // Advance all hardware engines by one cycle
+        pcie_arbiter.step();    // Advance PCIe arbiter to serialize bus transactions
+        orch.step();            // Check dependencies, launch ready operations
 
         cycle_count++;
 
@@ -645,6 +709,12 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     // Continue stepping until all hardware components are idle
     // (orchestrator completion just means operations are launched, not finished)
     kpu->run_until_idle();
+
+    // Also step PCIe arbiter until all transactions complete
+    while (pcie_arbiter.is_busy()) {
+        pcie_arbiter.step();
+        kpu->step();  // Keep KPU in sync
+    }
 
     std::cout << "  Hardware processing complete\n";
 
