@@ -1,6 +1,6 @@
 /**
- * @file host_t100_single_tile.cpp
- * @brief Single 16x16 tile execution model for Host + KPU T100 system
+ * @file host_T2_single_tile.cpp
+ * @brief Single 16x16 tile execution model for Host + KPU T2 system
  *
  * This model demonstrates a complete single tile (16x16) matrix multiplication
  * using the full capabilities of the 16x16 systolic array with output-stationary
@@ -287,7 +287,7 @@ bool execute_single_tile_autonomous(sw::kpu::KPUSimulator* kpu,
     using namespace sw::kpu;
 
     std::cout << "\n========================================\n";
-    std::cout << "  Autonomous Single Tile Execution\n";
+    std::cout << "  Remote Self-Driven Single Tile Execution\n";
     std::cout << "========================================\n";
     std::cout << "Tile dimensions: " << tile_m << " × " << tile_k << " × " << tile_n << "\n";
     std::cout << "Input matrix A: " << tile_m << " × " << tile_k << "\n";
@@ -795,16 +795,45 @@ bool execute_single_tile_autonomous(sw::kpu::KPUSimulator* kpu,
     return correct;
 }
 
-void create_single_tile_system(SystemConfig& config) {
+/*
+	KPU Checker Board Configurations follow this layout pattern:
+
+        +----+ +----+ +----+ +----+
+        | L3 |-| CF |-| L3 |-| CF |-
+        +----+ +----+ +----+ +----+
+		   |      |      |      |
+        +----+ +----+ +----+ +----+
+        | CF |-| L3 |-| CF |-| L3 |-
+        +----+ +----+ +----+ +----+
+           |      |      |      |
+        +----+ +----+ +----+ +----+
+        | L3 |-| CF |-| L3 |-| CF |-
+        +----+ +----+ +----+ +----+
+           |      |      |      |
+        +----+ +----+ +----+ +----+
+        | CF |-| L3 |-| CF |-| L3 |-
+        +----+ +----+ +----+ +----+
+           |      |      |      |
+
+
+  	A 16x16 systolic array at 1GHz has a peak throughput of 256 GMAC/s (512 GFLOPS)
+	A KPU with 4 tiles has a peak throughput of 1.024 TMAC/s (2.048 TFLOPS)
+    The T128 designation reflects a chip with 128 TOPS of performance.
+	With 16x16 tiles @ 1GHz, we would need 128T / 512G = 2^7 * 2^40 / (2^9 * 2^30) = 2^8 = 256 tiles.
+	That is 256 * 16^2 = 65536 MAC units.
+*/
+void create_checker_board(SystemConfig& config) {
     std::cout << "========================================\n";
-    std::cout << "   Creating Single Tile Configuration\n";
+    std::cout << "   Creating KPU Checker Board\n";
     std::cout << "========================================\n";
 
     config.clear();
 
     // System info
-    config.system.name = "Host+T100 KPU Single Tile System";
-    config.system.description = "T100 KPU: 16x16 output-stationary systolic array with 128 L1 buffers (16 in+out per edge)";
+	// 4 tiles of 16x16 systolic array with 128 L1 buffers (16 in+out per edge)
+	// yields 4 * 16 * 16 = 1024 MAC units, or 2.048 TFLOPS at 1GHz
+    config.system.name = "Host+T2 KPU System";
+    config.system.description = "T2 KPU: Four Tile 16x16 output-stationary systolic array with 128 L1 buffers (16 in+out per edge)";
 
     // Host configuration
     config.host.cpu.core_count = 16;
@@ -821,8 +850,8 @@ void create_single_tile_system(SystemConfig& config) {
     // KPU accelerator
     AcceleratorConfig kpu_accel;
     kpu_accel.type = AcceleratorType::KPU;
-    kpu_accel.id = "T100";
-    kpu_accel.description = "T100 KPU: Single 16x16 tile configuration";
+    kpu_accel.id = "T2";
+    kpu_accel.description = "T2 KPU: Four 16x16 tile configuration";
 
     KPUConfig kpu;
     kpu.memory.type = "GDDR6";
@@ -1085,13 +1114,13 @@ bool run_single_tile_test(const SystemConfig& config) {
 
 int main() {
     std::cout << "===========================================\n";
-    std::cout << " Host + T100 KPU Single Tile Model\n";
+    std::cout << " Host + T2 KPU Single Tile Model\n";
     std::cout << " 16×16 Systolic Array Full Utilization\n";
     std::cout << "===========================================\n";
 
     try {
         SystemConfig config;
-        create_single_tile_system(config);
+        create_checker_board(config);
         bool success = run_single_tile_test(config);
 
         std::cout << '\n';
