@@ -34,7 +34,8 @@ Prior to this implementation, the trace logs showed concurrent PCIe transfers, w
 3. **Bus-Level Serialization:**
    - Only ONE transaction can be active across all slots at any time
    - Priority ordering: Completion > Command > Data
-   - Proper bandwidth modeling: 2 GB/s (command) vs 32 GB/s (data)
+   - Single shared link bandwidth (e.g., 32 GB/s for PCIe Gen4 x16)
+   - Transaction duration based purely on size: small descriptors (32B) = 1 cycle, large payloads (128B) = 4 cycles
 
 ### Implementation Details
 
@@ -87,8 +88,8 @@ struct TransactionRequest {
 In host_t100_autonomous.cpp:
 
 ```cpp
-// 1. Create arbiter
-sw::system::PCIeArbiter pcie_arbiter(1.0, 2.0, 32.0, 32);
+// 1. Create arbiter (clock_freq_ghz, link_bandwidth_gb_s, max_tags)
+sw::system::PCIeArbiter pcie_arbiter(1.0, 32.0, 32);
 pcie_arbiter.enable_tracing(true, &trace_logger);
 
 // 2. Enqueue transactions
@@ -130,16 +131,16 @@ Cycle 3: PCIE_BUS DATA DMA 1          ← INVALID: concurrent
 ### After Integration
 
 ```
-Cycle   2- 18: [PCIE_CMD] Config Write: DMA descriptor: Input tensor
-Cycle  18- 22: [PCIE_DATA] Memory Write: Input tensor ✓
-Cycle  23- 39: [PCIE_CMD] Config Write: DMA descriptor: Weight matrix ✓
-Cycle  39- 43: [PCIE_DATA] Memory Write: Weight matrix ✓
+Cycle   2-  3 (1 cycle):  [PCIE_CMD] Config Write: DMA descriptor (32 bytes)
+Cycle   3-  7 (4 cycles): [PCIE_DATA] Memory Write: Input tensor (128 bytes) ✓
+Cycle   8-  9 (1 cycle):  [PCIE_CMD] Config Write: DMA descriptor (32 bytes) ✓
+Cycle   9- 13 (4 cycles): [PCIE_DATA] Memory Write: Weight matrix (128 bytes) ✓
 ```
 
 **Verification:**
-- ✅ All transactions properly serialized
-- ✅ No overlapping bus usage
-- ✅ Realistic bandwidth modeling (command: 16 cycles, data: 4 cycles)
+- ✅ All transactions properly serialized (no overlaps)
+- ✅ Realistic timing: small descriptors (32B) = 1 cycle, large payloads (128B) = 4 cycles
+- ✅ Single shared link bandwidth correctly modeled (32 GB/s)
 - ✅ Completion callbacks fire correctly
 
 ## Files Modified
@@ -168,10 +169,12 @@ Cycle  39- 43: [PCIE_DATA] Memory Write: Weight matrix ✓
 
 ## Performance Impact
 
-- Execution cycles increased from 52 to 84 cycles (realistic due to proper serialization)
+- Execution cycles: ~54 cycles (realistic due to proper serialization)
+- PCIe transaction overhead: 2 descriptors (1 cycle each) + 2 data transfers (4 cycles each) = 10 cycles total
 - Trace event count: 24 events
 - All functional correctness tests pass
 - Results verified correct
+- Timing now accurately reflects PCIe Gen4 x16 bandwidth (32 GB/s)
 
 ## Future Enhancements
 

@@ -65,7 +65,7 @@ void DMAEngine::enqueue_transfer(Address src_addr, Address dst_addr, Size size,
     auto convert_memory_type = [](sw::memory::MemoryType type) -> MemoryType {
         switch (type) {
             case sw::memory::MemoryType::HOST_MEMORY: return MemoryType::HOST_MEMORY;
-            case sw::memory::MemoryType::EXTERNAL:    return MemoryType::EXTERNAL;
+            case sw::memory::MemoryType::EXTERNAL:    return MemoryType::KPU_MEMORY;
             case sw::memory::MemoryType::L3_TILE:     return MemoryType::L3_TILE;
             case sw::memory::MemoryType::L2_BANK:     return MemoryType::L2_BANK;
             case sw::memory::MemoryType::SCRATCHPAD:  return MemoryType::SCRATCHPAD;
@@ -165,7 +165,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
             auto to_component_type = [](MemoryType type) {
                 switch (type) {
                     case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
-                    case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                    case MemoryType::KPU_MEMORY: return trace::ComponentType::KPU_MEMORY;
                     case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
                     case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
                     case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;
@@ -201,7 +201,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                 host_memory_regions[transfer.src_id].read(transfer.src_addr, transfer_buffer.data(), transfer.size);
                 break;
 
-            case MemoryType::EXTERNAL:
+            case MemoryType::KPU_MEMORY:
                 if (transfer.src_id >= memory_banks.size()) {
                     throw std::out_of_range("Invalid source memory bank ID: " + std::to_string(transfer.src_id));
                 }
@@ -236,7 +236,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
             auto to_component_type = [](MemoryType type) {
                 switch (type) {
                     case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
-                    case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                    case MemoryType::KPU_MEMORY: return trace::ComponentType::KPU_MEMORY;
                     case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
                     case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
                     case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;
@@ -290,7 +290,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                     host_memory_regions[transfer.dst_id].write(transfer.dst_addr, transfer_buffer.data(), transfer.size);
                     break;
 
-                case MemoryType::EXTERNAL:
+                case MemoryType::KPU_MEMORY:
                     if (transfer.dst_id >= memory_banks.size()) {
                         throw std::out_of_range("Invalid destination memory bank ID: " + std::to_string(transfer.dst_id));
                     }
@@ -331,7 +331,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                 auto to_component_type = [](MemoryType type) {
                     switch (type) {
                         case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
-                        case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                        case MemoryType::KPU_MEMORY: return trace::ComponentType::KPU_MEMORY;
                         case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
                         case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
                         case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;
@@ -384,7 +384,7 @@ bool DMAEngine::process_transfers(std::vector<ExternalMemory>& host_memory_regio
                 auto to_component_type = [](MemoryType type) {
                     switch (type) {
                         case MemoryType::HOST_MEMORY: return trace::ComponentType::HOST_MEMORY;
-                        case MemoryType::EXTERNAL: return trace::ComponentType::EXTERNAL_MEMORY;
+                        case MemoryType::KPU_MEMORY: return trace::ComponentType::KPU_MEMORY;
                         case MemoryType::L3_TILE: return trace::ComponentType::L3_TILE;
                         case MemoryType::L2_BANK: return trace::ComponentType::L2_BANK;
                         case MemoryType::SCRATCHPAD: return trace::ComponentType::SCRATCHPAD;

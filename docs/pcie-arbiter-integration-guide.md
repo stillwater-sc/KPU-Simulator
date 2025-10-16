@@ -40,8 +40,7 @@ The PCIe Arbiter component implements proper serialization of PCIe bus transacti
 // In execute_mlp_layer_autonomous or main simulation function
 sw::system::PCIeArbiter pcie_arbiter(
     1.0,   // clock_freq_ghz
-    2.0,   // command_bandwidth_gb_s
-    32.0,  // data_bandwidth_gb_s (PCIe Gen4 x16)
+    32.0,  // link_bandwidth_gb_s (PCIe Gen4 x16)
     32     // max_outstanding_tags
 );
 

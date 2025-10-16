@@ -27,7 +27,7 @@ PYBIND11_MODULE(stillwater_kpu, m) {
     
     py::enum_<sw::kpu::DMAEngine::MemoryType>(m, "MemoryType")
         .value("HOST_MEMORY", sw::kpu::DMAEngine::MemoryType::HOST_MEMORY)
-        .value("EXTERNAL", sw::kpu::DMAEngine::MemoryType::EXTERNAL)
+        .value("KPU_MEMORY", sw::kpu::DMAEngine::MemoryType::KPU_MEMORY)
         .value("L3_TILE", sw::kpu::DMAEngine::MemoryType::L3_TILE)
         .value("L2_BANK", sw::kpu::DMAEngine::MemoryType::L2_BANK)
         .value("SCRATCHPAD", sw::kpu::DMAEngine::MemoryType::SCRATCHPAD);

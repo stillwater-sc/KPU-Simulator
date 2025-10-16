@@ -325,7 +325,7 @@ TEST_CASE_METHOD(AddressBasedDMAFixture, "Address-Based API: Comparison with Typ
         #endif
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, src_route.id, src_route.offset,
+            DMAEngine::MemoryType::KPU_MEMORY, src_route.id, src_route.offset,
             DMAEngine::MemoryType::SCRATCHPAD, dst_route.id, dst_route.offset,
             transfer_size,
             [&complete]() { complete = true; }

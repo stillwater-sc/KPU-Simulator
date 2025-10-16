@@ -6,12 +6,10 @@
 namespace sw::system {
 
 PCIeArbiter::PCIeArbiter(double clock_freq_ghz,
-                         double command_bandwidth_gb_s,
-                         double data_bandwidth_gb_s,
+                         double link_bandwidth_gb_s,
                          uint32_t max_outstanding_tags)
     : clock_freq_ghz_(clock_freq_ghz)
-    , command_bandwidth_gb_s_(command_bandwidth_gb_s)
-    , data_bandwidth_gb_s_(data_bandwidth_gb_s)
+    , link_bandwidth_gb_s_(link_bandwidth_gb_s)
     , max_outstanding_tags_(max_outstanding_tags)
     , current_cycle_(0)
     , next_tag_(0)
@@ -318,16 +316,14 @@ void PCIeArbiter::generate_completion(const TransactionRequest& request) {
 }
 
 trace::CycleCount PCIeArbiter::calculate_duration(const TransactionRequest& request) const {
-    // Choose bandwidth based on transaction type
-    double bandwidth_gb_s = (request.type == TransactionType::MEMORY_WRITE)
-                             ? data_bandwidth_gb_s_
-                             : command_bandwidth_gb_s_;
+    // All transaction types use the same PCIe link bandwidth
+    // The duration depends only on transfer size, not transaction type
 
     // Calculate cycles based on transfer size and bandwidth
-    // bandwidth_gb_s is in GB/s, transfer_size is in bytes
-    // bytes_per_cycle = (bandwidth_gb_s * 1e9) / (clock_freq_ghz * 1e9)
-    //                 = bandwidth_gb_s / clock_freq_ghz
-    double bytes_per_cycle = bandwidth_gb_s / clock_freq_ghz_;
+    // link_bandwidth_gb_s is in GB/s, transfer_size is in bytes
+    // bytes_per_cycle = (link_bandwidth_gb_s * 1e9) / (clock_freq_ghz * 1e9)
+    //                 = link_bandwidth_gb_s / clock_freq_ghz
+    double bytes_per_cycle = link_bandwidth_gb_s_ / clock_freq_ghz_;
     trace::CycleCount cycles = static_cast<trace::CycleCount>(
         std::ceil(static_cast<double>(request.transfer_size) / bytes_per_cycle)
     );
@@ -379,9 +375,7 @@ void PCIeArbiter::log_transaction_complete(const TransactionSlot& slot,
         request.dst_id, request.dst_component
     );
     payload.bytes_transferred = request.transfer_size;
-    payload.bandwidth_gb_s = (request.type == TransactionType::MEMORY_WRITE)
-                              ? data_bandwidth_gb_s_
-                              : command_bandwidth_gb_s_;
+    payload.bandwidth_gb_s = link_bandwidth_gb_s_;  // All transactions use the same link bandwidth
 
     entry.payload = payload;
 

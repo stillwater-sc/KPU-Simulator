@@ -39,7 +39,7 @@ class KPU_API DMAEngine {
 public:
     enum class MemoryType {
         HOST_MEMORY,      // Host DDR
-        EXTERNAL,         // KPU memory banks (GDDR6)
+        KPU_MEMORY,       // KPU main memory banks (GDDR6)
         L3_TILE,          // L3 cache tiles
         L2_BANK,          // L2 cache banks
         SCRATCHPAD        // L1 scratchpad
@@ -139,7 +139,7 @@ public:
      * Example:
      * @code
      * // Configure decoder once during initialization
-     * decoder.add_region(0x0000'0000, 512_MB, EXTERNAL, 0);
+     * decoder.add_region(0x0000'0000, 512_MB, KPU_MEMORY, 0);
      * decoder.add_region(0xFFFF'0000, 64_KB, SCRATCHPAD, 0);
      * dma.set_address_decoder(&decoder);
      *
@@ -164,10 +164,10 @@ public:
      * Migration example:
      * @code
      * // Old (deprecated):
-     * dma.enqueue_transfer(EXTERNAL, 0, 0x1000, SCRATCHPAD, 0, 0x0, 4096);
+     * dma.enqueue_transfer(KPU_MEMORY, 0, 0x1000, SCRATCHPAD, 0, 0x0, 4096);
      *
      * // New (recommended):
-     * Address src = 0x0000'1000;  // EXTERNAL[0] base + 0x1000
+     * Address src = 0x0000'1000;  // KPU_MEMORY[0] base + 0x1000
      * Address dst = 0xFFFF'0000;  // SCRATCHPAD[0] base
      * dma.enqueue_transfer(src, dst, 4096);
      * @endcode

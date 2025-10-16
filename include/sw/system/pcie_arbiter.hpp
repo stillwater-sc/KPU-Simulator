@@ -85,8 +85,7 @@ public:
 private:
     // PCIe configuration
     double clock_freq_ghz_;                   ///< Bus clock frequency
-    double command_bandwidth_gb_s_;           ///< Command phase bandwidth
-    double data_bandwidth_gb_s_;              ///< Data phase bandwidth (typically higher)
+    double link_bandwidth_gb_s_;              ///< PCIe link bandwidth (shared by all transaction types)
     uint32_t max_outstanding_tags_;           ///< Maximum outstanding non-posted requests
 
     // Command queue (non-posted transactions)
@@ -115,13 +114,11 @@ public:
      * @brief Construct PCIe Arbiter
      *
      * @param clock_freq_ghz Bus clock frequency in GHz
-     * @param command_bandwidth_gb_s Command phase bandwidth (typically 1-2 GB/s)
-     * @param data_bandwidth_gb_s Data phase bandwidth (typically 30+ GB/s for Gen4 x16)
+     * @param link_bandwidth_gb_s PCIe link bandwidth in GB/s (e.g., 32 GB/s for Gen4 x16)
      * @param max_outstanding_tags Maximum outstanding non-posted requests (typically 32-256)
      */
     PCIeArbiter(double clock_freq_ghz = 1.0,
-                double command_bandwidth_gb_s = 2.0,
-                double data_bandwidth_gb_s = 32.0,
+                double link_bandwidth_gb_s = 32.0,
                 uint32_t max_outstanding_tags = 32);
 
     ~PCIeArbiter() = default;

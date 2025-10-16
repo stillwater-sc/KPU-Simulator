@@ -10,10 +10,10 @@ const char* to_string(ComponentType type) {
         case ComponentType::DMA_ENGINE: return "DMA_ENGINE";
         case ComponentType::BLOCK_MOVER: return "BLOCK_MOVER";
         case ComponentType::STREAMER: return "STREAMER";
+        case ComponentType::KPU_MEMORY: return "KPU_MEMORY";
         case ComponentType::L3_TILE: return "L3_TILE";
         case ComponentType::L2_BANK: return "L2_BANK";
         case ComponentType::L1: return "L1";
-        case ComponentType::EXTERNAL_MEMORY: return "EXTERNAL_MEMORY";
         case ComponentType::SCRATCHPAD: return "SCRATCHPAD";
         case ComponentType::COMPUTE_FABRIC: return "COMPUTE_FABRIC";
         case ComponentType::SYSTOLIC_ARRAY: return "SYSTOLIC_ARRAY";

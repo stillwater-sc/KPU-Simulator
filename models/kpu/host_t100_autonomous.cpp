@@ -78,7 +78,7 @@ struct HostMemory {
  */
 struct PCIeDMADescriptor {
     sw::kpu::Address host_src_addr;      // Source address in HOST_MEMORY
-    sw::kpu::Address kpu_dest_addr;      // Destination address in KPU EXTERNAL_MEMORY
+    sw::kpu::Address kpu_dest_addr;      // Destination address in KPU_MEMORY (GDDR6 banks)
     sw::kpu::Size transfer_size;         // Number of bytes to transfer
     uint32_t descriptor_id;              // Unique ID for tracking
     std::string description;             // Human-readable description
@@ -136,7 +136,7 @@ struct PCIeMailbox {
  * @brief Simulate DMA transfer from host memory to KPU memory with full tracing
  *
  * This models the complete data path:
- * HOST_MEMORY → HOST_CPU → PCIE_BUS → DMA_ENGINE → EXTERNAL_MEMORY (KPU banks)
+ * HOST_MEMORY → HOST_CPU → PCIE_BUS → DMA_ENGINE → KPU_MEMORY (GDDR6 banks)
  */
 void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
                             const void* host_data,
@@ -203,7 +203,7 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
         payload.source = MemoryLocation(host_addr, transfer_size, 0, ComponentType::HOST_MEMORY);
         payload.destination = MemoryLocation(kpu_addr, transfer_size,
                                             static_cast<uint32_t>(kpu_bank_id),
-                                            ComponentType::EXTERNAL_MEMORY);
+                                            ComponentType::KPU_MEMORY);
         payload.bytes_transferred = transfer_size;
         payload.bandwidth_gb_s = pcie_bandwidth_gb_s;
         entry.payload = payload;
@@ -222,7 +222,7 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
         payload.source = MemoryLocation(host_addr, transfer_size, 0, ComponentType::HOST_MEMORY);
         payload.destination = MemoryLocation(kpu_addr, transfer_size,
                                             static_cast<uint32_t>(kpu_bank_id),
-                                            ComponentType::EXTERNAL_MEMORY);
+                                            ComponentType::KPU_MEMORY);
         payload.bytes_transferred = transfer_size;
         payload.bandwidth_gb_s = 100.0;  // KPU memory bandwidth
         entry.payload = payload;
@@ -284,15 +284,12 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
 
     // Create PCIe arbiter for proper bus serialization
     const double clock_freq_ghz = 1.0;
-    const double command_bandwidth_gb_s = 2.0;    // Command phase (descriptor writes, config)
-    const double data_bandwidth_gb_s = 32.0;      // Data phase (PCIe Gen4 x16)
-    sw::system::PCIeArbiter pcie_arbiter(clock_freq_ghz, command_bandwidth_gb_s,
-                                         data_bandwidth_gb_s, 32);
+    const double pcie_link_bandwidth_gb_s = 32.0;  // PCIe Gen4 x16 link bandwidth
+    sw::system::PCIeArbiter pcie_arbiter(clock_freq_ghz, pcie_link_bandwidth_gb_s, 32);
     pcie_arbiter.enable_tracing(true, &trace_logger);
 
     std::cout << "  Tracing enabled on all components\n";
-    std::cout << "  PCIe arbiter created (cmd: " << command_bandwidth_gb_s
-              << " GB/s, data: " << data_bandwidth_gb_s << " GB/s)\n";
+    std::cout << "  PCIe arbiter created (link bandwidth: " << pcie_link_bandwidth_gb_s << " GB/s)\n";
 
     // Define signal names for the pipeline
     const std::string DMA_INPUT_DONE = "dma_input_done";
@@ -440,7 +437,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             std::cout << "  KPU_DMA: Processing descriptor " << desc.descriptor_id
                       << " (" << desc.description << ")\n";
 
-            // Transfer: HOST_MEMORY → PCIE → KPU EXTERNAL_MEMORY
+            // Transfer: HOST_MEMORY → PCIE → KPU_MEMORY (GDDR6 banks)
             std::vector<uint8_t> transfer_buffer(desc.transfer_size);
             host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
 
@@ -472,7 +469,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             data_req.src_addr = desc.host_src_addr;
             data_req.dst_addr = desc.kpu_dest_addr;
             data_req.src_component = sw::trace::ComponentType::HOST_MEMORY;
-            data_req.dst_component = sw::trace::ComponentType::EXTERNAL_MEMORY;
+            data_req.dst_component = sw::trace::ComponentType::KPU_MEMORY;
             data_req.src_id = 0;
             data_req.dst_id = static_cast<uint32_t>(bank_id);
             data_req.completion_callback = [&]() {
@@ -492,7 +489,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             std::cout << "  KPU_DMA: Processing descriptor " << desc.descriptor_id
                       << " (" << desc.description << ")\n";
 
-            // Transfer: HOST_MEMORY → PCIE → KPU EXTERNAL_MEMORY
+            // Transfer: HOST_MEMORY → PCIE → KPU_MEMORY (GDDR6 banks)
             std::vector<uint8_t> transfer_buffer(desc.transfer_size);
             host_memory.read(desc.host_src_addr, transfer_buffer.data(), desc.transfer_size);
 
@@ -524,7 +521,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
             data_req.src_addr = desc.host_src_addr;
             data_req.dst_addr = desc.kpu_dest_addr;
             data_req.src_component = sw::trace::ComponentType::HOST_MEMORY;
-            data_req.dst_component = sw::trace::ComponentType::EXTERNAL_MEMORY;
+            data_req.dst_component = sw::trace::ComponentType::KPU_MEMORY;
             data_req.src_id = 0;
             data_req.dst_id = static_cast<uint32_t>(bank_id);
             data_req.completion_callback = [&]() {
@@ -538,7 +535,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     std::cout << "  Pipeline Phase 0-1: HOST_CPU → PCIe Mailbox → KPU DMA\n";
 
     // ========================================
-    // PHASE 2: KPU Internal DMA (EXTERNAL → L3)
+    // PHASE 2: KPU Internal DMA (KPU_MEMORY → L3)
     // ========================================
     // These await Phase 1 completion
 

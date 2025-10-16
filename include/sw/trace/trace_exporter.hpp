@@ -151,14 +151,14 @@ private:
             case ComponentType::HOST_CPU:           return 2;  // Host CPU
             case ComponentType::PCIE_BUS:           return 3;  // PCIe interconnect
             case ComponentType::DMA_ENGINE:         return 4;  // PCIe bus master
-            case ComponentType::L3_TILE:            return 5;  // KPU external memory (GDDR6)
-            case ComponentType::EXTERNAL_MEMORY:    return 5;  // Legacy name (same as L3)
-            case ComponentType::BLOCK_MOVER:        return 6;  // L3->L2 movement
-            case ComponentType::L2_BANK:            return 7;  // L2 cache
-            case ComponentType::STREAMER:           return 8;  // L2<->L1 movement
-            case ComponentType::L1:                 return 9;  // L1 streaming buffers
-            case ComponentType::COMPUTE_FABRIC:     return 10; // Compute orchestrator
-            case ComponentType::SYSTOLIC_ARRAY:     return 11; // Compute engine
+            case ComponentType::KPU_MEMORY:         return 5;  // KPU main memory (GDDR6 banks)
+            case ComponentType::L3_TILE:            return 6;  // L3 cache tiles
+            case ComponentType::BLOCK_MOVER:        return 7;  // L3->L2 movement
+            case ComponentType::L2_BANK:            return 8;  // L2 cache
+            case ComponentType::STREAMER:           return 9;  // L2<->L1 movement
+            case ComponentType::L1:                 return 10; // L1 streaming buffers
+            case ComponentType::COMPUTE_FABRIC:     return 11; // Compute orchestrator
+            case ComponentType::SYSTOLIC_ARRAY:     return 12; // Compute engine
             case ComponentType::SCRATCHPAD:         return 15; // Memory controller buffers
             case ComponentType::STORAGE_SCHEDULER:  return 20; // System services
             case ComponentType::MEMORY_ORCHESTRATOR: return 21;

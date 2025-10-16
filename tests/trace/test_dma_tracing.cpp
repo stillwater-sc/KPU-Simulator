@@ -79,7 +79,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Single DMA Transfer - External to Sc
 
     // Enqueue transfer
     dma_engine.enqueue_transfer(
-        DMAEngine::MemoryType::EXTERNAL, 0, src_addr,
+        DMAEngine::MemoryType::KPU_MEMORY, 0, src_addr,
         DMAEngine::MemoryType::SCRATCHPAD, 0, dst_addr,
         transfer_size
     );
@@ -145,7 +145,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Multiple DMA Transfers", "[trace][dm
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, i * transfer_size,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
             DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
             transfer_size
         );
@@ -190,7 +190,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to CSV", "[trace][dma][export
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, i * transfer_size,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
             DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
             transfer_size
         );
@@ -221,7 +221,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to JSON", "[trace][dma][expor
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, i * transfer_size,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
             DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
             transfer_size
         );
@@ -256,7 +256,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to Chrome Trace Format", "[tr
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, i * transfer_size,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
             DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
             transfer_size
         );
@@ -290,7 +290,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Cycle Range Query", "[trace][dma][qu
         memory_banks[0].write(0, test_data.data(), 1024);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, 0,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, 0,
             DMAEngine::MemoryType::SCRATCHPAD, 0, 0,
             1024
         );
@@ -330,7 +330,7 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Bandwidth Analysis", "[trace][dma][a
         memory_banks[0].write(0, test_data.data(), size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::EXTERNAL, 0, 0,
+            DMAEngine::MemoryType::KPU_MEMORY, 0, 0,
             DMAEngine::MemoryType::SCRATCHPAD, 0, 0,
             size
         );

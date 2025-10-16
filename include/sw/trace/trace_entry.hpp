@@ -35,11 +35,11 @@ enum class ComponentType : uint8_t {
     BLOCK_MOVER = 4,           // L3->L2 block transfers
     STREAMER = 5,              // L2<->L1 streaming transfers
 
-    // KPU memory hierarchy (cache hierarchy)
-    L3_TILE = 6,               // L3 cache tiles
-    L2_BANK = 7,               // L2 cache banks
-    L1 = 8,                    // L1 streaming buffers (compute fabric)
-    EXTERNAL_MEMORY = 9,       // Legacy external memory component
+    // KPU memory hierarchy
+    KPU_MEMORY = 6,            // KPU main memory banks (GDDR6)
+    L3_TILE = 7,               // L3 cache tiles
+    L2_BANK = 8,               // L2 cache banks
+    L1 = 9,                    // L1 streaming buffers (compute fabric)
 
     // Memory controller components
     SCRATCHPAD = 12,           // Scratchpad buffers (memory controller aggregation)
