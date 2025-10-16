@@ -351,6 +351,57 @@ void PCIeArbiter::log_transaction_complete(const TransactionSlot& slot,
 
     const auto& request = slot.current_request;
 
+    // Log memory operations for MEMORY_READ and MEMORY_WRITE transactions
+    // This shows the source and destination resource occupancy
+    if (request.type == TransactionType::MEMORY_READ || request.type == TransactionType::MEMORY_WRITE) {
+        // Source READ event (e.g., HOST_MEMORY read or KPU_MEMORY read)
+        trace::TraceEntry read_entry(
+            slot.start_cycle,
+            request.src_component,
+            request.src_id,
+            trace::TransactionType::READ,
+            slot.trace_txn_id
+        );
+        read_entry.clock_freq_ghz = clock_freq_ghz_;
+        trace::CycleCount read_latency = 1;  // Minimum 1 cycle for memory access
+        read_entry.complete(slot.start_cycle + read_latency, trace::TransactionStatus::COMPLETED);
+
+        trace::MemoryPayload read_payload;
+        read_payload.location = trace::MemoryLocation(
+            request.src_addr, request.transfer_size,
+            request.src_id, request.src_component
+        );
+        read_payload.is_hit = true;
+        read_payload.latency_cycles = static_cast<uint32_t>(read_latency);
+        read_entry.payload = read_payload;
+        read_entry.description = "PCIe source read";
+        trace_logger_->log(std::move(read_entry));
+
+        // Destination WRITE event (e.g., KPU_MEMORY write or HOST_MEMORY write)
+        trace::TraceEntry write_entry(
+            slot.completion_cycle - 1,  // Write happens at end of transfer
+            request.dst_component,
+            request.dst_id,
+            trace::TransactionType::WRITE,
+            slot.trace_txn_id
+        );
+        write_entry.clock_freq_ghz = clock_freq_ghz_;
+        trace::CycleCount write_latency = 1;  // Minimum 1 cycle for memory access
+        write_entry.complete(slot.completion_cycle, trace::TransactionStatus::COMPLETED);
+
+        trace::MemoryPayload write_payload;
+        write_payload.location = trace::MemoryLocation(
+            request.dst_addr, request.transfer_size,
+            request.dst_id, request.dst_component
+        );
+        write_payload.is_hit = true;
+        write_payload.latency_cycles = static_cast<uint32_t>(write_latency);
+        write_entry.payload = write_payload;
+        write_entry.description = "PCIe destination write";
+        trace_logger_->log(std::move(write_entry));
+    }
+
+    // Log PCIe bus transfer event
     trace::ComponentType component_type = trace::ComponentType::PCIE_BUS;
 
     trace::TraceEntry entry(
