@@ -1,17 +1,13 @@
 /**
- * @file host_t100_autonomous.cpp
- * @brief Autonomous execution model for Host + KPU T100 system
+ * @file host_t100_single_tile.cpp
+ * @brief Single 16x16 tile execution model for Host + KPU T100 system
  *
- * This model demonstrates how the KPU hardware actually executes: autonomous
- * components (DMA, BlockMover, Streamer, SystolicArray) executing concurrently
- * with explicit synchronization through signals, rather than centralized
- * orchestration by the host.
+ * This model demonstrates a complete single tile (16x16) matrix multiplication
+ * using the full capabilities of the 16x16 systolic array with output-stationary
+ * scheduling and proper streaming buffer configuration.
  *
- * Key differences from host_t100.cpp (GOD mode):
- * - No run_until_idle() between pipeline stages
- * - All components programmed upfront with complete data flow
- * - Dependency-driven execution through signal-based synchronization
- * - True concurrent execution of multiple engines
+ * Test case: 16x16 input matrix × 16x16 weight matrix = 16x16 output matrix
+ * This represents a single tile that fully utilizes the systolic array.
  *
  * Architecture Configuration:
  * -------------------------
@@ -30,6 +26,19 @@
  * - 16x16 systolic array with output-stationary scheduling
  *   * Output elements remain stationary in PEs
  *   * Input (A) and weight (B) values stream through
+ *   * C[0][0] available at cycle N, C[15][15] at cycle N+32
+ *
+ * L1 Buffer Architecture:
+ * ----------------------
+ * Each L1 buffer holds one row/column vector and streams one element per clock
+ * to systolic array PEs. Backend connects to Streamers which write full vectors
+ * from L2 in one clock. Frontend streams to systolic array one element per clock.
+ *
+ * Progression Path:
+ * ----------------
+ * This is the first step toward:
+ * - 16x32 × 32x16 (multi-tile with output stationary)
+ * - 256x1024 × 1024x256 (full tiled execution)
  */
 
 #include <sw/system/toplevel.hpp>
@@ -65,7 +74,7 @@ struct HostMemory {
     sw::kpu::Size capacity;
 
     HostMemory(sw::kpu::Address base, sw::kpu::Size cap)
-        : base_address(base), top_of_memory(base+cap), capacity(cap) {
+        : base_address(base), top_of_memory(base + cap), capacity(cap) {
         ddr_buffer.resize(capacity);
         std::cout << "  HOST_MEMORY: Allocated " << (capacity / (1024*1024)) << " MB at 0x"
                   << std::hex << base << std::dec << "\n";
@@ -253,9 +262,9 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
 }
 
 /**
- * @brief Execute MLP layer with autonomous component orchestration
+ * @brief Execute single-tile matmul with autonomous component orchestration
  *
- * Complete data flow pipeline (all programmed upfront):
+ * Complete data flow pipeline for a single 16x16 tile (all programmed upfront):
  * 1. HOST_MEMORY → HOST_CPU → PCIE_BUS → DMA_ENGINE → KPU memory banks
  * 2. KPU memory banks → L3 tiles (via manual transfer, DMA placeholder)
  * 3. L3 tiles → L2 banks (via Block Movers)
@@ -263,26 +272,27 @@ void traced_host_to_kpu_dma(sw::kpu::KPUSimulator* kpu,
  * 5. Compute on systolic array: output = input × weights + bias
  * 6. Result readback through reverse path
  *
- * This now models the COMPLETE end-to-end data path including host-side resources,
- * PCIe interconnect, and DMA engine for realistic performance modeling and tracing.
+ * This models a SINGLE TILE execution: 16x16 × 16x16 = 16x16
+ * The 16x16 systolic array is fully utilized for this computation.
  *
  * Each stage signals completion and dependent stages await their signals.
  * The host only calls step() to advance the simulation - no manual orchestration.
  */
-bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
-                                   size_t batch_size,
-                                   size_t input_dim,
-                                   size_t output_dim,
-                                   bool verbose = false) {
+bool execute_single_tile_autonomous(sw::kpu::KPUSimulator* kpu,
+                                     size_t tile_m,
+                                     size_t tile_k,
+                                     size_t tile_n,
+                                     bool verbose = false) {
     using namespace sw;
     using namespace sw::kpu;
 
     std::cout << "\n========================================\n";
-    std::cout << "  Autonomous MLP Layer Execution\n";
+    std::cout << "  Autonomous Single Tile Execution\n";
     std::cout << "========================================\n";
-    std::cout << "Batch size: " << batch_size << "\n";
-    std::cout << "Input dimension: " << input_dim << "\n";
-    std::cout << "Output dimension: " << output_dim << "\n";
+    std::cout << "Tile dimensions: " << tile_m << " × " << tile_k << " × " << tile_n << "\n";
+    std::cout << "Input matrix A: " << tile_m << " × " << tile_k << "\n";
+    std::cout << "Weight matrix B: " << tile_k << " × " << tile_n << "\n";
+    std::cout << "Output matrix C: " << tile_m << " × " << tile_n << "\n";
     std::cout << "\n--- Autonomous Pipeline Programming ---\n";
 
     // Create orchestrator for autonomous execution
@@ -350,10 +360,10 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     const sw::kpu::Address host_bias_addr = host_mem_base + 0x300000;
 
     // Temporary host buffers for tensor creation
-    std::vector<float> host_input(batch_size * input_dim);
-    std::vector<float> host_weights(input_dim * output_dim);
-    std::vector<float> host_bias(output_dim);
-    std::vector<float> host_output(batch_size * output_dim, 0.0f);
+    std::vector<float> host_input(tile_m * tile_k);
+    std::vector<float> host_weights(tile_k * tile_n);
+    std::vector<float> host_bias(tile_n);
+    std::vector<float> host_output(tile_m * tile_n, 0.0f);
 
     // Initialize with test data
     for (size_t i = 0; i < host_input.size(); ++i) {
@@ -594,7 +604,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     orch.await(L3_INPUT_DONE, [&]() {
         kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_input_addr,
                                    l2_bank_id, l2_input_addr,
-                                   batch_size, input_dim, sizeof(float),
+                                   tile_m, tile_k, sizeof(float),
                                    BlockMover::TransformType::IDENTITY,
                                    [&]() { orch.signal(BLOCK_INPUT_DONE); });
     }, "BlockMover: L3 -> L2 (input)");
@@ -602,7 +612,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     orch.await(L3_WEIGHTS_DONE, [&]() {
         kpu->start_block_transfer(block_mover_id, l3_tile_id, l3_weights_addr,
                                    l2_bank_id, l2_weights_addr,
-                                   input_dim, output_dim, sizeof(float),
+                                   tile_k, tile_n, sizeof(float),
                                    BlockMover::TransformType::IDENTITY,
                                    [&]() { orch.signal(BLOCK_WEIGHTS_DONE); });
     }, "BlockMover: L3 -> L2 (weights)");
@@ -614,7 +624,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     orch.await(BLOCK_INPUT_DONE, [&]() {
         kpu->start_row_stream(row_streamer_id, l2_bank_id, scratchpad_id,
                                l2_input_addr, l1_input_addr,
-                               batch_size, input_dim, sizeof(float), compute_fabric_size,
+                               tile_m, tile_k, sizeof(float), compute_fabric_size,
                                Streamer::StreamDirection::L2_TO_L1,
                                [&]() { orch.signal(STREAM_INPUT_DONE); });
     }, "Streamer: L2->L1 (input rows)");
@@ -622,7 +632,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     orch.await(BLOCK_WEIGHTS_DONE, [&]() {
         kpu->start_column_stream(col_streamer_id, l2_bank_id, scratchpad_id,
                                   l2_weights_addr, l1_weights_addr,
-                                  input_dim, output_dim, sizeof(float), compute_fabric_size,
+                                  tile_k, tile_n, sizeof(float), compute_fabric_size,
                                   Streamer::StreamDirection::L2_TO_L1,
                                   [&]() { orch.signal(STREAM_WEIGHTS_DONE); });
     }, "Streamer: L2->L1 (weight columns)");
@@ -632,17 +642,17 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
 
     orch.await({STREAM_INPUT_DONE, STREAM_WEIGHTS_DONE}, [&]() {
         kpu->start_matmul(compute_tile_id, scratchpad_id,
-                          batch_size, output_dim, input_dim,
+                          tile_m, tile_n, tile_k,
                           l1_input_addr, l1_weights_addr, l1_output_addr,
                           [&]() { orch.signal(COMPUTE_DONE); });
     }, "SystolicArray: MatMul compute");
 
     // Stage 5: Add bias - waits for compute
     orch.await(COMPUTE_DONE, [&]() {
-        std::vector<float> result(batch_size * output_dim);
+        std::vector<float> result(tile_m * tile_n);
         kpu->read_scratchpad(scratchpad_id, l1_output_addr, result.data(), result.size() * sizeof(float));
         for (size_t i = 0; i < result.size(); ++i) {
-            result[i] += host_bias[i % output_dim];
+            result[i] += host_bias[i % tile_n];
         }
         kpu->write_scratchpad(scratchpad_id, l1_output_addr, result.data(), result.size() * sizeof(float));
         orch.signal(BIAS_ADDED);
@@ -653,7 +663,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         const sw::kpu::Address l2_output_addr = 0x4000;
         kpu->start_row_stream(row_streamer_id, l2_bank_id, scratchpad_id,
                                l2_output_addr, l1_output_addr,
-                               batch_size, output_dim, sizeof(float), compute_fabric_size,
+                               tile_m, tile_n, sizeof(float), compute_fabric_size,
                                Streamer::StreamDirection::L1_TO_L2,
                                [&]() { orch.signal(STREAM_OUTPUT_DONE); });
     }, "Streamer: L1 -> L2 (output)");
@@ -662,7 +672,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
         const sw::kpu::Address l2_output_addr = 0x4000;
         const sw::kpu::Address l3_output_addr = 0x8000;
         // BlockMover only supports L3 -> L2, so do manual L2 -> L3 transfer
-        std::vector<uint8_t> temp(batch_size * output_dim * sizeof(float));
+        std::vector<uint8_t> temp(tile_m * tile_n * sizeof(float));
         kpu->read_l2_bank(l2_bank_id, l2_output_addr, temp.data(), temp.size());
         kpu->write_l3_tile(l3_tile_id, l3_output_addr, temp.data(), temp.size());
         orch.signal(BLOCK_OUTPUT_DONE);
@@ -671,7 +681,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     orch.await(BLOCK_OUTPUT_DONE, [&]() {
         const sw::kpu::Address l3_output_addr = 0x8000;
         const sw::kpu::Address output_addr = 0x10000;
-        std::vector<uint8_t> result_buffer(batch_size * output_dim * sizeof(float));
+        std::vector<uint8_t> result_buffer(tile_m * tile_n * sizeof(float));
         kpu->read_l3_tile(l3_tile_id, l3_output_addr, result_buffer.data(), result_buffer.size());
         kpu->write_memory_bank(bank_id, output_addr, result_buffer.data(), result_buffer.size());
         orch.signal(L3_OUTPUT_DONE);
@@ -745,13 +755,13 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     // Verify correctness by computing expected result
     bool correct = true;
     const float tolerance = 1e-4f;
-    for (size_t i = 0; i < batch_size; ++i) {
-        for (size_t j = 0; j < output_dim; ++j) {
+    for (size_t i = 0; i < tile_m; ++i) {
+        for (size_t j = 0; j < tile_n; ++j) {
             float expected = host_bias[j];
-            for (size_t k = 0; k < input_dim; ++k) {
-                expected += host_input[i * input_dim + k] * host_weights[k * output_dim + j];
+            for (size_t k = 0; k < tile_k; ++k) {
+                expected += host_input[i * tile_k + k] * host_weights[k * tile_n + j];
             }
-            float actual = host_output[i * output_dim + j];
+            float actual = host_output[i * tile_n + j];
             if (std::abs(actual - expected) > tolerance) {
                 std::cerr << "  ERROR: Mismatch at [" << i << "," << j << "]: "
                           << "expected " << expected << ", got " << actual << "\n";
@@ -766,7 +776,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
 
     // Export trace to Chrome trace format
     std::cout << "\n[6] Exporting Trace\n";
-    std::string trace_filename = "autonomous_mlp_trace.trace";
+    std::string trace_filename = "single_tile_trace.trace";
     bool export_success = sw::trace::export_logger_traces(trace_filename, "chrome", trace_logger);
     if (export_success) {
         std::cout << "  Exported " << trace_logger.get_trace_count() << " traces to " << trace_filename << "\n";
@@ -776,7 +786,7 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     }
 
     std::cout << "\n========================================\n";
-    std::cout << "Autonomous MLP execution completed successfully!\n";
+    std::cout << "Autonomous single tile execution completed successfully!\n";
     std::cout << "  Total cycles: " << cycle_count << "\n";
     std::cout << "  Pipeline stages: " << orch.get_total_operations() << "\n";
     std::cout << "  Trace events: " << trace_logger.get_trace_count() << "\n";
@@ -785,15 +795,15 @@ bool execute_mlp_layer_autonomous(sw::kpu::KPUSimulator* kpu,
     return correct;
 }
 
-void create_t100_system(SystemConfig& config) {
+void create_single_tile_system(SystemConfig& config) {
     std::cout << "========================================\n";
-    std::cout << "   Creating T100 KPU Configuration\n";
+    std::cout << "   Creating Single Tile Configuration\n";
     std::cout << "========================================\n";
 
     config.clear();
 
     // System info
-    config.system.name = "Host+T100 KPU Autonomous System";
+    config.system.name = "Host+T100 KPU Single Tile System";
     config.system.description = "T100 KPU: 16x16 output-stationary systolic array with 128 L1 buffers (16 in+out per edge)";
 
     // Host configuration
@@ -812,7 +822,7 @@ void create_t100_system(SystemConfig& config) {
     AcceleratorConfig kpu_accel;
     kpu_accel.type = AcceleratorType::KPU;
     kpu_accel.id = "T100";
-    kpu_accel.description = "T100 KPU: 100 TOPS sustained performance";
+    kpu_accel.description = "T100 KPU: Single 16x16 tile configuration";
 
     KPUConfig kpu;
     kpu.memory.type = "GDDR6";
@@ -870,7 +880,7 @@ void create_t100_system(SystemConfig& config) {
         kpu.memory.scratchpads.push_back(scratch);
     }
 
-    // Add compute tiles
+    // Add compute tiles - 16x16 systolic array
     for (int i = 0; i < 4; ++i) {
         ComputeTileConfig tile;
         tile.id = "tile_" + std::to_string(i);
@@ -919,9 +929,9 @@ void create_t100_system(SystemConfig& config) {
     std::cout << "Validation: " << (config.validate() ? "PASSED" : "FAILED") << "\n";
 }
 
-bool run_autonomous_test(const SystemConfig& config) {
+bool run_single_tile_test(const SystemConfig& config) {
     std::cout << "========================================\n";
-    std::cout << "    Autonomous System Test\n";
+    std::cout << "    Single Tile System Test\n";
     std::cout << "========================================\n";
 
     SystemSimulator sim(config);
@@ -946,6 +956,8 @@ bool run_autonomous_test(const SystemConfig& config) {
     std::cout << "  L1 buffers: " << kpu->get_l1_buffer_count() << "\n";
     std::cout << "  Scratchpads: " << kpu->get_scratchpad_count() << "\n";
     std::cout << "  Compute tiles: " << kpu->get_compute_tile_count() << "\n";
+    std::cout << "  Systolic array: " << kpu->get_systolic_array_rows()
+              << " × " << kpu->get_systolic_array_cols() << "\n";
     std::cout << "  DMA engines: " << kpu->get_dma_engine_count() << "\n";
     std::cout << "  Block movers: " << kpu->get_block_mover_count() << "\n";
     std::cout << "  Streamers: " << kpu->get_streamer_count() << "\n";
@@ -1061,9 +1073,9 @@ bool run_autonomous_test(const SystemConfig& config) {
 
     std::cout << "  +---------------------------------------------------------+\n";
 
-    // Run autonomous MLP layer execution
-    // Small test: 4 batch, 8 input dim, 4 output dim
-    bool success = execute_mlp_layer_autonomous(kpu, 4, 8, 4, false);  // Disable verbose
+    // Run single 16x16 tile execution
+    std::cout << "\n=== Running Single 16×16 Tile Test ===\n";
+    bool success = execute_single_tile_autonomous(kpu, 16, 16, 16, false);
 
     sim.shutdown();
     std::cout << "Shutdown: complete\n";
@@ -1073,18 +1085,20 @@ bool run_autonomous_test(const SystemConfig& config) {
 
 int main() {
     std::cout << "===========================================\n";
-    std::cout << " Host + T100 KPU Autonomous Model\n";
+    std::cout << " Host + T100 KPU Single Tile Model\n";
+    std::cout << " 16×16 Systolic Array Full Utilization\n";
     std::cout << "===========================================\n";
 
     try {
         SystemConfig config;
-        create_t100_system(config);
-        bool success = run_autonomous_test(config);
+        create_single_tile_system(config);
+        bool success = run_single_tile_test(config);
 
         std::cout << '\n';
         std::cout << "===========================================\n";
         if (success) {
             std::cout << " Simulation completed successfully!\n";
+            std::cout << " Single 16×16 tile fully validated\n";
         } else {
             std::cout << " Simulation completed with errors!\n";
         }

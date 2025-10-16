@@ -84,3 +84,19 @@ target_link_libraries(model_matmul_tiled_autonomous PRIVATE
 target_include_directories(model_matmul_tiled_autonomous PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+add_model(host_t100_single_tile
+    FOLDER "kpu"
+    DESCRIPTION "host + T100 KPU single 16x16 tile execution with 64 L1 buffers"
+    SOURCES host_t100_single_tile.cpp
+)
+
+# Link single tile model against system library
+target_link_libraries(model_host_t100_single_tile PRIVATE
+    StillwaterKPU::System
+)
+
+# Add include directory for autonomous_orchestrator.hpp
+target_include_directories(model_host_t100_single_tile PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
