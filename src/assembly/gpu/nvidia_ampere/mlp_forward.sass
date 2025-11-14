@@ -1,0 +1,297 @@
+//
+// NVIDIA SASS Assembly - MLP Forward Pass
+// Target: Ampere Architecture (SM 8.0 / GA102)
+//
+// SASS (Streaming ASSembler) is the native machine code for NVIDIA GPUs
+// This is generated from PTX by the driver at runtime or by cuobjdump
+//
+// NOTE: SASS is architecture-specific and not portable across GPU generations
+// This example shows representative Ampere SASS instructions
+//
+
+        // Function: mlp_layer_forward_sass
+        // Simplified MLP layer for educational purposes
+
+        .headerflags    @"EF_CUDA_TEXMODE_UNIFIED EF_CUDA_64BIT_ADDRESS EF_CUDA_SM80 EF_CUDA_VIRTUAL_SM(SM_80)"
+        .elftype        @"ET_EXEC"
+
+        // Kernel attributes
+        .section        .nv.info
+        .align          4
+        .byte           0x04, 0x2f  // EIATTR_KPARAM_INFO
+        .size           mlp_layer_forward_sass, 256
+
+        // Shared memory requirement
+        .byte           0x04, 0x11  // EIATTR_EXTERNS
+        .size           0x1000      // 4KB shared memory
+
+        .section        .text.mlp_layer_forward_sass
+        .sectioninfo    @"SHI_REGISTERS=64"
+        .align          128
+
+        .global         mlp_layer_forward_sass
+        .type           mlp_layer_forward_sass,@function
+        .size           mlp_layer_forward_sass,(.L_END - mlp_layer_forward_sass)
+
+mlp_layer_forward_sass:
+
+// ============================================================================
+// Prologue: Set up execution
+// ============================================================================
+
+        // Get thread indices using special registers
+        // S2R = "Special register to register" move
+        /*0000*/        S2R R0, SR_CTAID.X ;              // R0 = blockIdx.x
+        /*0010*/        S2R R1, SR_TID.X ;                // R1 = threadIdx.x
+        /*0020*/        S2R R2, SR_NTID.X ;               // R2 = blockDim.x
+
+        // Compute global thread ID: R3 = blockIdx.x * blockDim.x + threadIdx.x
+        // IMAD = Integer multiply-add
+        /*0030*/        IMAD R3, R0, R2, R1 ;             // R3 = R0 * R2 + R1
+
+        // Load kernel parameters from constant memory bank
+        // LDC = Load from constant memory
+        /*0040*/        LDC.64 R4, c[0x0][0x160] ;        // R4:R5 = input pointer
+        /*0050*/        LDC.64 R6, c[0x0][0x168] ;        // R6:R7 = weights pointer
+        /*0060*/        LDC.64 R8, c[0x0][0x170] ;        // R8:R9 = bias pointer
+        /*0070*/        LDC.64 R10, c[0x0][0x178] ;       // R10:R11 = output pointer
+        /*0080*/        LDC R12, c[0x0][0x180] ;          // R12 = input_size
+        /*0090*/        LDC R13, c[0x0][0x184] ;          // R13 = output_size
+
+        // Bounds check: if (global_id >= output_size) return
+        // ISETP = Integer set predicate
+        /*00a0*/        ISETP.GE.AND P0, PT, R3, R13, PT ;// P0 = (R3 >= R13)
+        /*00b0*/        @P0 EXIT ;                        // Conditional exit
+
+// ============================================================================
+// Load input vector to shared memory cooperatively
+// ============================================================================
+
+        // R14 = thread index for loading (same as R1)
+        /*00c0*/        MOV R14, R1 ;
+
+LOAD_INPUT_LOOP:
+        // Check if done loading
+        /*00d0*/        ISETP.GE.AND P1, PT, R14, R12, PT ;
+        /*00e0*/        @P1 BRA LOAD_DONE ;
+
+        // Calculate global memory address: input + (idx * 4)
+        // ISCADD = Integer scaled add: Rd = Ra * scale + Rb
+        /*00f0*/        ISCADD R15, R14, R4, 2 ;          // R15 = R4 + (R14 << 2)
+
+        // Load from global memory (128-byte cache line)
+        // LDG = Load from global memory
+        // .E = evict first (cache hint)
+        /*0100*/        LDG.E.SYS R16, [R15] ;            // R16 = mem[R15]
+
+        // Calculate shared memory address
+        /*0110*/        ISCADD R17, R14, RZ, 2 ;          // R17 = (R14 << 2)
+
+        // Store to shared memory
+        // STS = Store to shared memory
+        /*0120*/        STS [R17], R16 ;                  // shared[R17] = R16
+
+        // Increment loop counter by blockDim
+        /*0130*/        IADD3 R14, R14, R2, RZ ;          // R14 = R14 + R2
+        /*0140*/        BRA LOAD_INPUT_LOOP ;
+
+LOAD_DONE:
+        // Barrier synchronization
+        // BAR = Barrier synchronization
+        /*0150*/        BAR.SYNC 0 ;                      // __syncthreads()
+
+// ============================================================================
+// Compute dot product using Tensor Core acceleration (if available)
+// Or fall back to FP32 FMA operations
+// ============================================================================
+
+        // Initialize accumulator to zero
+        // FP32 = 32-bit floating point
+        /*0160*/        MOV32I R20, 0x00000000 ;          // R20 = 0.0f
+
+        // Calculate weight row base address
+        // weights_row = weights + (output_idx * input_size * 4)
+        /*0170*/        IMAD R18, R3, R12, RZ ;           // R18 = R3 * R12
+        /*0180*/        ISCADD.64 R6, R18, R6, 2 ;        // R6:R7 += R18 << 2
+
+        // Loop counter
+        /*0190*/        MOV R19, RZ ;                     // i = 0
+
+        // Align to 4-element boundary for vectorized loads
+        /*01a0*/        AND R21, R12, -4 ;                // aligned_size = input_size & ~3
+
+DOT_LOOP_VECTOR:
+        // Check if done with vectorized portion
+        /*01b0*/        ISETP.GE.AND P2, PT, R19, R21, PT ;
+        /*01c0*/        @P2 BRA DOT_LOOP_SCALAR ;
+
+        // Load 4 consecutive weights (128-bit vector load)
+        // LDG.128 = Load 128-bit (4x float32)
+        /*01d0*/        ISCADD R22, R19, R6, 2 ;          // address = weights_row + (i << 2)
+        /*01e0*/        LDG.E.128 R24, [R22] ;            // R24:R27 = 4 weights
+
+        // Load 4 inputs from shared memory
+        /*01f0*/        ISCADD R28, R19, RZ, 2 ;          // shared offset
+        /*0200*/        LDS.128 R32, [R28] ;              // R32:R35 = 4 inputs
+
+        // Perform 4 FMA operations
+        // FFMA = Floating-point fused multiply-add
+        // Format: FFMA Rd, Ra, Rb, Rc  =>  Rd = Ra * Rb + Rc
+        /*0210*/        FFMA R20, R24, R32, R20 ;         // sum += w[0] * in[0]
+        /*0220*/        FFMA R20, R25, R33, R20 ;         // sum += w[1] * in[1]
+        /*0230*/        FFMA R20, R26, R34, R20 ;         // sum += w[2] * in[2]
+        /*0240*/        FFMA R20, R27, R35, R20 ;         // sum += w[3] * in[3]
+
+        // Increment loop counter
+        /*0250*/        IADD3 R19, R19, 4, RZ ;           // i += 4
+        /*0260*/        BRA DOT_LOOP_VECTOR ;
+
+DOT_LOOP_SCALAR:
+        // Handle remainder elements
+        /*0270*/        ISETP.GE.AND P3, PT, R19, R12, PT ;
+        /*0280*/        @P3 BRA DOT_DONE ;
+
+        // Load single weight
+        /*0290*/        ISCADD R36, R19, R6, 2 ;
+        /*02a0*/        LDG.E R37, [R36] ;                // weight
+
+        // Load single input from shared
+        /*02b0*/        ISCADD R38, R19, RZ, 2 ;
+        /*02c0*/        LDS R39, [R38] ;                  // input
+
+        // Single FMA
+        /*02d0*/        FFMA R20, R37, R39, R20 ;
+
+        // Increment
+        /*02e0*/        IADD3 R19, R19, 1, RZ ;
+        /*02f0*/        BRA DOT_LOOP_SCALAR ;
+
+DOT_DONE:
+
+// ============================================================================
+// Add bias and apply ReLU
+// ============================================================================
+
+        // Load bias value: bias[output_idx]
+        /*0300*/        ISCADD R40, R3, R8, 2 ;           // address = bias + (idx << 2)
+        /*0310*/        LDG.E R41, [R40] ;                // R41 = bias[output_idx]
+
+        // Add bias to sum
+        // FADD = Floating-point add
+        /*0320*/        FADD R20, R20, R41 ;              // sum += bias
+
+        // Apply ReLU: max(0.0, sum)
+        // FMNMX = Floating-point min/max
+        /*0330*/        MOV32I R42, 0x00000000 ;          // R42 = 0.0f
+        /*0340*/        FMNMX R20, R20, R42, !PT ;        // R20 = max(R20, 0.0)
+
+// ============================================================================
+// Store result to global memory
+// ============================================================================
+
+        // Calculate output address: output + (output_idx * 4)
+        /*0350*/        ISCADD R43, R3, R10, 2 ;          // address = output + (idx << 2)
+
+        // Store to global memory with write-back cache policy
+        // STG = Store to global memory
+        // .E.SYS = evict first, system scope
+        /*0360*/        STG.E.SYS [R43], R20 ;            // output[idx] = result
+
+// ============================================================================
+// Epilogue: Exit kernel
+// ============================================================================
+
+        /*0370*/        EXIT ;
+
+.L_END:
+
+
+// ============================================================================
+// AMPERE-SPECIFIC OPTIMIZATIONS
+// ============================================================================
+// The following shows Ampere-specific features:
+//
+// 1. Asynchronous Global to Shared Memory Copy (cp.async)
+//    Ampere introduced hardware-accelerated memcpy from global to shared
+//
+// 2. Tensor Core operations (HMMA/IMMA)
+//    For larger matrix operations
+//
+// 3. L2 Cache Residency Controls
+//    Fine-grained cache management
+//
+// Example snippet using cp.async:
+
+        .global         mlp_async_copy_example
+mlp_async_copy_example:
+
+        // Asynchronous copy: global to shared memory
+        // CP.ASYNC = Copy async from global to shared
+        // Ampere feature: bypasses L1, directly to shared memory
+
+        /*0000*/        LDC.64 R0, c[0x0][0x160] ;        // R0:R1 = source pointer
+        /*0010*/        S2R R2, SR_TID.X ;                // R2 = thread index
+
+        // Issue async copy (16 bytes = 4 floats)
+        /*0020*/        ISCADD R3, R2, RZ, 4 ;            // shared offset (R2 << 4)
+        /*0030*/        ISCADD.64 R0, R2, R0, 4 ;         // global offset
+
+        // CP.ASYNC.CG = Copy async with cache global
+        /*0040*/        CP.ASYNC.CG.SHARED.GLOBAL [R3], [R0], 16 ;
+
+        // Wait for async copies to complete
+        /*0050*/        CP.ASYNC.WAIT_ALL 0 ;
+
+        // Barrier
+        /*0060*/        BAR.SYNC 0 ;
+
+        /*0070*/        EXIT ;
+
+
+// ============================================================================
+// INSTRUCTION SET REFERENCE (Ampere SM 8.x)
+// ============================================================================
+//
+// REGISTER FILE:
+// - 255 x 32-bit registers per thread (R0-R254, RZ=zero)
+// - 7 predicate registers (P0-P6, PT=always true)
+// - Special registers: SR_TID, SR_CTAID, SR_NTID, etc.
+//
+// KEY INSTRUCTION GROUPS:
+//
+// Integer Arithmetic:
+//   IADD3     - 3-operand integer add
+//   IMAD      - Integer multiply-add
+//   ISCADD    - Scaled add (Rd = Ra << scale + Rb)
+//
+// Floating-Point:
+//   FFMA      - FP32 fused multiply-add (1 instruction, full rate)
+//   FADD      - FP32 add
+//   FMUL      - FP32 multiply
+//   FMNMX     - FP32 min/max
+//
+// Memory Operations:
+//   LDG       - Load from global memory
+//   STG       - Store to global memory
+//   LDS       - Load from shared memory
+//   STS       - Store to shared memory
+//   LDC       - Load from constant cache
+//   CP.ASYNC  - Async copy global to shared (Ampere)
+//
+// Control Flow:
+//   BRA       - Branch
+//   ISETP     - Integer set predicate (compare)
+//   @Px       - Predicated execution
+//   EXIT      - Exit kernel
+//   BAR.SYNC  - Barrier synchronization
+//
+// Special:
+//   S2R       - Special register to register
+//   VOTE      - Warp vote operations
+//   SHFL      - Warp shuffle
+//
+// Tensor Cores (Ampere):
+//   HMMA      - Half-precision matrix multiply-accumulate
+//   IMMA      - Integer matrix multiply-accumulate
+//
+// ============================================================================

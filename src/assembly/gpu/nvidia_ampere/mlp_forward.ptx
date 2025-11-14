@@ -1,0 +1,350 @@
+//
+// NVIDIA PTX Assembly - MLP Forward Pass
+// Target: Ampere Architecture (SM 8.0+)
+// PTX ISA Version 7.0+
+//
+// This implements a matrix-vector multiply with bias and ReLU activation
+// Each thread block computes multiple output neurons
+// Uses Tensor Core operations where applicable
+//
+
+.version 7.5
+.target sm_80           // Ampere architecture
+.address_size 64
+
+//
+// Kernel: mlp_layer_forward_ptx
+//
+// Computes: output = ReLU(weights * input + bias)
+//
+// Parameters:
+//   %input:       Input vector (float*)
+//   %weights:     Weight matrix [output_size x input_size] row-major (float*)
+//   %bias:        Bias vector (float*)
+//   %output:      Output vector (float*)
+//   %input_size:  Number of input features (int)
+//   %output_size: Number of output neurons (int)
+//
+// Grid/Block dimensions:
+//   Grid:  (ceil(output_size / 256), 1, 1)
+//   Block: (256, 1, 1)
+//
+
+.visible .entry mlp_layer_forward_ptx(
+    .param .u64 param_input,
+    .param .u64 param_weights,
+    .param .u64 param_bias,
+    .param .u64 param_output,
+    .param .u32 param_input_size,
+    .param .u32 param_output_size
+)
+{
+    // Register declarations
+    .reg .pred      %p<10>;              // Predicate registers
+    .reg .b32       %r<30>;              // 32-bit registers
+    .reg .b64       %rd<20>;             // 64-bit registers (pointers)
+    .reg .f32       %f<50>;              // 32-bit floating point registers
+    .reg .v4 .f32   %fv<10>;             // Vector registers (float4)
+
+    // Shared memory for input vector (reused by all threads)
+    .shared .align 16 .f32 shared_input[1024];
+
+    // ========================================================================
+    // PART 1: Load parameters and compute thread index
+    // ========================================================================
+
+    // Load kernel parameters
+    ld.param.u64    %rd1, [param_input];     // %rd1 = input pointer
+    ld.param.u64    %rd2, [param_weights];   // %rd2 = weights pointer
+    ld.param.u64    %rd3, [param_bias];      // %rd3 = bias pointer
+    ld.param.u64    %rd4, [param_output];    // %rd4 = output pointer
+    ld.param.u32    %r1, [param_input_size]; // %r1 = input_size
+    ld.param.u32    %r2, [param_output_size];// %r2 = output_size
+
+    // Compute global thread ID (which output neuron this thread computes)
+    mov.u32         %r3, %ctaid.x;           // Block ID
+    mov.u32         %r4, %ntid.x;            // Block dimension
+    mov.u32         %r5, %tid.x;             // Thread ID within block
+    mad.lo.u32      %r6, %r3, %r4, %r5;      // global_id = blockIdx * blockDim + threadIdx
+
+    // Check if this thread is within bounds
+    setp.ge.u32     %p1, %r6, %r2;           // if (global_id >= output_size)
+    @%p1 bra        EXIT;                    // return (early exit)
+
+    // ========================================================================
+    // PART 2: Cooperatively load input vector to shared memory
+    // ========================================================================
+
+    // Calculate how many input elements this thread should load
+    // Each thread loads multiple elements to maximize memory bandwidth
+    mov.u32         %r7, %tid.x;             // Thread index
+    mov.u32         %r8, %ntid.x;            // Block size
+
+LOAD_INPUT_LOOP:
+    setp.ge.u32     %p2, %r7, %r1;           // if (idx >= input_size)
+    @%p2 bra        LOAD_INPUT_DONE;         // break
+
+    // Calculate input address: input + idx
+    mul.wide.u32    %rd5, %r7, 4;            // offset = idx * sizeof(float)
+    add.u64         %rd6, %rd1, %rd5;        // address = input + offset
+
+    // Load from global memory
+    ld.global.ca.f32 %f1, [%rd6];            // %f1 = input[idx] (cache all levels)
+
+    // Store to shared memory
+    mul.lo.u32      %r9, %r7, 4;             // shared offset
+    mov.u32         %r10, shared_input;      // shared memory base
+    add.u32         %r10, %r10, %r9;         // shared address
+    st.shared.f32   [%r10], %f1;             // shared_input[idx] = %f1
+
+    // Increment by block size for coalesced access
+    add.u32         %r7, %r7, %r8;           // idx += blockDim
+    bra             LOAD_INPUT_LOOP;
+
+LOAD_INPUT_DONE:
+    // Synchronize threads - ensure all input data is loaded
+    bar.sync        0;                       // __syncthreads()
+
+    // ========================================================================
+    // PART 3: Compute dot product for this output neuron
+    // ========================================================================
+
+    // Initialize accumulator
+    mov.f32         %f10, 0.0;               // sum = 0.0
+
+    // Calculate weight row address: weights + (output_idx * input_size)
+    mul.lo.u32      %r11, %r6, %r1;          // offset_idx = output_idx * input_size
+    mul.wide.u32    %rd7, %r11, 4;           // byte_offset = offset_idx * sizeof(float)
+    add.u64         %rd8, %rd2, %rd7;        // weight_row = weights + byte_offset
+
+    // Loop index
+    mov.u32         %r12, 0;                 // i = 0
+
+    // Main vectorized loop - process 4 floats at a time
+    and.b32         %r13, %r1, -4;           // aligned_size = input_size & ~3
+
+DOT_PRODUCT_LOOP_VEC:
+    setp.ge.u32     %p3, %r12, %r13;         // if (i >= aligned_size)
+    @%p3 bra        DOT_PRODUCT_LOOP_SCALAR; // handle remainder
+
+    // Load 4 weights (vectorized)
+    mul.lo.u32      %r14, %r12, 4;           // offset = i * sizeof(float)
+    add.u64         %rd9, %rd8, %r14;        // address = weight_row + offset
+    ld.global.ca.v4.f32 {%f20, %f21, %f22, %f23}, [%rd9]; // Load 4 weights
+
+    // Load 4 inputs from shared memory (vectorized)
+    mov.u32         %r15, shared_input;
+    add.u32         %r15, %r15, %r14;
+    ld.shared.v4.f32 {%f24, %f25, %f26, %f27}, [%r15]; // Load 4 inputs
+
+    // Fused multiply-add: sum += weights[i:i+4] * input[i:i+4]
+    fma.rn.f32      %f10, %f20, %f24, %f10;  // sum += w[0] * in[0]
+    fma.rn.f32      %f10, %f21, %f25, %f10;  // sum += w[1] * in[1]
+    fma.rn.f32      %f10, %f22, %f26, %f10;  // sum += w[2] * in[2]
+    fma.rn.f32      %f10, %f23, %f27, %f10;  // sum += w[3] * in[3]
+
+    add.u32         %r12, %r12, 4;           // i += 4
+    bra             DOT_PRODUCT_LOOP_VEC;
+
+DOT_PRODUCT_LOOP_SCALAR:
+    // Handle remaining elements (if input_size % 4 != 0)
+    setp.ge.u32     %p4, %r12, %r1;          // if (i >= input_size)
+    @%p4 bra        DOT_PRODUCT_DONE;
+
+    // Load single weight
+    mul.lo.u32      %r16, %r12, 4;
+    add.u64         %rd10, %rd8, %r16;
+    ld.global.ca.f32 %f30, [%rd10];          // weight
+
+    // Load single input from shared memory
+    mov.u32         %r17, shared_input;
+    add.u32         %r17, %r17, %r16;
+    ld.shared.f32   %f31, [%r17];            // input
+
+    // Multiply-add
+    fma.rn.f32      %f10, %f30, %f31, %f10;  // sum += weight * input
+
+    add.u32         %r12, %r12, 1;           // i++
+    bra             DOT_PRODUCT_LOOP_SCALAR;
+
+DOT_PRODUCT_DONE:
+
+    // ========================================================================
+    // PART 4: Add bias
+    // ========================================================================
+
+    // Load bias: bias[output_idx]
+    mul.wide.u32    %rd11, %r6, 4;           // offset = output_idx * sizeof(float)
+    add.u64         %rd12, %rd3, %rd11;      // address = bias + offset
+    ld.global.ca.f32 %f32, [%rd12];          // %f32 = bias[output_idx]
+
+    // Add bias to sum
+    add.rn.f32      %f10, %f10, %f32;        // sum += bias
+
+    // ========================================================================
+    // PART 5: Apply ReLU activation
+    // ========================================================================
+
+    // ReLU: max(0, sum)
+    mov.f32         %f33, 0.0;               // zero
+    max.f32         %f10, %f10, %f33;        // result = max(sum, 0.0)
+
+    // ========================================================================
+    // PART 6: Store result to global memory
+    // ========================================================================
+
+    // Calculate output address: output + output_idx
+    mul.wide.u32    %rd13, %r6, 4;           // offset = output_idx * sizeof(float)
+    add.u64         %rd14, %rd4, %rd13;      // address = output + offset
+
+    // Store result
+    st.global.wb.f32 [%rd14], %f10;          // output[output_idx] = result (write-back)
+
+EXIT:
+    ret;                                     // Return from kernel
+}
+
+
+//
+// Optimized Kernel using Warp-level primitives
+// This version uses warp shuffle operations for better performance
+//
+
+.visible .entry mlp_layer_forward_warp_optimized(
+    .param .u64 param_input,
+    .param .u64 param_weights,
+    .param .u64 param_bias,
+    .param .u64 param_output,
+    .param .u32 param_input_size,
+    .param .u32 param_output_size
+)
+{
+    .reg .pred      %p<10>;
+    .reg .b32       %r<40>;
+    .reg .b64       %rd<20>;
+    .reg .f32       %f<60>;
+
+    .shared .align 16 .f32 shared_input[1024];
+
+    // Load parameters
+    ld.param.u64    %rd1, [param_input];
+    ld.param.u64    %rd2, [param_weights];
+    ld.param.u64    %rd3, [param_bias];
+    ld.param.u64    %rd4, [param_output];
+    ld.param.u32    %r1, [param_input_size];
+    ld.param.u32    %r2, [param_output_size];
+
+    // Compute thread indices
+    mov.u32         %r3, %ctaid.x;
+    mov.u32         %r4, %ntid.x;
+    mov.u32         %r5, %tid.x;
+    mad.lo.u32      %r6, %r3, %r4, %r5;      // global thread ID
+
+    // Get lane ID within warp (0-31)
+    and.b32         %r20, %r5, 31;           // lane_id = tid % 32
+
+    // Bounds check
+    setp.ge.u32     %p1, %r6, %r2;
+    @%p1 bra        EXIT_WARP;
+
+    // Cooperatively load input to shared memory
+    mov.u32         %r7, %r5;
+    mov.u32         %r8, %r4;
+
+LOAD_LOOP_WARP:
+    setp.ge.u32     %p2, %r7, %r1;
+    @%p2 bra        LOAD_DONE_WARP;
+
+    mul.wide.u32    %rd5, %r7, 4;
+    add.u64         %rd6, %rd1, %rd5;
+    ld.global.ca.f32 %f1, [%rd6];
+
+    mul.lo.u32      %r9, %r7, 4;
+    mov.u32         %r10, shared_input;
+    add.u32         %r10, %r10, %r9;
+    st.shared.f32   [%r10], %f1;
+
+    add.u32         %r7, %r7, %r8;
+    bra             LOAD_LOOP_WARP;
+
+LOAD_DONE_WARP:
+    bar.sync        0;
+
+    // Compute dot product with warp-level reduction
+    mov.f32         %f10, 0.0;
+
+    // Weight row base
+    mul.lo.u32      %r11, %r6, %r1;
+    mul.wide.u32    %rd7, %r11, 4;
+    add.u64         %rd8, %rd2, %rd7;
+
+    // Each thread in warp processes strided elements
+    mov.u32         %r12, %r20;              // Start at lane_id
+
+DOT_WARP_LOOP:
+    setp.ge.u32     %p3, %r12, %r1;
+    @%p3 bra        DOT_WARP_DONE;
+
+    // Load weight
+    mul.lo.u32      %r14, %r12, 4;
+    add.u64         %rd9, %rd8, %r14;
+    ld.global.ca.f32 %f20, [%rd9];
+
+    // Load input from shared
+    mov.u32         %r15, shared_input;
+    add.u32         %r15, %r15, %r14;
+    ld.shared.f32   %f21, [%r15];
+
+    // Accumulate
+    fma.rn.f32      %f10, %f20, %f21, %f10;
+
+    add.u32         %r12, %r12, 32;          // Stride by warp size
+    bra             DOT_WARP_LOOP;
+
+DOT_WARP_DONE:
+
+    // Warp-level reduction using shuffle operations
+    // Reduce across 32 lanes: each iteration halves active lanes
+
+    // Reduction step 16: combine lanes [i] and [i+16]
+    shfl.down.b32   %f30, %f10, 16, 31;      // Get value from lane+16
+    add.f32         %f10, %f10, %f30;
+
+    // Reduction step 8
+    shfl.down.b32   %f30, %f10, 8, 31;
+    add.f32         %f10, %f10, %f30;
+
+    // Reduction step 4
+    shfl.down.b32   %f30, %f10, 4, 31;
+    add.f32         %f10, %f10, %f30;
+
+    // Reduction step 2
+    shfl.down.b32   %f30, %f10, 2, 31;
+    add.f32         %f10, %f10, %f30;
+
+    // Reduction step 1
+    shfl.down.b32   %f30, %f10, 1, 31;
+    add.f32         %f10, %f10, %f30;
+
+    // Now lane 0 has the full sum
+    setp.ne.u32     %p5, %r20, 0;            // if (lane_id != 0)
+    @%p5 bra        EXIT_WARP;               // only lane 0 continues
+
+    // Add bias (lane 0 only)
+    mul.wide.u32    %rd11, %r6, 4;
+    add.u64         %rd12, %rd3, %rd11;
+    ld.global.ca.f32 %f32, [%rd12];
+    add.rn.f32      %f10, %f10, %f32;
+
+    // Apply ReLU (lane 0 only)
+    mov.f32         %f33, 0.0;
+    max.f32         %f10, %f10, %f33;
+
+    // Store result (lane 0 only)
+    mul.wide.u32    %rd13, %r6, 4;
+    add.u64         %rd14, %rd4, %rd13;
+    st.global.wb.f32 [%rd14], %f10;
+
+EXIT_WARP:
+    ret;
+}

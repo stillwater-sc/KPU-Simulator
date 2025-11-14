@@ -1,0 +1,275 @@
+// XLA HLO (High-Level Optimizer) Intermediate Representation
+// MLP Forward Pass for Google TPU
+//
+// HLO is the intermediate representation used by XLA (Accelerated Linear Algebra)
+// This is the closest thing to "assembly" that Google publicly documents for TPUs
+//
+// The XLA compiler transforms this HLO into TPU-specific instructions
+// for execution on the systolic array and other TPU components
+//
+// Target: TPU v4 (latest generation as of 2024)
+
+// ============================================================================
+// Module: mlp_layer_forward
+// Computes: output = ReLU(dot(input, weights^T) + bias)
+// ============================================================================
+
+HloModule mlp_layer_forward, entry_computation_layout={
+  (f32[1,512]{1,0}, f32[256,512]{1,0}, f32[256]{0})->f32[1,256]{1,0}
+}
+
+// Region for ReLU activation (max(0, x))
+%relu_computation (param_0: f32[]) -> f32[] {
+  %param_0 = f32[] parameter(0)
+  %constant_zero = f32[] constant(0)
+  ROOT %maximum = f32[] maximum(f32[] %param_0, f32[] %constant_zero)
+}
+
+// Main computation
+ENTRY %mlp_layer_forward (
+  input: f32[1,512],           // Input vector: [batch_size=1, input_size=512]
+  weights: f32[256,512],       // Weight matrix: [output_size=256, input_size=512]
+  bias: f32[256]               // Bias vector: [output_size=256]
+) -> f32[1,256] {
+
+  // ========================================================================
+  // Load input parameters
+  // ========================================================================
+
+  %input = f32[1,512]{1,0} parameter(0)
+  %weights = f32[256,512]{1,0} parameter(1)
+  %bias = f32[256]{0} parameter(2)
+
+  // ========================================================================
+  // Matrix multiplication using TPU systolic array
+  // This is the key operation that maps to TPU's Matrix Multiply Unit (MXU)
+  // ========================================================================
+
+  // Dot product: [1, 512] × [256, 512]^T = [1, 256]
+  // On TPU, this uses the 128x128 systolic array (or larger on v4/v5)
+  // The systolic array performs matrix multiplication in hardware
+  //
+  // Dot dimension numbers specify the contraction:
+  //   lhs_contracting_dimensions={1} means contract over dimension 1 of input (size 512)
+  //   rhs_contracting_dimensions={1} means contract over dimension 1 of weights (size 512)
+  //
+  %dot = f32[1,256]{1,0} dot(
+    f32[1,512]{1,0} %input,
+    f32[256,512]{1,0} %weights
+  ), lhs_contracting_dims={1}, rhs_contracting_dims={1},
+     backend_config={
+       "operation_queue_id":"0",
+       "wait_on_operation_queues":[],
+       "fusion_config":{"custom_config":""}
+     }
+
+  // Optional: Custom call to use BF16 format on TPU (if enabled)
+  // BF16 (Brain Float 16) gives 2x throughput on TPU v2/v3/v4
+  // %dot_bf16 = bf16[1,256] convert(%input_bf16, %weights_bf16)
+
+  // ========================================================================
+  // Broadcast bias to match dot product output shape
+  // ========================================================================
+
+  // Broadcast bias from [256] to [1, 256]
+  // This is a lightweight operation on TPU (just metadata)
+  %bias_broadcast = f32[1,256]{1,0} broadcast(f32[256]{0} %bias),
+    dimensions={1}
+
+  // ========================================================================
+  // Add bias to dot product result
+  // ========================================================================
+
+  // Element-wise addition: [1, 256] + [1, 256]
+  // On TPU, this uses the Vector Processing Units (VPUs)
+  %add = f32[1,256]{1,0} add(
+    f32[1,256]{1,0} %dot,
+    f32[1,256]{1,0} %bias_broadcast
+  )
+
+  // ========================================================================
+  // Apply ReLU activation: max(0, x)
+  // ========================================================================
+
+  // Map applies a computation element-wise
+  // Uses VPU (Vector Processing Unit) on TPU
+  ROOT %relu = f32[1,256]{1,0} map(
+    f32[1,256]{1,0} %add
+  ), dimensions={0,1}, to_apply=%relu_computation
+}
+
+
+// ============================================================================
+// Fused Version: XLA Fusion Optimization
+// XLA can fuse operations to reduce memory traffic
+// ============================================================================
+
+HloModule mlp_layer_forward_fused, entry_computation_layout={
+  (f32[1,512]{1,0}, f32[256,512]{1,0}, f32[256]{0})->f32[1,256]{1,0}
+}
+
+// Fused bias+ReLU computation
+%fused_bias_relu (
+  dot_result: f32[1,256],
+  bias: f32[256]
+) -> f32[1,256] {
+  %dot_result = f32[1,256]{1,0} parameter(0)
+  %bias = f32[256]{0} parameter(1)
+
+  %bias_broadcast = f32[1,256]{1,0} broadcast(f32[256]{0} %bias), dimensions={1}
+  %add = f32[1,256]{1,0} add(%dot_result, %bias_broadcast)
+
+  %constant_zero = f32[1,256]{1,0} broadcast(f32[] constant(0)), dimensions={}
+  ROOT %maximum = f32[1,256]{1,0} maximum(%add, %constant_zero)
+}
+
+ENTRY %mlp_layer_forward_fused (
+  input: f32[1,512],
+  weights: f32[256,512],
+  bias: f32[256]
+) -> f32[1,256] {
+
+  %input = f32[1,512]{1,0} parameter(0)
+  %weights = f32[256,512]{1,0} parameter(1)
+  %bias = f32[256]{0} parameter(2)
+
+  // Matrix multiply on MXU
+  %dot = f32[1,256]{1,0} dot(%input, %weights),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  // Fused bias+ReLU (executed together on VPU)
+  // This reduces memory round-trips
+  ROOT %result = f32[1,256]{1,0} fusion(
+    f32[1,256]{1,0} %dot,
+    f32[256]{0} %bias
+  ), kind=kLoop, calls=%fused_bias_relu
+}
+
+
+// ============================================================================
+// Batched Version: Multiple inputs processed in parallel
+// TPUs excel at batched operations
+// ============================================================================
+
+HloModule mlp_layer_forward_batched, entry_computation_layout={
+  (f32[128,512]{1,0}, f32[256,512]{1,0}, f32[256]{0})->f32[128,256]{1,0}
+}
+
+ENTRY %mlp_layer_forward_batched (
+  input: f32[128,512],         // Batch size = 128
+  weights: f32[256,512],
+  bias: f32[256]
+) -> f32[128,256] {
+
+  %input = f32[128,512]{1,0} parameter(0)
+  %weights = f32[256,512]{1,0} parameter(1)
+  %bias = f32[256]{0} parameter(2)
+
+  // Batched matrix multiply: [128, 512] × [256, 512]^T = [128, 256]
+  // TPU can efficiently tile this across multiple cores
+  %dot = f32[128,256]{1,0} dot(%input, %weights),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  // Broadcast bias to [128, 256]
+  %bias_broadcast = f32[128,256]{1,0} broadcast(f32[256]{0} %bias),
+    dimensions={1}
+
+  %add = f32[128,256]{1,0} add(%dot, %bias_broadcast)
+
+  // ReLU
+  %constant_zero = f32[128,256]{1,0} broadcast(f32[] constant(0)), dimensions={}
+  ROOT %relu = f32[128,256]{1,0} maximum(%add, %constant_zero)
+}
+
+
+// ============================================================================
+// 2-Layer MLP: Composition of multiple layers
+// ============================================================================
+
+HloModule mlp_2layer, entry_computation_layout={
+  (f32[1,512]{1,0}, f32[256,512]{1,0}, f32[256]{0},
+   f32[128,256]{1,0}, f32[128]{0})->f32[1,128]{1,0}
+}
+
+ENTRY %mlp_2layer (
+  input: f32[1,512],
+  weights1: f32[256,512],      // Layer 1 weights
+  bias1: f32[256],             // Layer 1 bias
+  weights2: f32[128,256],      // Layer 2 weights
+  bias2: f32[128]              // Layer 2 bias
+) -> f32[1,128] {
+
+  %input = f32[1,512]{1,0} parameter(0)
+  %weights1 = f32[256,512]{1,0} parameter(1)
+  %bias1 = f32[256]{0} parameter(2)
+  %weights2 = f32[128,256]{1,0} parameter(3)
+  %bias2 = f32[128]{0} parameter(4)
+
+  // ========================================================================
+  // Layer 1: 512 → 256
+  // ========================================================================
+
+  %dot1 = f32[1,256]{1,0} dot(%input, %weights1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  %bias1_broadcast = f32[1,256]{1,0} broadcast(%bias1), dimensions={1}
+  %add1 = f32[1,256]{1,0} add(%dot1, %bias1_broadcast)
+
+  %zero1 = f32[1,256]{1,0} broadcast(f32[] constant(0)), dimensions={}
+  %hidden = f32[1,256]{1,0} maximum(%add1, %zero1)
+
+  // ========================================================================
+  // Layer 2: 256 → 128
+  // ========================================================================
+
+  %dot2 = f32[1,128]{1,0} dot(%hidden, %weights2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  %bias2_broadcast = f32[1,128]{1,0} broadcast(%bias2), dimensions={1}
+  %add2 = f32[1,128]{1,0} add(%dot2, %bias2_broadcast)
+
+  %zero2 = f32[1,128]{1,0} broadcast(f32[] constant(0)), dimensions={}
+  ROOT %output = f32[1,128]{1,0} maximum(%add2, %zero2)
+}
+
+
+// ============================================================================
+// HLO INSTRUCTION REFERENCE
+// ============================================================================
+//
+// KEY HLO OPERATIONS USED:
+//
+// 1. parameter(N) - Load Nth input parameter
+//
+// 2. dot(lhs, rhs, dims) - Matrix multiplication
+//    - Maps to TPU MXU (Matrix Multiply Unit)
+//    - Uses systolic array for high throughput
+//    - Typically 128x128 or 256x256 array size
+//
+// 3. broadcast(value, dims) - Expand dimensions
+//    - Lightweight operation (metadata only)
+//    - Actual broadcast happens during use
+//
+// 4. add(a, b) - Element-wise addition
+//    - Executes on VPU (Vector Processing Unit)
+//    - Fully pipelined, high throughput
+//
+// 5. maximum(a, b) - Element-wise maximum
+//    - Used for ReLU activation
+//    - Executes on VPU
+//
+// 6. fusion(...) - Fuse multiple operations
+//    - XLA optimization to reduce memory traffic
+//    - Creates compound operations
+//    - Can combine add, multiply, activation, etc.
+//
+// 7. map(array, computation) - Apply function element-wise
+//    - Maps to VPU operations
+//    - Can be vectorized across elements
+//
+// LAYOUT SPECIFICATION:
+// - {1,0} means dimension 1 varies fastest (row-major)
+// - {0,1} would be column-major
+// - Important for memory access patterns on TPU
+//
+// ============================================================================
