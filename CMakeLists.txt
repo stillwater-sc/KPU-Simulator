@@ -51,6 +51,7 @@ option(KPU_STATIC_ANALYSIS        "Enable static analysis"        OFF)
 
 # Include dependencies AFTER options are defined
 include(Dependencies)
+include(DomainFlowIntegration)  # Domain flow IR integration
 include(Documentation)
 include(Testing)
 include(Packaging)

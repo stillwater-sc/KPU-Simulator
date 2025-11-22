@@ -13,6 +13,9 @@ add_subdirectory(system)
 add_subdirectory(simulator)
 add_subdirectory(driver)
 
+# Add compiler components (graph loading, schedule generation)
+add_subdirectory(compiler)
+
 # Keep old memory directory for backward compatibility during transition
 # add_subdirectory(memory)  # Disabled - all components moved to src/components/
 

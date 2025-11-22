@@ -1,0 +1,49 @@
+{
+  "name": "simple_matmul",
+  "description": "C = A @ B, 1024x512 @ 512x1024",
+
+  "tensors": {
+    "A": {
+      "shape": [1024, 512],
+      "dtype": "float32",
+      "layout": "row_major"
+    },
+    "B": {
+      "shape": [512, 1024],
+      "dtype": "float32",
+      "layout": "row_major"
+    },
+    "C": {
+      "shape": [1024, 1024],
+      "dtype": "float32",
+      "layout": "row_major"
+    }
+  },
+
+  "operators": [
+    {
+      "name": "matmul_0",
+      "type": "MATMUL",
+      "inputs": ["A", "B"],
+      "outputs": ["C"],
+      "attributes": {
+        "transpose_a": false,
+        "transpose_b": false,
+        "alpha": 1.0,
+        "beta": 0.0
+      }
+    }
+  ],
+
+  "kpu_config": {
+    "tile_sizes": {
+      "m": 32,
+      "n": 32,
+      "k": 32
+    },
+    "memory_strategy": "result-stationary",
+    "target_kpu": "T256",
+    "enable_prefetch": true,
+    "enable_double_buffer": true
+  }
+}
