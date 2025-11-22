@@ -125,7 +125,7 @@ void StorageSchedulerStreamerAdapter::start_eddo_stream(const EDDOStreamConfig& 
 
 void StorageSchedulerStreamerAdapter::orchestrated_systolic_stream(
     size_t input_bank, size_t weight_bank, size_t output_bank,
-    size_t l1_scratchpad, Size matrix_dim) {
+    size_t /* l1_scratchpad */, Size matrix_dim) {
 
     if (!orchestrator) return;
 
@@ -204,7 +204,7 @@ void EDDOMatrixOrchestrator::orchestrate_matrix_multiply(const MatrixOperationCo
     // Create comprehensive EDDO workflow for tiled matrix multiplication
     StorageWorkflowBuilder workflow;
 
-    size_t sequence_counter = 1;
+    // size_t sequence_counter = 1;
 
     for (size_t tile_i = 0; tile_i < num_tiles_m; ++tile_i) {
         for (size_t tile_j = 0; tile_j < num_tiles_n; ++tile_j) {
@@ -278,7 +278,7 @@ void EDDOMatrixOrchestrator::orchestrate_matrix_transpose(
     if (!orchestrator) return;
 
     constexpr size_t TILE_SIZE = 64; // 64x64 tiles for cache efficiency
-    Size matrix_size = rows * cols * element_size;
+    // Size matrix_size = rows * cols * element_size;
 
     StorageWorkflowBuilder workflow;
 

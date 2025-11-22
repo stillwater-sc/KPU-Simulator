@@ -25,7 +25,11 @@ add_custom_command(TARGET graph_loader_test POST_BUILD
 )
 
 # Register with CTest
-add_test(NAME graph_loader_test COMMAND graph_loader_test)
+# Set working directory to project root so test can find test_graphs/
+add_test(NAME graph_loader_test
+    COMMAND graph_loader_test
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 
 set_target_properties(graph_loader_test PROPERTIES
     FOLDER "Tests/Compiler"

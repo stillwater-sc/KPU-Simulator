@@ -386,7 +386,7 @@ bool execute_single_tile_autonomous(sw::kpu::KPUSimulator* kpu,
     const size_t bank_id = 0;
     const sw::kpu::Address bank_input_addr = 0x0000;
     const sw::kpu::Address bank_weights_addr = bank_input_addr + host_input.size() * sizeof(float);
-    const sw::kpu::Address bank_bias_addr = bank_weights_addr + host_weights.size() * sizeof(float);
+    // const sw::kpu::Address bank_bias_addr = bank_weights_addr + host_weights.size() * sizeof(float);
 
     const size_t l3_tile_id = 0;
     const sw::kpu::Address l3_input_addr = 0x0000;

@@ -228,7 +228,7 @@ TEST_CASE_METHOD(StreamerTracingFixture, "Trace: Streamer L1->L2 Row Stream", "[
     // Set initial cycle
     streamer->set_cycle(3000);
 
-    size_t initial_trace_count = logger.get_trace_count();
+    // size_t initial_trace_count = logger.get_trace_count();
 
     // Configure L1→L2 writeback stream
     Streamer::StreamConfig config;

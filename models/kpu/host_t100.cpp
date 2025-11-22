@@ -496,7 +496,8 @@ int main() {
 	bool bSaveToFile = false;
 	SystemConfig config;
 	create_system(config);
-        bool success = bist(config);
+        // bool success = bist(config);
+        bist(config);
 	
 	if (bSaveToFile) {
 	    // Save to file

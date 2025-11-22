@@ -389,7 +389,7 @@ TEST_CASE_METHOD(DMATensorMovementFixture, "DMA Tensor - Memory Bank Optimizatio
     // Test optimal distribution of tensor data across memory banks
     const size_t tensor_count = 8;
     const size_t tensor_size = 64 * 64 * sizeof(float);
-    const size_t total_size = tensor_count * tensor_size;
+    // const size_t total_size = tensor_count * tensor_size;
 
     if (tensor_size > sim->get_scratchpad_capacity(0)) {
         SKIP("Tensor too large for scratchpad");

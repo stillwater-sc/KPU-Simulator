@@ -112,7 +112,14 @@ TEST_CASE_METHOD(StorageSchedulerPerformanceFixture, "EDDO Performance Benchmark
             commands.push_back(StorageScheduler::StorageCommand{
                 .operation = StorageScheduler::StorageOperation::YIELD,
                 .bank_id = i % NUM_BANKS,
-                .sequence_id = i + 1
+                .source_addr = 0,
+                .dest_addr = 0,
+                .transfer_size = 0,
+                .sequence_id = i + 1,
+                .dependencies = {},
+                .block_mover_id = 0,
+                .streamer_id = 0,
+                .completion_callback = nullptr
             });
         }
 
@@ -288,7 +295,13 @@ TEST_CASE_METHOD(StorageSchedulerPerformanceFixture, "EDDO vs Direct Access Perf
             StorageScheduler::StorageCommand cmd{
                 .operation = StorageScheduler::StorageOperation::YIELD,
                 .bank_id = bank_id,
+                .source_addr = 0,
+                .dest_addr = 0,
+                .transfer_size = 0,
                 .sequence_id = i + 1,
+                .dependencies = {},
+                .block_mover_id = 0,
+                .streamer_id = 0,
                 .completion_callback = [&eddo_operations_completed](const StorageScheduler::StorageCommand&) {
                     eddo_operations_completed.fetch_add(1);
                 }

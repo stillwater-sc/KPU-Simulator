@@ -74,13 +74,19 @@ void DMAEngine::enqueue_transfer(Address src_addr, Address dst_addr, Size size,
         }
     };
 
-    // Call the legacy type-based API with decoded routing information
-    // This ensures all existing logic (validation, tracing, etc.) is reused
-    enqueue_transfer(
+    // Create transfer directly with decoded routing information
+    uint64_t txn_id = trace_logger_->next_transaction_id();
+
+    Transfer transfer{
         convert_memory_type(src_route.type), src_route.id, src_route.offset,
         convert_memory_type(dst_route.type), dst_route.id, dst_route.offset,
-        size, std::move(callback)
-    );
+        size, std::move(callback),
+        0,  // start_cycle (will be set when transfer actually starts)
+        0,  // end_cycle (not yet completed)
+        txn_id
+    };
+
+    transfer_queue.emplace_back(std::move(transfer));
 }
 
 // ===========================================

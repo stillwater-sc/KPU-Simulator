@@ -43,6 +43,9 @@ if(KPU_USE_DOMAIN_FLOW)
 
         include(FetchContent)
 
+        # Prevent domain_flow tests from being added to our test suite
+        set(BUILD_TESTING OFF CACHE BOOL "Disable domain_flow tests" FORCE)
+
         FetchContent_Declare(domain_flow
             GIT_REPOSITORY https://github.com/branes-ai/domain_flow.git
             GIT_TAG main  # Use specific tag/commit for production

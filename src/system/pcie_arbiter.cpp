@@ -332,9 +332,9 @@ trace::CycleCount PCIeArbiter::calculate_duration(const TransactionRequest& requ
     return std::max<trace::CycleCount>(1, cycles);
 }
 
-void PCIeArbiter::log_transaction_start(const TransactionRequest& request,
+void PCIeArbiter::log_transaction_start(const TransactionRequest& /* request */,
                                         TransactionSlot& slot,
-                                        const std::string& queue_name) {
+                                        const std::string& /* queue_name */) {
     if (!tracing_enabled_ || !trace_logger_) {
         return;
     }

@@ -124,9 +124,8 @@ TEST_CASE("ConfigLoader - File Operations", "[system][config][json][file]") {
 
         REQUIRE(ConfigLoader::validate_file(temp_file));
 
-        auto errors = ConfigLoader::get_validation_errors(temp_file);
-        // Should have warnings about no accelerators, but not errors
-        REQUIRE(errors.size() >= 0);  // May have warnings
+        // Note: May have validation warnings (e.g., no accelerators configured)
+        // but validation should still pass for a minimal valid config
 
         std::filesystem::remove(temp_file);
     }

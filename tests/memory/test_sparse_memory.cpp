@@ -120,7 +120,7 @@ TEST_CASE("SparseMemory statistics and tracking", "[memory][sparse][stats]") {
         SparseMemory mem(config);
 
         Size page_size = mem.page_size();
-        Size initial_stats = mem.get_stats().accessed_pages;
+        // Size initial_stats = mem.get_stats().accessed_pages;
 
         // Write to 5 different pages
         for (int i = 0; i < 5; ++i) {

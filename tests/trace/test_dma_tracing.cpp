@@ -8,6 +8,7 @@
 
 #include <sw/kpu/components/dma_engine.hpp>
 #include <sw/memory/external_memory.hpp>
+#include <sw/memory/address_decoder.hpp>
 #include <sw/kpu/components/scratchpad.hpp>
 #include <sw/kpu/components/l3_tile.hpp>
 #include <sw/kpu/components/l2_bank.hpp>
@@ -26,8 +27,13 @@ public:
     std::vector<L3Tile> l3_tiles;  // Empty for these tests
     std::vector<L2Bank> l2_banks;  // Empty for these tests
     std::vector<Scratchpad> scratchpads;
+    sw::memory::AddressDecoder address_decoder;
     DMAEngine dma_engine;
     TraceLogger& logger;
+
+    // Address space layout
+    static constexpr Address KPU_MEMORY_BASE = 0x0000'0000;  // KPU external memory banks
+    static constexpr Address SCRATCHPAD_BASE = 0xFFFF'0000;  // Scratchpad buffers
 
     DMATracingFixture()
         : dma_engine(0, 1.0, 100.0)  // Engine 0, 1 GHz, 100 GB/s
@@ -44,6 +50,15 @@ public:
         scratchpads.emplace_back(256);
 
         // L3 and L2 remain empty for these tests (only testing EXTERNAL <-> SCRATCHPAD)
+
+        // Configure address decoder
+        address_decoder.add_region(KPU_MEMORY_BASE, 64 * 1024 * 1024, sw::memory::MemoryType::EXTERNAL, 0);
+        address_decoder.add_region(KPU_MEMORY_BASE + 64 * 1024 * 1024, 64 * 1024 * 1024, sw::memory::MemoryType::EXTERNAL, 1);
+        address_decoder.add_region(SCRATCHPAD_BASE, 256 * 1024, sw::memory::MemoryType::SCRATCHPAD, 0);
+        address_decoder.add_region(SCRATCHPAD_BASE + 256 * 1024, 256 * 1024, sw::memory::MemoryType::SCRATCHPAD, 1);
+
+        // Set address decoder on DMA engine
+        dma_engine.set_address_decoder(&address_decoder);
 
         // Reset and configure tracing
         logger.clear();
@@ -77,10 +92,10 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Single DMA Transfer - External to Sc
 
     size_t initial_trace_count = logger.get_trace_count();
 
-    // Enqueue transfer
+    // Enqueue transfer using address-based API
     dma_engine.enqueue_transfer(
-        DMAEngine::MemoryType::KPU_MEMORY, 0, src_addr,
-        DMAEngine::MemoryType::SCRATCHPAD, 0, dst_addr,
+        KPU_MEMORY_BASE + src_addr,   // Source: KPU memory bank 0
+        SCRATCHPAD_BASE + dst_addr,    // Dest: Scratchpad 0
         transfer_size
     );
 
@@ -145,8 +160,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Multiple DMA Transfers", "[trace][dm
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
+            KPU_MEMORY_BASE + i * transfer_size,
+            SCRATCHPAD_BASE + i * transfer_size,
             transfer_size
         );
     }
@@ -190,8 +205,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to CSV", "[trace][dma][export
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
+            KPU_MEMORY_BASE + i * transfer_size,
+            SCRATCHPAD_BASE + i * transfer_size,
             transfer_size
         );
 
@@ -221,8 +236,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to JSON", "[trace][dma][expor
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
+            KPU_MEMORY_BASE + i * transfer_size,
+            SCRATCHPAD_BASE + i * transfer_size,
             transfer_size
         );
 
@@ -256,8 +271,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Export to Chrome Trace Format", "[tr
         memory_banks[0].write(i * transfer_size, test_data.data(), transfer_size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, i * transfer_size,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, i * transfer_size,
+            KPU_MEMORY_BASE + i * transfer_size,
+            SCRATCHPAD_BASE + i * transfer_size,
             transfer_size
         );
 
@@ -290,8 +305,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Cycle Range Query", "[trace][dma][qu
         memory_banks[0].write(0, test_data.data(), 1024);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, 0,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, 0,
+            KPU_MEMORY_BASE,
+            SCRATCHPAD_BASE,
             1024
         );
 
@@ -330,8 +345,8 @@ TEST_CASE_METHOD(DMATracingFixture, "Trace: Bandwidth Analysis", "[trace][dma][a
         memory_banks[0].write(0, test_data.data(), size);
 
         dma_engine.enqueue_transfer(
-            DMAEngine::MemoryType::KPU_MEMORY, 0, 0,
-            DMAEngine::MemoryType::SCRATCHPAD, 0, 0,
+            KPU_MEMORY_BASE,
+            SCRATCHPAD_BASE,
             size
         );
 

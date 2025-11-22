@@ -47,7 +47,7 @@ public:
     // Helper to verify row streaming results
     bool verify_row_stream(const std::vector<float>& source_matrix,
                           const std::vector<float>& streamed_data,
-                          size_t matrix_height, size_t matrix_width,
+                          size_t /* matrix_height */, size_t matrix_width,
                           size_t fabric_size, size_t row_index) {
         for (size_t col = 0; col < std::min(fabric_size, matrix_width); ++col) {
             size_t source_idx = row_index * matrix_width + col;

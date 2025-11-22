@@ -101,6 +101,9 @@ TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Basic Command Processing", "[sch
             .dest_addr = 0,
             .transfer_size = 1024,
             .sequence_id = 1,
+            .dependencies = {},
+            .block_mover_id = 0,
+            .streamer_id = 0,
             .completion_callback = [&](const StorageScheduler::StorageCommand&) {
                 execution_sequence.push_back(execution_order.fetch_add(1));
             }
@@ -109,8 +112,13 @@ TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Basic Command Processing", "[sch
         StorageScheduler::StorageCommand compute_cmd{
             .operation = StorageScheduler::StorageOperation::YIELD,
             .bank_id = 0,
+            .source_addr = 0,
+            .dest_addr = 0,
+            .transfer_size = 0,
             .sequence_id = 2,
             .dependencies = {1}, // Depends on prefetch
+            .block_mover_id = 0,
+            .streamer_id = 0,
             .completion_callback = [&](const StorageScheduler::StorageCommand&) {
                 execution_sequence.push_back(execution_order.fetch_add(1));
             }
@@ -124,6 +132,8 @@ TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Basic Command Processing", "[sch
             .transfer_size = 1024,
             .sequence_id = 3,
             .dependencies = {2}, // Depends on compute
+            .block_mover_id = 0,
+            .streamer_id = 0,
             .completion_callback = [&](const StorageScheduler::StorageCommand&) {
                 execution_sequence.push_back(execution_order.fetch_add(1));
             }
@@ -321,7 +331,13 @@ TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Performance and Concurrency", "[
             StorageScheduler::StorageCommand cmd{
                 .operation = StorageScheduler::StorageOperation::YIELD,
                 .bank_id = i % NUM_BANKS, // Distribute across banks
+                .source_addr = 0,
+                .dest_addr = 0,
+                .transfer_size = 0,
                 .sequence_id = i + 1,
+                .dependencies = {},
+                .block_mover_id = 0,
+                .streamer_id = 0,
                 .completion_callback = [&completed_commands](const StorageScheduler::StorageCommand&) {
                     completed_commands.fetch_add(1);
                 }
@@ -347,6 +363,7 @@ TEST_CASE_METHOD(EDDOWorkflowTestFixture, "EDDO Performance and Concurrency", "[
 
         // Verify performance metrics
         auto metrics = scheduler->get_performance_metrics();
-        REQUIRE(metrics.completed_storage_operations >= 0);
+        // Note: completed_storage_operations is unsigned, so any value is valid
+        (void)metrics; // Suppress unused variable warning
     }
 }

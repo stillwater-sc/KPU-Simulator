@@ -391,14 +391,14 @@ std::ostream& operator<<(std::ostream& os, const SystemConfig& config) {
 // Formatted Output Functions
 //=============================================================================
 
-void print_config(std::ostream& os, const SystemConfig& config, FormatDetail detail) {
+void print_config(std::ostream& os, const SystemConfig& config, FormatDetail /* detail */) {
     // For now, all detail levels use the same format
     // Future enhancement: implement different formatting based on detail level
     os << config;
 }
 
 void print_kpu_config(std::ostream& os, const KPUConfig& config,
-                      FormatDetail detail, const std::string& indent) {
+                      FormatDetail /* detail */, const std::string& /* indent */) {
     // Future enhancement: implement indentation and detail level control
     os << config;
 }

@@ -1,0 +1,3 @@
+# Exclude pattern for domain_flow tests in CI
+# Use with: ctest -E "$(cat .github/workflows/test-exclude-pattern.txt)"
+^(dsp_|nla_|dfa_|dnn_|ctl_|cnn_)

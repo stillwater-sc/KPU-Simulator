@@ -1,0 +1,19 @@
+Domain Flow Graph: non-batched-2-input-matmul
+DIRECTED
+RUNNING_NODE_ID 4
+NODES 5
+NODE 4 : |Cout|FUNCTION_RETURN|2|0:tensor<4x4xf32>|target:memory|0:Cout|0:tensor<4x4xf32>
+NODE 3 : |2-input MATMUL|MATMUL|1|0:tensor<4x16xf32>,1:tensor<16x4xf32>||0:Cout|0:tensor<4x4xf32>
+NODE 2 : |const.Cin|CONSTANT|0|||0:Cin|0:tensor<4x4xf32>
+NODE 1 : |const.B|CONSTANT|0|||0:B|0:tensor<16x4xf32>
+NODE 0 : |const.A|CONSTANT|0|||0:A|0:tensor<4x16xf32>
+EDGES 3
+EDGE 3 -> 4 : 0|false|tensor<4x4xf32>|32|0|0|1,1,1
+EDGE 1 -> 3 : 0|true|tensor<16x4xf32>|32|0|1|1,1,1
+EDGE 0 -> 3 : 0|true|tensor<4x16xf32>|32|0|0|1,1,1
+ADJACENCY 3
+ADJ 3 : 4
+ADJ 1 : 3
+ADJ 0 : 3
+SOURCE: 0, 1
+SINK: 4
