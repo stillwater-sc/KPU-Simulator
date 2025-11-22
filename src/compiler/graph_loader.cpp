@@ -122,11 +122,39 @@ std::unique_ptr<ComputationalGraph> JSONGraphLoader::load(const std::string& fil
 
         // Convert string to OperatorType
         if (type_str == "MATMUL" || type_str == "GEMM") type = OperatorType::MATMUL;
+        else if (type_str == "LINEAR" || type_str == "FC") type = OperatorType::LINEAR;
         else if (type_str == "CONV2D") type = OperatorType::CONV2D;
+        else if (type_str == "CONV2D_DEPTHWISE") type = OperatorType::CONV2D_DEPTHWISE;
+        else if (type_str == "CONV3D") type = OperatorType::CONV3D;
         else if (type_str == "RELU") type = OperatorType::RELU;
         else if (type_str == "GELU") type = OperatorType::GELU;
-        else if (type_str == "ELEMENTWISE_ADD") type = OperatorType::ELEMENTWISE_ADD;
-        // Add more operator types as needed
+        else if (type_str == "SIGMOID") type = OperatorType::SIGMOID;
+        else if (type_str == "ELEMENTWISE_ADD" || type_str == "ADD") type = OperatorType::ELEMENTWISE_ADD;
+        else if (type_str == "ELEMENTWISE_MUL" || type_str == "MUL") type = OperatorType::ELEMENTWISE_MUL;
+        else if (type_str == "ELEMENTWISE_SUB" || type_str == "SUB") type = OperatorType::ELEMENTWISE_SUB;
+        else if (type_str == "ELEMENTWISE_DIV" || type_str == "DIV") type = OperatorType::ELEMENTWISE_DIV;
+        else if (type_str == "MAXPOOL" || type_str == "MAXPOOL2D") type = OperatorType::MAXPOOL;
+        else if (type_str == "AVGPOOL" || type_str == "AVGPOOL2D") type = OperatorType::AVGPOOL;
+        else if (type_str == "RESHAPE") type = OperatorType::RESHAPE;
+        else if (type_str == "TRANSPOSE") type = OperatorType::TRANSPOSE;
+        else if (type_str == "CONCAT") type = OperatorType::CONCAT;
+        else if (type_str == "SPLIT") type = OperatorType::SPLIT;
+        else if (type_str == "PAD") type = OperatorType::PAD;
+        else if (type_str == "GATHER") type = OperatorType::GATHER;
+        else if (type_str == "CAST") type = OperatorType::CAST;
+        else if (type_str == "CLAMP") type = OperatorType::CLAMP;
+        else if (type_str == "ABS") type = OperatorType::ABS;
+        else if (type_str == "NEGATE") type = OperatorType::NEGATE;
+        else if (type_str == "EXP") type = OperatorType::EXP;
+        else if (type_str == "RECIPROCAL") type = OperatorType::RECIPROCAL;
+        else if (type_str == "REDUCE_SUM") type = OperatorType::REDUCE_SUM;
+        else if (type_str == "REDUCE_MAX") type = OperatorType::REDUCE_MAX;
+        else if (type_str == "REDUCE_MIN") type = OperatorType::REDUCE_MIN;
+        else if (type_str == "REDUCE_PROD") type = OperatorType::REDUCE_PROD;
+        else if (type_str == "LAYERNORM") type = OperatorType::LAYERNORM;
+        else if (type_str == "BATCHNORM") type = OperatorType::BATCHNORM;
+        else if (type_str == "SOFTMAX") type = OperatorType::SOFTMAX;
+        else if (type_str == "ATTENTION") type = OperatorType::ATTENTION;
 
         auto* op = graph->add_operator(op_json["name"], type);
 
@@ -187,46 +215,142 @@ bool DomainFlowGraphLoader::parse_domain_flow_format(const std::string& filepath
         dfg.load(filepath);
 
         // Set graph name
-        graph->name = dfg.name();
+        graph->name = dfg.getName();
 
         // Convert tensors
-        // TODO: domain_flow API for iterating tensors
-        // For now, we'll discover tensors through operators
+        // Discover tensors through operators
         std::unordered_set<std::string> tensor_names;
 
-        // Convert operators
-        for (size_t i = 0; i < dfg.nrOfNodes(); ++i) {
-            const auto& df_node = dfg.node(i);
-
+        // Convert operators - iterate using nodes() which returns a map
+        for (const auto& [node_id, df_node] : dfg.nodes()) {
             // Create KPU operator
-            std::string op_name = df_node.name();
-            std::string op_type_str = df_node.type();
-            OperatorType op_type = convert_operator_type(op_type_str);
+            std::string op_name = df_node.getName();
+
+            // Get operator type (returns DomainFlowOperator enum)
+            auto df_op_type = df_node.getOperatorType();
+            // Convert domain_flow enum to KPU OperatorType
+            OperatorType op_type = OperatorType::UNKNOWN;
+
+            // Map DomainFlowOperator to KPU OperatorType
+            using DFOp = sw::dfa::DomainFlowOperator;
+            switch (df_op_type) {
+                case DFOp::MATMUL:
+                    op_type = OperatorType::MATMUL;
+                    break;
+                case DFOp::CONV2D:
+                    op_type = OperatorType::CONV2D;
+                    break;
+                case DFOp::DEPTHWISE_CONV2D:
+                    op_type = OperatorType::CONV2D_DEPTHWISE;
+                    break;
+                case DFOp::ADD:
+                    op_type = OperatorType::ELEMENTWISE_ADD;
+                    break;
+                case DFOp::MUL:
+                    op_type = OperatorType::ELEMENTWISE_MUL;
+                    break;
+                case DFOp::RELU:
+                    op_type = OperatorType::RELU;
+                    break;
+                case DFOp::SIGMOID:
+                    op_type = OperatorType::SIGMOID;
+                    break;
+                case DFOp::LINEAR:
+                case DFOp::FC:
+                    op_type = OperatorType::LINEAR;
+                    break;
+                case DFOp::CONV3D:
+                    op_type = OperatorType::CONV3D;
+                    break;
+                case DFOp::SUB:
+                    op_type = OperatorType::ELEMENTWISE_SUB;
+                    break;
+                case DFOp::DIV:
+                    op_type = OperatorType::ELEMENTWISE_DIV;
+                    break;
+                case DFOp::PAD:
+                    op_type = OperatorType::PAD;
+                    break;
+                case DFOp::GATHER:
+                    op_type = OperatorType::GATHER;
+                    break;
+                case DFOp::CAST:
+                    op_type = OperatorType::CAST;
+                    break;
+                case DFOp::CLAMP:
+                    op_type = OperatorType::CLAMP;
+                    break;
+                case DFOp::ABS:
+                    op_type = OperatorType::ABS;
+                    break;
+                case DFOp::NEGATE:
+                    op_type = OperatorType::NEGATE;
+                    break;
+                case DFOp::EXP:
+                    op_type = OperatorType::EXP;
+                    break;
+                case DFOp::RECIPROCAL:
+                    op_type = OperatorType::RECIPROCAL;
+                    break;
+                case DFOp::REDUCE_SUM:
+                    op_type = OperatorType::REDUCE_SUM;
+                    break;
+                case DFOp::REDUCE_MAX:
+                    op_type = OperatorType::REDUCE_MAX;
+                    break;
+                case DFOp::REDUCE_MIN:
+                    op_type = OperatorType::REDUCE_MIN;
+                    break;
+                case DFOp::REDUCE_PROD:
+                    op_type = OperatorType::REDUCE_PROD;
+                    break;
+                case DFOp::MAXPOOL2D:
+                    op_type = OperatorType::MAXPOOL;
+                    break;
+                case DFOp::AVGPOOL2D:
+                    op_type = OperatorType::AVGPOOL;
+                    break;
+                case DFOp::RESHAPE:
+                    op_type = OperatorType::RESHAPE;
+                    break;
+                case DFOp::TRANSPOSE:
+                    op_type = OperatorType::TRANSPOSE;
+                    break;
+                case DFOp::CONCAT:
+                    op_type = OperatorType::CONCAT;
+                    break;
+                // Add more mappings as needed
+                default:
+                    op_type = OperatorType::UNKNOWN;
+                    break;
+            }
 
             auto* kpu_op = graph->add_operator(op_name, op_type);
 
-            // Add inputs
-            for (size_t j = 0; j < df_node.nrOfInputs(); ++j) {
-                std::string input_name = df_node.input(j).name();
-                kpu_op->add_input(input_name);
-                tensor_names.insert(input_name);
+            // Add inputs (operands)
+            for (size_t j = 0; j < df_node.getNrInputs(); ++j) {
+                // Get operand type/name from the map
+                std::string input_name = df_node.getOperandType(j);
+                if (!input_name.empty()) {
+                    kpu_op->add_input(input_name);
+                    tensor_names.insert(input_name);
+                }
             }
 
-            // Add outputs
-            for (size_t k = 0; k < df_node.nrOfOutputs(); ++k) {
-                std::string output_name = df_node.output(k).name();
-                kpu_op->add_output(output_name);
-                tensor_names.insert(output_name);
+            // Add outputs (results)
+            for (size_t k = 0; k < df_node.getNrOutputs(); ++k) {
+                // Get result value/name from the map
+                std::string output_name = df_node.getResultValue(k);
+                if (!output_name.empty()) {
+                    kpu_op->add_output(output_name);
+                    tensor_names.insert(output_name);
+                }
             }
 
             // Copy attributes
-            // TODO: domain_flow attribute iteration API
-            // For now, we'll add common attributes we know about
-            if (df_node.hasAttribute("transpose_a")) {
-                kpu_op->set_attribute("transpose_a", df_node.attribute("transpose_a"));
-            }
-            if (df_node.hasAttribute("transpose_b")) {
-                kpu_op->set_attribute("transpose_b", df_node.attribute("transpose_b"));
+            const auto& attributes = df_node.getAttributes();
+            for (const auto& [attr_name, attr_value] : attributes) {
+                kpu_op->set_attribute(attr_name, attr_value);
             }
         }
 
@@ -239,8 +363,8 @@ bool DomainFlowGraphLoader::parse_domain_flow_format(const std::string& filepath
             desc.dtype = "float32";  // Default
             desc.layout = "row_major";  // Default
 
-            // Try to get shape from domain_flow if available
-            // TODO: domain_flow tensor shape API
+            // Try to parse shape from tensor name if encoded
+            // Otherwise use placeholder
             desc.shape = {1};  // Placeholder
             desc.size_bytes = 4;  // Placeholder
 

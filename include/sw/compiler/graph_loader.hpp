@@ -27,11 +27,16 @@ enum class OperatorType {
     GEMM,           // General matrix multiply
     CONV2D,         // 2D convolution
     CONV2D_DEPTHWISE,
+    CONV3D,         // 3D convolution
     MATMUL,         // Matrix multiplication (synonym for GEMM)
+    LINEAR,         // Linear layer (FC)
     ELEMENTWISE_ADD,
     ELEMENTWISE_MUL,
+    ELEMENTWISE_SUB,
+    ELEMENTWISE_DIV,
     RELU,
     GELU,
+    SIGMOID,
     SOFTMAX,
     LAYERNORM,
     BATCHNORM,
@@ -41,6 +46,18 @@ enum class OperatorType {
     TRANSPOSE,
     CONCAT,
     SPLIT,
+    PAD,
+    GATHER,
+    CAST,
+    CLAMP,
+    ABS,
+    NEGATE,
+    EXP,
+    RECIPROCAL,
+    REDUCE_SUM,
+    REDUCE_MAX,
+    REDUCE_MIN,
+    REDUCE_PROD,
     ATTENTION,      // Multi-head attention
     UNKNOWN
 };
