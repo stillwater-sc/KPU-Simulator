@@ -7,6 +7,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/basic)
     add_subdirectory(basic)
 endif()
 
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/compiler)
+    add_subdirectory(compiler)
+endif()
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/advanced)
     add_subdirectory(advanced)
 endif()

@@ -18,15 +18,14 @@ kpu_add_test(
 )
 endif()
 
-if(KPU_BUILD_PYTHON_BINDINGS)
-    if(KPU_BUILD_TESTS)
-        kpu_add_test(
-            NAME python_cpp_integration
-            INTEGRATION
-            SOURCES test_python_cpp_integration.cpp
-            LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
-        )
-    endif()
+if(KPU_BUILD_PYTHON_BINDINGS AND KPU_BUILD_TESTS)
+
+    kpu_add_test(
+        NAME python_cpp_integration
+        INTEGRATION
+        SOURCES test_python_cpp_integration.cpp
+        LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
+    )
     
     # Add Python embedding support for the integration test
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
