@@ -9,32 +9,8 @@
     {
       "name": "default",
       "displayName": "Default Configuration",
-      "description": "Default build configuration - platform specific",
-      "generator": "$penv{CMAKE_GENERATOR}",
-      "binaryDir": "${sourceDir}/build",
-      "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "KPU_BUILD_TESTS": "ON",
-        "KPU_BUILD_EXAMPLES": "ON",
-        "KPU_BUILD_TOOLS": "ON",
-        "KPU_BUILD_PYTHON_BINDINGS": "ON",
-        "KPU_ENABLE_OPENMP": "ON"
-      },
-      "condition": {
-        "type": "allOf",
-        "conditions": [
-          {
-            "type": "equals",
-            "lhs": "${hostSystemName}",
-            "rhs": "Linux"
-          }
-        ]
-      }
-    },
-    {
-      "name": "default-fallback",
-      "displayName": "Default Fallback", 
-      "description": "Fallback configuration for unsupported platforms",
+      "description": "Default build configuration - uses Ninja generator",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
@@ -49,7 +25,7 @@
       "name": "debug",
       "displayName": "Debug Configuration",
       "description": "Debug build with sanitizers and detailed logging",
-      "inherits": ["windows-msvc", "default", "default-fallback"],
+      "inherits": "default",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "KPU_ENABLE_SANITIZERS": "ON",

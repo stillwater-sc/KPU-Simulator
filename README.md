@@ -1,355 +1,540 @@
 # Stillwater Knowledge Processing Unit (KPU) Simulator
 
-A high-performance C++ functional simulator for the Stillwater KPU with Python bindings for easy testing and education.
+A high-performance C++20 functional simulator for the Stillwater KPU - a specialized hardware accelerator for knowledge processing and AI workloads. Features Python bindings for easy testing and education.
 
-## Architecture Overview
-
-The KPU simulator models a specialized hardware accelerator with the following components:
-
-### Core Components
-
-1. **Main Memory**: Large capacity memory (default 1GB) with thread-safe access
-2. **Scratchpad Memory**: Fast, software-managed memory (default 1MB) optimized for compute operations
-3. **DMA Engine**: Asynchronous data movement between main memory and scratchpad
-4. **Compute Engine**: Matrix multiplication accelerator with single-precision floating-point support
-
-### Key Features
-
-- **Modern C++17 Implementation**: Uses RAII, smart pointers, and modern STL features
-- **Thread-Safe Design**: All components support concurrent access with appropriate locking
-- **Zero-Copy Operations**: Direct memory access where possible for maximum performance
-- **Comprehensive Error Handling**: Robust error detection and reporting
-- **Python Integration**: Easy-to-use Python API with NumPy integration
-
-## Building the Simulator
+## Quick Start
 
 ### Prerequisites
 
 ```bash
 # Ubuntu/Debian
-sudo apt install build-essential cmake libomp-dev python3-dev python3-pip
+sudo apt install build-essential cmake ninja-build libomp-dev python3-dev python3-pip
 
 # macOS
-brew install cmake libomp python3
+brew install cmake ninja libomp python3
 xcode-select --install
 
-# Python dependencies
-pip3 install numpy matplotlib pybind11
+# Windows
+# Install Visual Studio 2022 with C++ support
+# Install CMake and Python from official websites
 ```
 
-### Build Steps
+### Build with CMake Presets (Recommended)
 
-1. **Generate build files**:
+The project uses **CMake presets** for streamlined configuration. Choose the preset for your platform:
+
 ```bash
-python3 kpu_test_examples.py --build-files
+# Linux (default: GCC with Ninja)
+cmake --preset=release
+cmake --build --preset=release
+
+# Linux with Clang
+cmake --preset=linux-clang
+cmake --build build
+
+# Windows (Visual Studio)
+cmake --preset=windows-msvc
+cmake --build build --config Release
+
+# macOS (Xcode)
+cmake --preset=macos
+cmake --build build --config Release
+
+# Debug build (with sanitizers)
+cmake --preset=debug
+cmake --build --preset=debug
 ```
 
-2. **Build the C++ library**:
+**Note:** Most presets use the **Ninja** build system. If you don't have Ninja installed:
+- **Ubuntu/Debian:** `sudo apt install ninja-build`
+- **macOS:** `brew install ninja`
+- **Windows:** Download from [Ninja releases](https://github.com/ninja-build/ninja/releases) or use Visual Studio preset
+
+**Alternative without Ninja:**
 ```bash
-chmod +x build_kpu.sh
-./build_kpu.sh
+# Use Unix Makefiles or Visual Studio instead
+cmake -B build -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles"
+cmake --build build
 ```
 
-3. **Install Python package** (optional):
+#### Available Configure Presets
+
+| Preset | Description | Use Case |
+|--------|-------------|----------|
+| `release` | Optimized release build | Production use |
+| `debug` | Debug build with sanitizers | Development & debugging |
+| `minimal` | Core components only | Minimal installation |
+| `full` | All features enabled (CUDA, OpenCL, docs) | Full-featured build |
+| `linux-gcc` | Linux with GCC | Linux development |
+| `linux-clang` | Linux with Clang | Linux with Clang toolchain |
+| `windows-msvc` | Windows with MSVC | Windows development |
+| `macos` | macOS with Xcode | macOS development |
+
+### Advanced Build Options
+
+CMake presets automatically configure sensible defaults. To customize:
+
 ```bash
+# With domain_flow integration (local installation)
+cmake --preset=release -DKPU_DOMAIN_FLOW_LOCAL_PATH=~/dev/domain_flow
+cmake --build --preset=release
+
+# Minimal build (no tests, examples, or Python)
+cmake --preset=minimal
+cmake --build build
+
+# Full build with all features
+cmake --preset=full
+cmake --build --preset=full
+
+# Custom configuration
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+  -DKPU_BUILD_PYTHON_BINDINGS=ON \
+  -DKPU_ENABLE_OPENMP=ON \
+  -GNinja
+cmake --build build
+```
+
+#### Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `KPU_BUILD_TESTS` | ON | Build test suite |
+| `KPU_BUILD_EXAMPLES` | ON | Build examples |
+| `KPU_BUILD_TOOLS` | ON | Build development tools |
+| `KPU_BUILD_PYTHON_BINDINGS` | ON | Build Python bindings |
+| `KPU_BUILD_BENCHMARKS` | ON | Build benchmark suite |
+| `KPU_BUILD_MODELS` | ON | Build architecture models |
+| `KPU_BUILD_DOCS` | OFF | Build documentation |
+| `KPU_ENABLE_OPENMP` | ON | Enable OpenMP parallelization |
+| `KPU_ENABLE_CUDA` | OFF | Enable CUDA support |
+| `KPU_ENABLE_OPENCL` | OFF | Enable OpenCL support |
+| `KPU_ENABLE_PROFILING` | OFF | Enable profiling support |
+| `KPU_ENABLE_SANITIZERS` | OFF | Enable sanitizers (debug builds) |
+
+### Install Python Package
+
+```bash
+# After building with Python bindings enabled
 pip3 install -e .
+
+# Or use the Python module directly from build directory
+export PYTHONPATH=$PWD/build:$PYTHONPATH
 ```
 
-### Manual Build (Alternative)
+## domain_flow Integration
+
+The simulator integrates with the [domain_flow](https://github.com/branes-ai/domain_flow) intermediate representation for computational graphs.
+
+### Build with domain_flow
 
 ```bash
-# Create build directory
-mkdir build && cd build
+# Option 1: Local installation (recommended for development)
+cmake --preset=release -DKPU_DOMAIN_FLOW_LOCAL_PATH=~/dev/domain_flow
+cmake --build --preset=release
 
-# Configure
-cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+# Option 2: FetchContent (automatic download - requires CMake 3.28+)
+cmake --preset=release  # Automatically fetches domain_flow from GitHub
+cmake --build --preset=release
 
-# Build
-make -j$(nproc)
-
-# The shared library will be in build/libkpu_simulator.so (Linux) or build/libkpu_simulator.dylib (macOS)
+# Option 3: JSON-only mode (no domain_flow dependency)
+cmake --preset=release -DKPU_USE_DOMAIN_FLOW=OFF
+cmake --build --preset=release
 ```
+
+### Load Computational Graphs
+
+```cpp
+#include <sw/compiler/graph_loader.hpp>
+
+// Load from domain_flow native format (.dfg)
+auto graph = sw::kpu::compiler::load_graph("models/mobilenet_v1.dfg");
+
+// Or load from JSON format
+auto graph = sw::kpu::compiler::load_graph("models/simple_matmul.json");
+
+// Inspect graph
+std::cout << "Graph: " << graph->name << "\n";
+std::cout << "Operators: " << graph->operators.size() << "\n";
+std::cout << "Tensors: " << graph->tensors.size() << "\n";
+
+// Validate graph structure
+if (graph->validate()) {
+    std::cout << "✓ Graph is valid\n";
+}
+```
+
+For more details, see [domain_flow integration guide](docs/domain-flow-integration.md).
+
+## Architecture Overview
+
+The KPU simulator models a specialized hardware accelerator with:
+
+### Core Components
+
+- **Memory Hierarchy**: External memory (1GB), L3 tile, L2 banks, L1 buffers, scratchpad
+- **Data Movement Engines**:
+  - DMA engine for asynchronous transfers
+  - BlockMover for block-level data movement
+  - Streamer for stream-based data movement
+- **Compute Engines**:
+  - ComputeFabric for general-purpose compute
+  - SystolicArray (tau111_s001) for matrix multiplication
+- **Compiler Infrastructure**: Graph loader, operator mapping, schedule generation (WIP)
+- **Configuration System**: JSON-based system configuration
+- **Trace Logger**: Performance tracing and analysis
+
+### Key Features
+
+- **Modern C++20**: RAII, smart pointers, concepts, ranges
+- **Thread-Safe Design**: All components support concurrent access
+- **Comprehensive Testing**: 30/30 tests passing with CTest integration
+- **Python Integration**: NumPy-compatible Python API via pybind11
+- **Cross-Platform**: Windows, Linux, macOS support
 
 ## Usage Examples
 
 ### C++ API
 
-```cpp
-#include "kpu_simulator.hpp"
-using namespace stillwater::kpu;
+#### Basic System Setup
 
-int main() {
-    // Create simulator
-    KPUSimulator kpu(1ULL << 30, 1ULL << 20);  // 1GB main, 1MB scratchpad
-    
-    // Generate test matrices
-    std::vector<float> A(100 * 200), B(200 * 150);
-    // ... fill matrices ...
-    
-    // Write to scratchpad
-    kpu.scratchpad().write(0, A.data(), A.size() * sizeof(float));
-    kpu.scratchpad().write(A.size() * sizeof(float), B.data(), B.size() * sizeof(float));
-    
-    // Perform matrix multiplication
-    MatrixDim dimA{100, 200}, dimB{200, 150};
-    kpu.compute_engine().matmul_f32(0, A.size() * sizeof(float), 
-                                    (A.size() + B.size()) * sizeof(float), 
-                                    dimA, dimB);
-    
-    return 0;
-}
+```cpp
+#include <sw/system/toplevel.hpp>
+#include <sw/kpu/kpu_simulator.hpp>
+
+// Option 1: Create with default configuration
+sw::sim::SystemSimulator system;
+system.initialize();
+
+// Option 2: Load from JSON configuration file
+sw::sim::SystemSimulator system("configs/default_kpu.json");
+system.initialize();
+
+// Get KPU instance
+auto* kpu = system.get_kpu(0);
 ```
+
+#### Simple KPU Configuration
+
+```cpp
+#include <sw/kpu/kpu_simulator.hpp>
+
+// Create KPU with custom configuration
+sw::kpu::KPUSimulator::Config config(
+    2,      // 2 memory banks
+    1024,   // 1GB each
+    100,    // 100 GB/s bandwidth
+    2,      // 2 scratchpads
+    64,     // 64KB each
+    2,      // 2 compute tiles
+    2       // 2 DMA engines
+);
+
+sw::kpu::KPUSimulator kpu(config);
+
+// Check configuration
+std::cout << "Using systolic arrays: " << kpu.is_using_systolic_arrays() << "\n";
+std::cout << "Systolic array size: "
+          << kpu.get_systolic_array_rows() << "x"
+          << kpu.get_systolic_array_cols() << "\n";
+```
+
+#### Matrix Multiplication
+
+See [`examples/basic/matrix_multiply.cpp`](examples/basic/matrix_multiply.cpp) for a complete example.
+
+#### Data Movement Pipeline
+
+See [`examples/basic/data_movement_pipeline.cpp`](examples/basic/data_movement_pipeline.cpp) for DMA and data orchestration examples.
 
 ### Python API
 
-```python
-import numpy as np
-from kpu_simulator import KPUSimulator
+#### Basic Usage
 
-# Create simulator
-with KPUSimulator() as kpu:
-    # Generate test matrices
+```python
+import stillwater_kpu as kpu
+import numpy as np
+
+# Create simulator with context manager
+with kpu.Simulator() as sim:
+    print(f"Main memory: {sim.main_memory_size // (1024**3)} GB")
+    print(f"Scratchpad: {sim.scratchpad_size // (1024**2)} MB")
+
+    # Matrix multiplication
     A = np.random.randn(100, 200).astype(np.float32)
     B = np.random.randn(200, 150).astype(np.float32)
-    
-    # Perform matrix multiplication
-    C = kpu.matmul(A, B)
-    
+
+    # KPU computation
+    C = sim.matmul(A, B)
+
     # Verify against NumPy
     C_numpy = A @ B
-    print(f"Results match: {np.allclose(C, C_numpy)}")
+    assert np.allclose(C, C_numpy), "Results don't match!"
+    print("✓ Results match NumPy reference")
 ```
 
-### Advanced Examples
+#### Performance Benchmarking
 
-#### Neural Network Layer
 ```python
-def neural_layer(kpu, inputs, weights, bias):
-    """Compute neural network layer: output = inputs @ weights + bias"""
-    # Matrix multiplication
-    output = kpu.matmul(inputs, weights)
-    
-    # Add bias using broadcasting via matrix multiplication
-    batch_size = inputs.shape[0]
-    ones = np.ones((batch_size, 1), dtype=np.float32)
-    bias_reshaped = bias.reshape(1, -1)
-    
-    # Accumulate bias
-    return kpu.matmul(ones, bias_reshaped, addr_C=output_addr, accumulate=True)
+import stillwater_kpu as kpu
+
+with kpu.Simulator() as sim:
+    # Benchmark matrix multiplication
+    results = sim.benchmark_matmul(
+        M=256, N=256, K=256,
+        iterations=10
+    )
+
+    print(f"Matrix size: {results['matrix_size']}")
+    print(f"KPU time: {results['kpu_time_ms']:.2f} ms")
+    print(f"NumPy time: {results['numpy_time_ms']:.2f} ms")
+    print(f"KPU GFLOPS: {results['kpu_gflops']:.2f}")
 ```
 
-#### Memory Hierarchy Management
-```python
-def efficient_large_matmul(kpu, A_main_addr, B_main_addr, A_shape, B_shape):
-    """Efficiently multiply large matrices using DMA"""
-    M, K = A_shape
-    K2, N = B_shape
-    
-    # DMA transfer to scratchpad
-    A_size = M * K * 4  # float32
-    B_size = K * N * 4
-    
-    kpu.dma_transfer(A_main_addr, 0, A_size, 
-                     src_main_memory=True, dst_main_memory=False)
-    kpu.dma_transfer(B_main_addr, A_size, B_size, 
-                     src_main_memory=True, dst_main_memory=False)
-    
-    # Compute in scratchpad
-    A = kpu.read_scratchpad(0, np.float32, (M, K))
-    B = kpu.read_scratchpad(A_size, np.float32, (K, N))
-    C = kpu.matmul(A, B)
-    
-    return C
-```
+#### Advanced Examples
 
-## Testing and Validation
+See the [`examples/python/`](examples/python/) directory for:
+- Neural network layer computation
+- Performance scaling analysis
+- Matrix chain optimization
+- Educational demonstrations
 
-### Running Tests
+## Testing
+
+### Run Tests with CTest
 
 ```bash
-# Run comprehensive test suite
-python3 kpu_test_examples.py --test
+# Run all KPU simulator tests (excludes external domain_flow tests)
+cd build
+ctest --output-on-failure
 
-# Run educational demonstrations
-python3 kpu_test_examples.py --demo
+# Or use the helper script
+./scripts/run_tests.sh
 
-# Run everything (tests + demos)
-python3 kpu_test_examples.py --all
+# Run specific test
+ctest -R graph_loader -V
+
+# Run with specific preset
+ctest --preset=unit          # Unit tests only
+ctest --preset=integration   # Integration tests only
+ctest --preset=performance   # Performance tests only
 ```
 
-### Test Coverage
+### Test Categories
 
-The test suite covers:
+The test suite includes 30 comprehensive tests:
 
-- **Memory Operations**: Read/write operations for various data types and sizes
-- **DMA Operations**: Transfer between main memory and scratchpad
-- **Compute Operations**: Matrix multiplication with various dimensions
-- **Error Handling**: Boundary conditions and error cases
-- **Performance**: Benchmarking against NumPy reference implementation
+| Category | Tests | Coverage |
+|----------|-------|----------|
+| Memory | 4 | Allocation, sparse memory, memory maps |
+| DMA | 6 | Basic transfers, performance, tensor movement, tracing |
+| Data Movement | 4 | BlockMover, Streamer operations |
+| Compute | 3 | ComputeFabric, SystolicArray |
+| Storage Scheduler | 5 | EDDO/IDDO workflows, performance |
+| System | 3 | Configuration, formatting |
+| Integration | 3 | End-to-end, multi-component, Python bindings |
+| Compiler | 1 | Graph loader |
 
-### Educational Examples
+**Status: 30/30 PASSING ✅**
 
-1. **Neural Network Layer**: Demonstrates weight-input multiplication and bias addition
-2. **Matrix Chain Multiplication**: Shows optimization of operation ordering
-3. **Memory Hierarchy Demo**: Illustrates efficient use of DMA for data movement
-4. **Performance Analysis**: Benchmarks across different matrix sizes
-5. **Blocked Matrix Multiplication**: Demonstrates tiling for large matrices
+### Excluding External Tests
+
+The build system includes tests from external dependencies (domain_flow). To run only KPU tests:
+
+```bash
+# Recommended: Exclude external tests
+ctest --test-dir build -E "^(dsp_|nla_|dfa_|dnn_|ctl_|cnn_)" --output-on-failure
+```
+
+## Project Structure
+
+```
+KPU-simulator/
+├── include/sw/              # Public C++ headers
+│   ├── system/              # System simulator (toplevel, config)
+│   ├── kpu/                 # KPU components
+│   ├── memory/              # Memory hierarchy
+│   ├── compute/             # Compute engines
+│   ├── datamovement/        # Data movement (DMA)
+│   ├── compiler/            # Graph loader & compiler
+│   ├── driver/              # Memory manager
+│   └── trace/               # Tracing infrastructure
+├── src/                     # Implementation
+│   ├── system/              # System implementation
+│   ├── components/          # Component implementations
+│   ├── compiler/            # Graph loader implementation
+│   ├── bindings/            # C and Python bindings
+│   ├── simulator/           # Core simulator
+│   └── driver/              # Driver implementation
+├── tests/                   # Test suite (30 tests)
+├── examples/                # C++ and Python examples
+│   ├── basic/               # Basic C++ examples
+│   └── python/              # Python examples
+├── docs/                    # Documentation (50+ files)
+├── cmake/                   # CMake modules
+├── scripts/                 # Build and utility scripts
+├── configs/                 # Configuration files
+├── test_graphs/             # Test computational graphs
+└── CMakePresets.json        # CMake presets configuration
+```
+
+## Performance Characteristics
+
+### Compute Performance
+
+- **Algorithm**: Standard GEMM (General Matrix Multiply) with systolic array support
+- **Parallelization**: OpenMP for matrices > 1024 elements
+- **Precision**: Single-precision floating-point (float32)
+- **Memory**: Optimized cache-friendly access patterns
+
+### Memory Hierarchy
+
+- **External Memory**: 1GB (configurable)
+- **L3 Tile**: Main working memory
+- **L2 Banks**: Mid-level cache
+- **L1 Buffers**: Fast scratch memory
+- **Scratchpad**: Software-managed (1MB default)
+
+### Data Movement
+
+- **DMA Engine**: Asynchronous transfers with address-based API
+- **BlockMover**: Efficient block-level data movement
+- **Streamer**: Stream-based data orchestration
 
 ## API Reference
 
 ### C++ Classes
 
-#### `KPUSimulator`
-Main simulator class that orchestrates all components.
+#### `sw::sim::SystemSimulator`
+Top-level system simulator that manages all components.
 
-**Constructor**:
+**Methods:**
+- `SystemSimulator()` - Create with default configuration
+- `SystemSimulator(const SystemConfig& config)` - Create with specific configuration
+- `SystemSimulator(const std::filesystem::path& config_file)` - Load from JSON
+- `bool initialize()` - Initialize simulator
+- `bool is_initialized() const` - Check initialization status
+- `sw::kpu::KPUSimulator* get_kpu(size_t index)` - Get KPU by index
+- `void print_config() const` - Print configuration summary
+- `void shutdown()` - Cleanup resources
+
+#### `sw::kpu::KPUSimulator`
+KPU accelerator simulator.
+
+**Configuration:**
 ```cpp
-KPUSimulator(Size main_memory_size = 1GB, Size scratchpad_size = 1MB)
+struct Config {
+    size_t memory_bank_count;
+    size_t memory_bank_size_mb;
+    double memory_bandwidth_gbps;
+    size_t scratchpad_count;
+    size_t scratchpad_size_kb;
+    size_t compute_tile_count;
+    size_t dma_engine_count;
+};
 ```
 
-**Methods**:
-- `MainMemory& main_memory()`: Access to main memory
-- `Scratchpad& scratchpad()`: Access to scratchpad memory
-- `DMAEngine& dma_engine()`: Access to DMA engine
-- `ComputeEngine& compute_engine()`: Access to compute engine
+**Methods:**
+- `KPUSimulator(const Config& config)` - Create with configuration
+- `bool is_using_systolic_arrays() const` - Check systolic array usage
+- `size_t get_systolic_array_rows() const` - Get systolic array dimensions
+- `size_t get_systolic_array_cols() const` - Get systolic array dimensions
 
-#### `MainMemory` / `Scratchpad`
-Memory interfaces with thread-safe read/write operations.
+#### `sw::kpu::compiler::GraphLoader`
+Computational graph loader.
 
-**Methods**:
-- `void read(Address addr, void* data, Size size)`: Read data
-- `void write(Address addr, const void* data, Size size)`: Write data
-- `Size size() const`: Get memory size
-
-#### `DMAEngine`
-Handles data movement between memory spaces.
-
-**Methods**:
-- `void transfer_sync(...)`: Synchronous transfer
-- `void transfer_async(...)`: Asynchronous transfer with callback
-
-#### `ComputeEngine`
-Matrix multiplication accelerator.
-
-**Methods**:
-- `void matmul_f32(...)`: Matrix multiplication
-- `void matmul_accumulate_f32(...)`: Matrix multiplication with accumulation
+**Functions:**
+- `std::unique_ptr<ComputationalGraph> load_graph(const std::string& path)` - Load graph from .dfg or .json
 
 ### Python Classes
 
-#### `KPUSimulator`
-Python wrapper with NumPy integration.
+#### `stillwater_kpu.Simulator`
+Python wrapper for KPU simulator.
 
-**Constructor**:
-```python
-KPUSimulator(main_memory_size=1<<30, scratchpad_size=1<<20)
-```
+**Methods:**
+- `__init__(main_memory_size=1<<30, scratchpad_size=1<<20)` - Create simulator
+- `matmul(A, B)` - Matrix multiplication (NumPy arrays)
+- `benchmark_matmul(M, N, K, iterations=10)` - Performance benchmark
+- `__enter__() / __exit__()` - Context manager support
 
-**Methods**:
-- `write_main_memory(addr, data)`: Write NumPy array to main memory
-- `read_main_memory(addr, dtype, shape)`: Read NumPy array from main memory
-- `write_scratchpad(addr, data)`: Write NumPy array to scratchpad
-- `read_scratchpad(addr, dtype, shape)`: Read NumPy array from scratchpad
-- `dma_transfer(...)`: DMA data movement
-- `matmul(A, B, ...)`: Matrix multiplication with automatic memory management
-- `benchmark_matmul(M, N, K, iterations)`: Performance benchmarking
-
-## Performance Characteristics
-
-### Theoretical Performance
-
-The simulator implements a basic matrix multiplication algorithm with these characteristics:
-
-- **Algorithm**: Standard three-loop GEMM (General Matrix Multiply)
-- **Parallelization**: OpenMP parallel loops for matrices larger than 1024 elements
-- **Memory Access**: Optimized for cache-friendly access patterns
-- **Precision**: Single-precision floating-point (float32)
-
-### Benchmarking Results
-
-Performance varies by matrix size and system configuration. Typical results on modern hardware:
-
-| Matrix Size | KPU Time | NumPy Time | KPU GFLOPS | NumPy GFLOPS |
-|-------------|----------|------------|------------|--------------|
-| 64x64       | 0.12ms   | 0.08ms     | 4.37       | 6.55         |
-| 128x128     | 0.89ms   | 0.31ms     | 4.69       | 13.48        |
-| 256x256     | 6.78ms   | 1.24ms     | 4.97       | 27.19        |
-
-*Note: NumPy uses highly optimized BLAS libraries (Intel MKL/OpenBLAS) which typically outperform basic implementations*
-
-### Memory Usage
-
-- **Main Memory**: Configurable, default 1GB
-- **Scratchpad**: Configurable, default 1MB
-- **Overhead**: Minimal C++ object overhead (~1KB)
-- **Python Wrapper**: Additional NumPy array copies as needed
+**Properties:**
+- `main_memory_size` - Main memory size in bytes
+- `scratchpad_size` - Scratchpad size in bytes
 
 ## Error Handling
 
-The simulator provides comprehensive error handling:
-
 ### C++ Exceptions
-- `std::out_of_range`: Memory access violations
-- `std::invalid_argument`: Invalid parameters (matrix dimensions, etc.)
-- `std::runtime_error`: Resource allocation failures
+- `std::out_of_range` - Memory access violations
+- `std::invalid_argument` - Invalid parameters
+- `std::runtime_error` - Resource allocation failures
 
 ### Python Exceptions
-- `KPUMemoryError`: Memory access errors
-- `KPUDimensionError`: Matrix dimension mismatches
-- `KPUError`: General simulator errors
+- `KPUMemoryError` - Memory access errors
+- `KPUDimensionError` - Matrix dimension mismatches
+- `KPUError` - General simulator errors
 
-### Error Codes (C API)
-```c
-typedef enum {
-    KPU_SUCCESS = 0,
-    KPU_ERROR_INVALID_HANDLE = -1,
-    KPU_ERROR_OUT_OF_BOUNDS = -2,
-    KPU_ERROR_INVALID_DIMENSIONS = -3,
-    KPU_ERROR_NULL_POINTER = -4,
-    KPU_ERROR_UNKNOWN = -5
-} KPUError;
-```
+## Development Status
 
-## Design Patterns and Best Practices
+**Current Version: 0.1.0 (Beta)**
 
-### Memory Management
-- Use RAII for automatic resource cleanup
-- Prefer stack allocation for small objects
-- Use smart pointers for dynamic allocation
-- Implement proper move semantics
+### Completed ✅
+- Core simulator architecture
+- Memory hierarchy implementation
+- DMA and data movement engines
+- Compute fabric and systolic arrays
+- Python bindings with NumPy integration
+- Comprehensive test suite (30/30 passing)
+- domain_flow graph loading
+- Configuration system
+- Trace logging
 
-### Thread Safety
-- Reader-writer locks for shared data structures
-- Atomic operations for simple state variables
-- Lock-free queues for producer-consumer patterns
+### In Progress 🚧
+- Schedule generation from computational graphs
+- Tensor metadata extraction
+- Framework importers (ONNX, PyTorch, JAX)
+- Optimization passes
 
-### Performance Optimization
-- Memory alignment for SIMD operations
-- Cache-friendly data structures
-- Minimize memory allocations in hot paths
-- Use compiler intrinsics where appropriate
+### Planned 📋
+- Additional data types (int8, int16, bfloat16)
+- Advanced operations (convolution, activation functions)
+- Real-time performance monitoring UI
+- Multi-KPU distributed simulation
 
-## Future Enhancements
+## Documentation
 
-Potential areas for expansion:
-
-1. **Additional Data Types**: Support for int8, int16, bfloat16
-2. **Advanced Operations**: Convolution, activation functions, normalization
-3. **Memory Hierarchy**: Multi-level cache simulation
-4. **Pipeline Modeling**: Instruction-level simulation
-5. **Power Modeling**: Energy consumption estimation
-6. **Visualization**: Real-time performance monitoring
-7. **Distributed Computing**: Multi-KPU simulation
+- **[Developer Setup Guide](README_dev.md)** - Development environment setup
+- **[Quick Start Guide](QUICK_START.md)** - domain_flow integration quick start
+- **[Architecture Specification](docs/kpu_architecture.md)** - Detailed KPU architecture
+- **[domain_flow Integration](docs/domain-flow-integration.md)** - Computational graph integration
+- **[Configuration Guide](docs/configuration-architecture.md)** - System configuration
+- **[Data Orchestration](docs/data-orchestration.md)** - Data movement details
+- **[Tracing System](docs/tracing-system.md)** - Performance tracing
 
 ## Contributing
 
-To contribute to the KPU simulator:
+We welcome contributions! Please follow these guidelines:
 
-1. Follow modern C++ best practices (C++17/20)
-2. Maintain thread safety for all shared components
-3. Add comprehensive tests for new features
-4. Update documentation for API changes
-5. Benchmark performance impact of modifications
+1. **Code Style**: Follow modern C++20 best practices
+2. **Thread Safety**: Maintain thread-safe design for shared components
+3. **Testing**: Add comprehensive tests for new features (use CTest)
+4. **Documentation**: Update documentation for API changes
+5. **Performance**: Benchmark performance impact of modifications
+
+### Development Workflow
+
+```bash
+# Create feature branch
+git checkout -b feature/your-feature
+
+# Build with debug preset
+cmake --preset=debug
+cmake --build --preset=debug
+
+# Run tests
+ctest --preset=default --output-on-failure
+
+# Submit pull request
+```
 
 ## License
 
@@ -357,5 +542,10 @@ This project is released under the MIT License. See LICENSE file for details.
 
 ---
 
-**Stillwater Computing, Inc.**  
+**Stillwater Computing, Inc.**
 *Advancing the state of the art in knowledge processing*
+
+**Version:** 0.1.0
+**Build System:** CMake 3.20+ with presets
+**Language:** C++20
+**Python Support:** Python 3.8-3.12
