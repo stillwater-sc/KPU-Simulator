@@ -2,6 +2,7 @@
 # tests/integration/CMakeLists.txt
 # Integration tests
 
+if(KPU_BUILD_TESTS)
 kpu_add_test(
     NAME end_to_end
     INTEGRATION
@@ -15,14 +16,17 @@ kpu_add_test(
     SOURCES test_multi_component.cpp
     LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
 )
+endif()
 
 if(KPU_BUILD_PYTHON_BINDINGS)
-    kpu_add_test(
-        NAME python_cpp_integration
-        INTEGRATION
-        SOURCES test_python_cpp_integration.cpp
-        LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
-    )
+    if(KPU_BUILD_TESTS)
+        kpu_add_test(
+            NAME python_cpp_integration
+            INTEGRATION
+            SOURCES test_python_cpp_integration.cpp
+            LIBS StillwaterKPU::Simulator StillwaterKPU::System StillwaterKPU::Driver
+        )
+    endif()
     
     # Add Python embedding support for the integration test
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
@@ -77,7 +81,7 @@ if(KPU_BUILD_PYTHON_BINDINGS)
 
         # Set the PATH environment variable
         # This is required for pybind11::embed to find pythonXX.dll at runtime
-        set_tests_properties(test_python_cpp_integration PROPERTIES
+        set_tests_properties(python_cpp_integration PROPERTIES
             ENVIRONMENT "PATH=${TEST_PATH}"
         )
 
