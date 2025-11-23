@@ -1,0 +1,369 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <sw/compiler/tile_optimizer.hpp>
+#include <iostream>
+#include <iomanip>
+
+using namespace sw::kpu::compiler;
+
+// Helper function to print tile configuration
+void print_config(const char* label, const TileOptimizer::TileConfig& config) {
+    std::cout << "\n" << label << ":\n";
+    std::cout << "  Tiles: Ti=" << config.Ti << " Tj=" << config.Tj << " Tk=" << config.Tk << "\n";
+    std::cout << "  L1_Ki: " << config.L1_Ki << "\n";
+    std::cout << "  Reuse: A=" << config.reuse_A << " B=" << config.reuse_B << " C=" << config.reuse_C << "\n";
+    std::cout << "  DRAM accesses: " << config.dram_accesses << " bytes\n";
+    std::cout << "  L2 footprint: " << config.l2_footprint << " bytes\n";
+    std::cout << "  Arithmetic intensity: " << std::fixed << std::setprecision(2)
+              << config.arithmetic_intensity << " FLOPs/byte\n";
+    std::cout << "  Valid: " << (config.valid ? "YES" : "NO");
+    if (!config.valid) {
+        std::cout << " (" << config.reason << ")";
+    }
+    std::cout << "\n";
+}
+
+TEST_CASE("TileOptimizer - Default Memory Hierarchy", "[tile_optimizer][unit]") {
+    TileOptimizer optimizer;
+    const auto& mem = optimizer.memory_hierarchy();
+
+    SECTION("Default memory hierarchy has expected values") {
+        REQUIRE(mem.L1_size == 32 * 1024);           // 32 KB
+        REQUIRE(mem.L2_size == 64 * 1024);           // 64 KB
+        REQUIRE(mem.L3_size == 128 * 1024);          // 128 KB
+        REQUIRE(mem.systolic_rows == 16);
+        REQUIRE(mem.systolic_cols == 16);
+        REQUIRE(mem.element_size == 4);              // float32
+        REQUIRE(mem.L1_buffer_count == 4);
+        REQUIRE(mem.L2_bank_count == 8);
+        REQUIRE(mem.L3_tile_count == 4);
+    }
+}
+
+TEST_CASE("TileOptimizer - Small Square Matrix", "[tile_optimizer][analytical]") {
+    TileOptimizer optimizer;
+
+    SECTION("128x128x128 matrix") {
+        Size M = 128, N = 128, K = 128;
+
+        auto config = optimizer.optimize(M, N, K, TileOptimizer::Strategy::ANALYTICAL);
+
+        INFO("Configuration: Ti=" << config.Ti << " Tj=" << config.Tj << " Tk=" << config.Tk);
+
+        REQUIRE(config.valid);
+        REQUIRE(config.Ti >= 16);
+        REQUIRE(config.Tj >= 16);
+        REQUIRE(config.Tk >= 16);
+        REQUIRE(config.Ti % 16 == 0);
+        REQUIRE(config.Tj % 16 == 0);
+        REQUIRE(config.Tk % 16 == 0);
+        REQUIRE(config.Ti <= M);
+        REQUIRE(config.Tj <= N);
+        REQUIRE(config.Tk <= K);
+
+        // Should fit in L2 cache
+        REQUIRE(config.l2_footprint <= 64 * 1024);
+
+        // Reuse factors should be calculated
+        REQUIRE(config.reuse_A > 0);
+        REQUIRE(config.reuse_B > 0);
+        REQUIRE(config.reuse_C > 0);
+
+        print_config("128x128x128 Analytical", config);
+    }
+}
+
+TEST_CASE("TileOptimizer - Medium Square Matrix", "[tile_optimizer][analytical]") {
+    TileOptimizer optimizer;
+
+    SECTION("512x512x512 matrix") {
+        Size M = 512, N = 512, K = 512;
+
+        auto config = optimizer.optimize(M, N, K, TileOptimizer::Strategy::ANALYTICAL);
+
+        REQUIRE(config.valid);
+        REQUIRE(config.Ti % 16 == 0);
+        REQUIRE(config.Tj % 16 == 0);
+        REQUIRE(config.Tk % 16 == 0);
+        REQUIRE(config.l2_footprint <= 64 * 1024);
+
+        // For 512x512x512, tiles should be smaller than matrix
+        REQUIRE(config.Ti < M);
+        REQUIRE(config.Tj < N);
+
+        // Should have significant reuse
+        REQUIRE(config.reuse_A >= 2);
+        REQUIRE(config.reuse_B >= 2);
+
+        print_config("512x512x512 Analytical", config);
+    }
+}
+
+TEST_CASE("TileOptimizer - Large Square Matrix (1024x1024x1024)", "[tile_optimizer][analytical]") {
+    TileOptimizer optimizer;
+
+    Size M = 1024, N = 1024, K = 1024;
+
+    auto config = optimizer.optimize(M, N, K, TileOptimizer::Strategy::ANALYTICAL);
+
+    REQUIRE(config.valid);
+    REQUIRE(config.Ti % 16 == 0);
+    REQUIRE(config.Tj % 16 == 0);
+    REQUIRE(config.Tk % 16 == 0);
+    REQUIRE(config.l2_footprint <= 64 * 1024);
+
+    // Check that we get good reuse
+    REQUIRE(config.reuse_A >= 4);  // Each A tile used multiple times
+    REQUIRE(config.reuse_B >= 4);  // Each B tile used multiple times
+    REQUIRE(config.reuse_C >= 4);  // Accumulation across K
+
+    // Arithmetic intensity should be high for large matrices
+    REQUIRE(config.arithmetic_intensity > 1.0);
+
+    print_config("1024x1024x1024 Analytical", config);
+
+    // Calculate theoretical improvement over naive
+    Size naive_dram = (M * K + K * N + M * N) * 4;  // 4 bytes per float
+    double improvement = static_cast<double>(naive_dram) / config.dram_accesses;
+    std::cout << "  DRAM access improvement: " << std::fixed << std::setprecision(1)
+              << improvement << "x over naive\n";
+
+    REQUIRE(improvement > 2.0);  // Should have at least 2x improvement
+}
+
+TEST_CASE("TileOptimizer - Rectangular Matrices", "[tile_optimizer][analytical]") {
+    TileOptimizer optimizer;
+
+    SECTION("Tall skinny: 1024x64x512") {
+        Size M = 1024, N = 64, K = 512;
+        auto config = optimizer.optimize(M, N, K);
+
+        REQUIRE(config.valid);
+        REQUIRE(config.Ti % 16 == 0);
+        REQUIRE(config.Tj % 16 == 0);
+        REQUIRE(config.Tk % 16 == 0);
+
+        print_config("1024x64x512 (tall skinny)", config);
+    }
+
+    SECTION("Short wide: 64x1024x512") {
+        Size M = 64, N = 1024, K = 512;
+        auto config = optimizer.optimize(M, N, K);
+
+        REQUIRE(config.valid);
+        REQUIRE(config.Ti % 16 == 0);
+        REQUIRE(config.Tj % 16 == 0);
+        REQUIRE(config.Tk % 16 == 0);
+
+        print_config("64x1024x512 (short wide)", config);
+    }
+
+    SECTION("Large K: 256x256x2048") {
+        Size M = 256, N = 256, K = 2048;
+        auto config = optimizer.optimize(M, N, K);
+
+        REQUIRE(config.valid);
+        REQUIRE(config.Ti % 16 == 0);
+        REQUIRE(config.Tj % 16 == 0);
+        REQUIRE(config.Tk % 16 == 0);
+
+        // Large K should result in high C accumulation factor
+        REQUIRE(config.reuse_C >= 4);  // Depends on Tk chosen
+
+        print_config("256x256x2048 (large K)", config);
+    }
+}
+
+TEST_CASE("TileOptimizer - Bounded Search vs Analytical", "[tile_optimizer][search]") {
+    TileOptimizer optimizer;
+
+    SECTION("Compare strategies for 512x512x512") {
+        Size M = 512, N = 512, K = 512;
+
+        auto analytical = optimizer.optimize(M, N, K, TileOptimizer::Strategy::ANALYTICAL);
+        auto searched = optimizer.optimize(M, N, K, TileOptimizer::Strategy::BOUNDED_SEARCH);
+
+        REQUIRE(analytical.valid);
+        REQUIRE(searched.valid);
+
+        print_config("512x512x512 Analytical", analytical);
+        print_config("512x512x512 Bounded Search", searched);
+
+        // Bounded search should be at least as good as analytical
+        REQUIRE(searched.dram_accesses <= analytical.dram_accesses * 1.1);  // Within 10%
+
+        std::cout << "\n  Search found improvement: "
+                  << std::fixed << std::setprecision(1)
+                  << (100.0 * (analytical.dram_accesses - searched.dram_accesses) / analytical.dram_accesses)
+                  << "%\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - Heuristic Refinement", "[tile_optimizer][heuristic]") {
+    TileOptimizer optimizer;
+
+    Size M = 512, N = 512, K = 512;
+
+    auto analytical = optimizer.optimize(M, N, K, TileOptimizer::Strategy::ANALYTICAL);
+    auto heuristic = optimizer.optimize(M, N, K, TileOptimizer::Strategy::HEURISTIC_HYBRID);
+
+    REQUIRE(analytical.valid);
+    REQUIRE(heuristic.valid);
+
+    print_config("512x512x512 Analytical", analytical);
+    print_config("512x512x512 Heuristic", heuristic);
+
+    // Heuristic should be at least as good as analytical
+    REQUIRE(heuristic.dram_accesses <= analytical.dram_accesses * 1.05);  // Within 5%
+}
+
+TEST_CASE("TileOptimizer - Reuse Factor Calculations", "[tile_optimizer][reuse]") {
+    TileOptimizer optimizer;
+
+    SECTION("Perfect tiling: 256x256x256 with 64x64x64 tiles") {
+        Size M = 256, N = 256, K = 256;
+        Size Ti = 64, Tj = 64, Tk = 64;
+
+        TileOptimizer::TileConfig config;
+        config.Ti = Ti;
+        config.Tj = Tj;
+        config.Tk = Tk;
+
+        optimizer.calculate_reuse_factors(M, N, K, config);
+
+        // M_tiles = 256/64 = 4
+        // N_tiles = 256/64 = 4
+        // K_tiles = 256/64 = 4
+
+        REQUIRE(config.reuse_A == 4);  // ceil(N/Tj) = ceil(256/64) = 4
+        REQUIRE(config.reuse_B == 4);  // ceil(M/Ti) = ceil(256/64) = 4
+        REQUIRE(config.reuse_C == 4);  // ceil(K/Tk) = ceil(256/64) = 4
+    }
+
+    SECTION("Non-perfect tiling: 1000x1000x1000 with 64x64x64 tiles") {
+        Size M = 1000, N = 1000, K = 1000;
+        Size Ti = 64, Tj = 64, Tk = 64;
+
+        TileOptimizer::TileConfig config;
+        config.Ti = Ti;
+        config.Tj = Tj;
+        config.Tk = Tk;
+
+        optimizer.calculate_reuse_factors(M, N, K, config);
+
+        // ceil(1000/64) = 16
+        REQUIRE(config.reuse_A == 16);
+        REQUIRE(config.reuse_B == 16);
+        REQUIRE(config.reuse_C == 16);
+    }
+}
+
+TEST_CASE("TileOptimizer - Cache Constraint Validation", "[tile_optimizer][validation]") {
+    TileOptimizer optimizer;
+
+    SECTION("Valid configuration within L2 bounds") {
+        TileOptimizer::TileConfig config;
+        config.Ti = 64;
+        config.Tj = 64;
+        config.Tk = 64;
+        config.L1_Ki = 16;
+
+        bool valid = optimizer.validate(config);
+
+        REQUIRE(valid);
+        REQUIRE(config.valid);
+        REQUIRE(config.l2_footprint <= 64 * 1024);
+    }
+
+    SECTION("Invalid configuration exceeding L2 bounds") {
+        TileOptimizer::TileConfig config;
+        config.Ti = 256;
+        config.Tj = 256;
+        config.Tk = 256;  // Way too large for L2
+        config.L1_Ki = 16;
+
+        bool valid = optimizer.validate(config);
+
+        REQUIRE_FALSE(valid);
+        REQUIRE_FALSE(config.valid);
+        REQUIRE(config.reason.find("L2") != std::string::npos);
+    }
+
+    SECTION("Invalid tile not aligned to systolic dimensions") {
+        TileOptimizer::TileConfig config;
+        config.Ti = 63;  // Not multiple of 16
+        config.Tj = 64;
+        config.Tk = 64;
+        config.L1_Ki = 16;
+
+        bool valid = optimizer.validate(config);
+
+        REQUIRE_FALSE(valid);
+        REQUIRE_FALSE(config.valid);
+        REQUIRE(config.reason.find("aligned") != std::string::npos);
+    }
+}
+
+TEST_CASE("TileOptimizer - Search Space Bounds", "[tile_optimizer][bounds]") {
+    TileOptimizer optimizer;
+
+    SECTION("Bounds for 1024x1024x1024 matrix") {
+        Size M = 1024, N = 1024, K = 1024;
+        Size cache_size = 64 * 1024;  // L2 size
+
+        auto bounds = optimizer.calculate_bounds(M, N, K, cache_size);
+
+        REQUIRE(bounds.Ti_min == 16);  // At least one systolic tile
+        REQUIRE(bounds.Tj_min == 16);
+        REQUIRE(bounds.Tk_min == 16);
+        REQUIRE(bounds.step == 16);
+
+        REQUIRE(bounds.Ti_max >= bounds.Ti_min);
+        REQUIRE(bounds.Tj_max >= bounds.Tj_min);
+        REQUIRE(bounds.Tk_max >= bounds.Tk_min);
+
+        REQUIRE(bounds.Ti_max % 16 == 0);
+        REQUIRE(bounds.Tj_max % 16 == 0);
+        REQUIRE(bounds.Tk_max % 16 == 0);
+
+        std::cout << "\nSearch space for 1024x1024x1024:\n";
+        std::cout << "  Ti: [" << bounds.Ti_min << ", " << bounds.Ti_max << "]\n";
+        std::cout << "  Tj: [" << bounds.Tj_min << ", " << bounds.Tj_max << "]\n";
+        std::cout << "  Tk: [" << bounds.Tk_min << ", " << bounds.Tk_max << "]\n";
+
+        Size search_space_size = ((bounds.Ti_max - bounds.Ti_min) / bounds.step + 1) *
+                                ((bounds.Tj_max - bounds.Tj_min) / bounds.step + 1) *
+                                ((bounds.Tk_max - bounds.Tk_min) / bounds.step + 1);
+        std::cout << "  Total configurations to search: " << search_space_size << "\n";
+
+        // Should have dramatically reduced search space
+        Size naive_space = (M / 16) * (N / 16) * (K / 16);
+        std::cout << "  Space reduction: " << (naive_space / search_space_size) << "x\n";
+
+        REQUIRE(search_space_size < naive_space / 100);  // At least 100x reduction
+    }
+}
+
+TEST_CASE("TileOptimizer - Arithmetic Intensity", "[tile_optimizer][performance]") {
+    TileOptimizer optimizer;
+
+    SECTION("AI increases with better tiling") {
+        Size M = 512, N = 512, K = 512;
+
+        auto config = optimizer.optimize(M, N, K);
+
+        // Calculate naive AI (no tiling)
+        Size naive_dram = (M * K + K * N + M * N) * 4;
+        Size total_flops = 2 * M * N * K;
+        double naive_ai = static_cast<double>(total_flops) / naive_dram;
+
+        std::cout << "\nArithmetic Intensity for 512x512x512:\n";
+        std::cout << "  Naive (no tiling): " << std::fixed << std::setprecision(2)
+                  << naive_ai << " FLOPs/byte\n";
+        std::cout << "  Tiled: " << config.arithmetic_intensity << " FLOPs/byte\n";
+        std::cout << "  Improvement: " << (config.arithmetic_intensity / naive_ai) << "x\n";
+
+        // Tiled should have better AI (2x is already quite good)
+        REQUIRE(config.arithmetic_intensity > naive_ai * 2.0);
+    }
+}

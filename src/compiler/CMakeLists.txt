@@ -4,6 +4,7 @@
 # Compiler library
 add_library(kpu_compiler
     graph_loader.cpp
+    tile_optimizer.cpp
 )
 
 target_include_directories(kpu_compiler

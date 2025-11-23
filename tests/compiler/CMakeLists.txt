@@ -34,3 +34,29 @@ add_test(NAME graph_loader_test
 set_target_properties(graph_loader_test PROPERTIES
     FOLDER "Tests/Compiler"
 )
+
+# Tile optimizer tests
+add_executable(tile_optimizer_test
+    test_tile_optimizer.cpp
+)
+
+target_link_libraries(tile_optimizer_test
+    PRIVATE
+        kpu_compiler
+        Catch2::Catch2WithMain
+)
+
+target_include_directories(tile_optimizer_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# Register with CTest
+add_test(NAME tile_optimizer_test
+    COMMAND tile_optimizer_test
+)
+
+set_target_properties(tile_optimizer_test PROPERTIES
+    FOLDER "Tests/Compiler"
+    LABELS "unit;compiler"
+)
