@@ -324,12 +324,28 @@ private:
 
     // Tile indexing helpers
     struct TileIndex {
-        Size i, j, k;  // Tile coordinates
+        Size ti, tj, tk;  // Tile coordinates in M, N, K dimensions
 
+        // Create label for A tile: A_tile[ti, tk]
+        std::string label_A() const {
+            return "A_tile[" + std::to_string(ti) + "," + std::to_string(tk) + "]";
+        }
+
+        // Create label for B tile: B_tile[tk, tj]
+        std::string label_B() const {
+            return "B_tile[" + std::to_string(tk) + "," + std::to_string(tj) + "]";
+        }
+
+        // Create label for C tile: C_tile[ti, tj]
+        std::string label_C() const {
+            return "C_tile[" + std::to_string(ti) + "," + std::to_string(tj) + "]";
+        }
+
+        // Legacy label method for backwards compatibility
         std::string label(char matrix) const {
-            return std::string(1, matrix) + "[" +
-                   std::to_string(i) + "," + std::to_string(j) +
-                   (matrix == 'C' ? "]" : "," + std::to_string(k) + "]");
+            if (matrix == 'A') return label_A();
+            if (matrix == 'B') return label_B();
+            return label_C();
         }
     };
 

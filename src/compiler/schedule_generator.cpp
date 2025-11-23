@@ -193,24 +193,25 @@ void ScheduleGenerator::generate_block_move_commands(Schedule& schedule, Size M,
     Size k_tiles = tile_count(K, Tk);
 
     // Generate L3→L2 block moves for each tile computation
+    // Nested loop order: output tiles (ti, tj), then K-accumulation (tk)
     for (Size ti = 0; ti < m_tiles; ++ti) {
         for (Size tj = 0; tj < n_tiles; ++tj) {
             for (Size tk = 0; tk < k_tiles; ++tk) {
-                TileIndex a_idx{ti, 0, tk};
-                TileIndex b_idx{0, tj, tk};
+                TileIndex a_idx{ti, tj, tk};  // A uses ti, tk (but we store all for clarity)
+                TileIndex b_idx{ti, tj, tk};  // B uses tk, tj
 
                 Size tile_m = tile_dimension(M, ti, Ti);
                 Size tile_n = tile_dimension(N, tj, Tj);
                 Size tile_k = tile_dimension(K, tk, Tk);
 
-                // A tile: L3→L2
-                add_block_move_command(schedule, a_idx.label('A'),
+                // A tile[ti, tk]: L3→L2
+                add_block_move_command(schedule, a_idx.label_A(),
                                       0, 0x0000,  // L3 tile 0
                                       0, 0x0000,  // L2 bank 0
                                       tile_m, tile_k);
 
-                // B tile: L3→L2
-                add_block_move_command(schedule, b_idx.label('B'),
+                // B tile[tk, tj]: L3→L2
+                add_block_move_command(schedule, b_idx.label_B(),
                                       0, 0x0000,
                                       0, 0x0000,
                                       tile_k, tile_n);
@@ -232,20 +233,19 @@ void ScheduleGenerator::generate_stream_commands(Schedule& schedule, Size M, Siz
     for (Size ti = 0; ti < m_tiles; ++ti) {
         for (Size tj = 0; tj < n_tiles; ++tj) {
             for (Size tk = 0; tk < k_tiles; ++tk) {
-                TileIndex a_idx{ti, 0, tk};
-                TileIndex b_idx{0, tj, tk};
+                TileIndex idx{ti, tj, tk};
 
                 Size tile_m = tile_dimension(M, ti, Ti);
                 Size tile_n = tile_dimension(N, tj, Tj);
                 Size tile_k = tile_dimension(K, tk, Tk);
 
-                // Stream A: L2→L1
-                add_stream_command(schedule, a_idx.label('A') + " L2→L1",
+                // Stream A tile[ti, tk]: L2→L1
+                add_stream_command(schedule, idx.label_A() + " L2→L1",
                                   true, 0, 0, 0x0000, 0x0000,
                                   tile_m, tile_k);
 
-                // Stream B: L2→L1
-                add_stream_command(schedule, b_idx.label('B') + " L2→L1",
+                // Stream B tile[tk, tj]: L2→L1
+                add_stream_command(schedule, idx.label_B() + " L2→L1",
                                   true, 0, 0, 0x0000, 0x0000,
                                   tile_k, tile_n);
             }
@@ -255,11 +255,11 @@ void ScheduleGenerator::generate_stream_commands(Schedule& schedule, Size M, Siz
     // Generate L1→L2 streams for results
     for (Size ti = 0; ti < m_tiles; ++ti) {
         for (Size tj = 0; tj < n_tiles; ++tj) {
-            TileIndex c_idx{ti, tj, 0};
+            TileIndex idx{ti, tj, 0};
             Size tile_m = tile_dimension(M, ti, Ti);
             Size tile_n = tile_dimension(N, tj, Tj);
 
-            add_stream_command(schedule, c_idx.label('C') + " L1→L2",
+            add_stream_command(schedule, idx.label_C() + " L1→L2",
                               false, 0, 0, 0x0000, 0x0000,
                               tile_m, tile_n);
         }
@@ -275,17 +275,19 @@ void ScheduleGenerator::generate_compute_commands(Schedule& schedule, Size M, Si
     Size n_tiles = tile_count(N, Tj);
     Size k_tiles = tile_count(K, Tk);
 
-    // Generate compute commands for each C tile
+    // Generate compute commands for each C tile accumulation
     for (Size ti = 0; ti < m_tiles; ++ti) {
         for (Size tj = 0; tj < n_tiles; ++tj) {
             for (Size tk = 0; tk < k_tiles; ++tk) {
-                TileIndex c_idx{ti, tj, tk};
+                TileIndex idx{ti, tj, tk};
 
                 Size tile_m = tile_dimension(M, ti, Ti);
                 Size tile_n = tile_dimension(N, tj, Tj);
                 Size tile_k = tile_dimension(K, tk, Tk);
 
-                add_compute_command(schedule, c_idx.label('C'),
+                // Compute: C_tile[ti,tj] += A_tile[ti,tk] × B_tile[tk,tj]
+                std::string label = idx.label_C() + " += " + idx.label_A() + " × " + idx.label_B();
+                add_compute_command(schedule, label,
                                    0, 0x0000, 0x0000, 0x0000,
                                    tile_m, tile_n, tile_k);
             }
@@ -348,37 +350,206 @@ void ScheduleGenerator::estimate_timing(Schedule& schedule) {
     }
 
     // Schedule commands based on dependencies
-    Cycle current_cycle = 0;
+    // This properly handles parallel execution when dependencies allow it
+    std::vector<bool> scheduled(schedule.commands.size(), false);
+    size_t num_scheduled = 0;
+
+    while (num_scheduled < schedule.commands.size()) {
+        // Find commands that can be scheduled
+        for (size_t i = 0; i < schedule.commands.size(); ++i) {
+            if (scheduled[i]) continue;
+
+            auto& cmd = schedule.commands[i];
+
+            // Check if all dependencies are satisfied
+            bool can_schedule = true;
+            Cycle earliest_start = 0;
+
+            for (size_t dep_idx : cmd.depends_on) {
+                if (!scheduled[dep_idx]) {
+                    can_schedule = false;
+                    break;
+                }
+                earliest_start = std::max(earliest_start, schedule.commands[dep_idx].end_cycle);
+            }
+
+            if (can_schedule) {
+                cmd.issue_cycle = earliest_start;
+                cmd.start_cycle = earliest_start;
+                cmd.end_cycle = cmd.start_cycle + cmd.latency_cycles;
+                scheduled[i] = true;
+                num_scheduled++;
+            }
+        }
+    }
+}
+
+void ScheduleGenerator::apply_double_buffering(Schedule& schedule) {
+    /**
+     * Double-buffering optimization:
+     *
+     * For each C tile output, we iterate through K tiles:
+     * Iteration 0: Load A[0], B[0] to buf0, compute
+     * Iteration 1: Load A[1], B[1] to buf1 WHILE computing buf0, then compute buf1
+     * Iteration 2: Load A[2], B[2] to buf0 WHILE computing buf1, then compute buf0
+     * ...
+     *
+     * This overlaps data movement with computation.
+     */
+
+    // Mark buffer IDs for commands
+    Size cmd_idx = 0;
+    int current_buffer = 0;
+
+    for (auto& cmd : schedule.commands) {
+        // DMA commands don't use buffers
+        if (cmd.type == CommandType::DMA_TRANSFER) {
+            cmd.buffer_id = -1;
+            cmd_idx++;
+            continue;
+        }
+
+        // Assign buffer based on position in sequence
+        // For now, simple alternation (real implementation would track per-C-tile)
+        cmd.buffer_id = current_buffer;
+
+        // After a compute, switch buffers
+        if (cmd.type == CommandType::COMPUTE_MATMUL) {
+            current_buffer = 1 - current_buffer;  // Toggle 0↔1
+        }
+
+        cmd_idx++;
+    }
+
+    // Now adjust dependencies and timing to allow overlap
+    // Find patterns of: BlockMove/Stream/Compute sequences
+    // Allow next BlockMove to start while current Compute runs
+
+    for (size_t i = 1; i < schedule.commands.size(); ++i) {
+        auto& cmd = schedule.commands[i];
+        auto& prev = schedule.commands[i - 1];
+
+        // If previous was compute and current is block move with different buffer
+        if (prev.type == CommandType::COMPUTE_MATMUL &&
+            cmd.type == CommandType::BLOCK_MOVE &&
+            cmd.buffer_id != prev.buffer_id) {
+
+            // Remove the sequential dependency - allow overlap
+            cmd.depends_on.clear();
+
+            // Only depend on the command that wrote to this buffer last
+            // (For now, keep it simple and depend on previous non-compute)
+            for (int j = static_cast<int>(i) - 2; j >= 0; --j) {
+                if (schedule.commands[j].buffer_id == cmd.buffer_id ||
+                    schedule.commands[j].type == CommandType::DMA_TRANSFER) {
+                    cmd.depends_on.push_back(static_cast<size_t>(j));
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void ScheduleGenerator::apply_pipelining(Schedule& schedule) {
+    /**
+     * Full pipeline optimization:
+     *
+     * Pipeline stages for each tile computation:
+     * 1. DMA: GDDR6 → L3  (initial load only)
+     * 2. BlockMove: L3 → L2
+     * 3. Stream: L2 → L1
+     * 4. Compute: Systolic array
+     * 5. Stream: L1 → L2 (writeback)
+     *
+     * With pipelining, while tile N is in Compute, tile N+1 can be in Stream,
+     * tile N+2 in BlockMove, etc.
+     *
+     * Key insight: Commands can start as soon as their data dependencies are met,
+     * not when all previous commands finish.
+     */
+
+    // First, apply double-buffering
+    apply_double_buffering(schedule);
+
+    // Group commands by pipeline stage
+    struct StageGroup {
+        CommandType type;
+        std::vector<size_t> cmd_indices;
+    };
+
+    std::vector<StageGroup> stage_groups;
+
+    // Identify pipeline stages
+    CommandType current_type = CommandType::BARRIER;
+    StageGroup current_group;
 
     for (size_t i = 0; i < schedule.commands.size(); ++i) {
         auto& cmd = schedule.commands[i];
 
-        // Start after all dependencies complete
-        Cycle earliest_start = 0;
-        for (size_t dep_idx : cmd.depends_on) {
-            earliest_start = std::max(earliest_start, schedule.commands[dep_idx].end_cycle);
+        if (cmd.type != current_type) {
+            if (!current_group.cmd_indices.empty()) {
+                stage_groups.push_back(current_group);
+            }
+            current_group = StageGroup{cmd.type, {i}};
+            current_type = cmd.type;
+        } else {
+            current_group.cmd_indices.push_back(i);
+        }
+    }
+    if (!current_group.cmd_indices.empty()) {
+        stage_groups.push_back(current_group);
+    }
+
+    // For each stage group after DMA, allow it to start once the previous stage
+    // for the SAME TILE has completed, rather than waiting for all previous stages
+
+    // This is a simplified pipelining model
+    // Real implementation would track per-tile dependencies more carefully
+
+    for (size_t i = 0; i < schedule.commands.size(); ++i) {
+        auto& cmd = schedule.commands[i];
+
+        // Skip DMA commands
+        if (cmd.type == CommandType::DMA_TRANSFER) continue;
+
+        // Find data dependencies:
+        // - BlockMove depends on DMA (initial load)
+        // - Stream depends on BlockMove (same tile)
+        // - Compute depends on Stream (same tile)
+
+        cmd.depends_on.clear();
+
+        // Look backwards to find the most recent command that this depends on
+        for (int j = static_cast<int>(i) - 1; j >= 0; --j) {
+            auto& prev_cmd = schedule.commands[j];
+
+            // Data dependency: same buffer or earlier pipeline stage
+            bool is_dependency = false;
+
+            if (cmd.type == CommandType::BLOCK_MOVE && prev_cmd.type == CommandType::DMA_TRANSFER) {
+                is_dependency = true;  // BlockMove needs DMA complete
+            } else if (cmd.type == CommandType::STREAM_L2_TO_L1 && prev_cmd.type == CommandType::BLOCK_MOVE &&
+                       cmd.buffer_id == prev_cmd.buffer_id) {
+                is_dependency = true;  // Stream needs BlockMove for same buffer
+            } else if (cmd.type == CommandType::COMPUTE_MATMUL && prev_cmd.type == CommandType::STREAM_L2_TO_L1 &&
+                       cmd.buffer_id == prev_cmd.buffer_id) {
+                is_dependency = true;  // Compute needs Stream for same buffer
+            } else if (cmd.type == CommandType::STREAM_L1_TO_L2 && prev_cmd.type == CommandType::COMPUTE_MATMUL &&
+                       cmd.buffer_id == prev_cmd.buffer_id) {
+                is_dependency = true;  // Writeback needs Compute for same buffer
+            }
+
+            if (is_dependency) {
+                cmd.depends_on.push_back(static_cast<size_t>(j));
+                break;  // Only need immediate predecessor
+            }
         }
 
-        cmd.issue_cycle = earliest_start;
-        cmd.start_cycle = earliest_start;
-        cmd.end_cycle = cmd.start_cycle + cmd.latency_cycles;
-
-        current_cycle = std::max(current_cycle, cmd.end_cycle);
+        // If no dependency found, depend on previous command (conservative)
+        if (cmd.depends_on.empty() && i > 0) {
+            cmd.depends_on.push_back(i - 1);
+        }
     }
-}
-
-void ScheduleGenerator::apply_double_buffering([[maybe_unused]] Schedule& schedule) {
-    // TODO: Implement double-buffering optimization
-    // - Allocate two buffer sets
-    // - Overlap compute on buffer[0] with load to buffer[1]
-    // - Swap buffers after each tile
-}
-
-void ScheduleGenerator::apply_pipelining([[maybe_unused]] Schedule& schedule) {
-    // TODO: Implement full pipeline optimization
-    // - Create pipeline stages: DMA, BlockMove, Stream, Compute
-    // - Allow multiple tiles in flight
-    // - Maximize stage overlap
 }
 
 bool ScheduleGenerator::validate(const Schedule& schedule, std::string& error_msg) const {
