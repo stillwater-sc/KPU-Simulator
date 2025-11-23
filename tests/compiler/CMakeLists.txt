@@ -60,3 +60,29 @@ set_target_properties(tile_optimizer_test PROPERTIES
     FOLDER "Tests/Compiler"
     LABELS "unit;compiler"
 )
+
+# Schedule generator tests
+add_executable(schedule_generator_test
+    test_schedule_generator.cpp
+)
+
+target_link_libraries(schedule_generator_test
+    PRIVATE
+        kpu_compiler
+        Catch2::Catch2WithMain
+)
+
+target_include_directories(schedule_generator_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# Register with CTest
+add_test(NAME schedule_generator_test
+    COMMAND schedule_generator_test
+)
+
+set_target_properties(schedule_generator_test PROPERTIES
+    FOLDER "Tests/Compiler"
+    LABELS "unit;compiler"
+)
