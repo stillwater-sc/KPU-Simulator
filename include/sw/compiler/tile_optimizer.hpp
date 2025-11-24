@@ -95,6 +95,7 @@ public:
 
         // Data type size
         Size element_size;      ///< Size of each element in bytes (default: 4 for float32)
+        Size accumulator_size;  ///< Size of accumulator in bytes (default: 4 for float32, but 4 for int32 when inputs are int8)
 
         // Bandwidth (GB/s)
         double L1_bandwidth;
@@ -115,7 +116,8 @@ public:
               L3_tile_count(4),
               systolic_rows(16),
               systolic_cols(16),
-              element_size(4),              // float32
+              element_size(4),              // float32 or int8 inputs
+              accumulator_size(4),          // float32 or int32 accumulators (4 bytes)
               L1_bandwidth(1000.0),         // Very high (on-chip)
               L2_bandwidth(500.0),
               L3_bandwidth(250.0),
@@ -153,7 +155,7 @@ public:
         : memory_(mem) {}
 
     /**
-     * @brief Main optimization API - select optimal tile sizes
+     * @brief Main optimization API - select optimal tile sizes for output-stationary
      *
      * @param M Number of rows in A and C
      * @param N Number of columns in B and C
@@ -163,6 +165,48 @@ public:
      */
     TileConfig optimize(Size M, Size N, Size K,
                        Strategy strategy = Strategy::ANALYTICAL);
+
+    /**
+     * @brief Optimize tile sizes for weight-stationary dataflow
+     *
+     * Weight-stationary dataflow keeps B tiles (weights) stationary in PE registers,
+     * while streaming A tiles (inputs) through PEs and accumulating C tiles (outputs)
+     * in L2 memory.
+     *
+     * Key differences from output-stationary:
+     * - Constraint: Tk × Tj ≤ PE_register_capacity (B must fit in PEs)
+     * - L2 allocation: A[Ti,Tk] + C[Ti,Tj] ≤ L2_capacity (not A+B)
+     * - Loop order: tk → tj → ti (weight tiles outer)
+     * - Reuse: B reused (M/Ti) × (K/Tk) times (maximal reuse)
+     * - Best for: Large M (batch), small K×N (weights)
+     *
+     * @param M Number of rows in A and C (batch dimension)
+     * @param N Number of columns in B and C (output features)
+     * @param K Number of columns in A, rows in B (input features)
+     * @return Optimal tile configuration for WS dataflow
+     */
+    TileConfig optimize_weight_stationary(Size M, Size N, Size K);
+
+    /**
+     * @brief Optimize tile sizes for input-stationary dataflow
+     *
+     * Input-stationary dataflow keeps A tiles (inputs) stationary in PE registers,
+     * while streaming B tiles (weights) through PEs and accumulating C tiles (outputs)
+     * in L2 memory.
+     *
+     * Key differences from output-stationary:
+     * - Constraint: Ti × Tk ≤ PE_register_capacity (A must fit in PEs)
+     * - L2 allocation: B[Tk,Tj] + C[Ti,Tj] ≤ L2_capacity (not A+B)
+     * - Loop order: ti → tk → tj (input tiles outer)
+     * - Reuse: A reused (N/Tj) × (K/Tk) times (maximal reuse)
+     * - Best for: Large N (many output features), small M×K (inputs)
+     *
+     * @param M Number of rows in A and C (batch dimension)
+     * @param N Number of columns in B and C (output features)
+     * @param K Number of columns in A, rows in B (input features)
+     * @return Optimal tile configuration for IS dataflow
+     */
+    TileConfig optimize_input_stationary(Size M, Size N, Size K);
 
     /**
      * @brief Fast analytical tile size calculation

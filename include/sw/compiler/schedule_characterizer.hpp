@@ -91,12 +91,20 @@ struct PerformanceMetrics {
     Size reuse_B;
     Size reuse_C;
 
+    // Throughput metrics
+    double throughput_gflops;    ///< Actual throughput in GFLOP/s
+    double frequency_mhz;        ///< 1/latency for Pareto analysis
+
+    // Tile size metric (for Pareto analysis)
+    Size total_tile_size;        ///< Total size of all tiles (Ti × Tj × Tk) in elements
+
     PerformanceMetrics()
         : dram_energy(0), l3_energy(0), l2_energy(0), l1_energy(0), compute_energy(0), total_energy(0)
         , dram_cycles(0), l3_cycles(0), l2_cycles(0), l1_cycles(0), compute_cycles(0), total_cycles(0)
         , dram_accesses(0), l3_accesses(0), l2_accesses(0), l1_accesses(0)
         , arithmetic_intensity(0), utilization(0), bandwidth_efficiency(0)
-        , reuse_A(0), reuse_B(0), reuse_C(0) {}
+        , reuse_A(0), reuse_B(0), reuse_C(0)
+        , throughput_gflops(0), frequency_mhz(0), total_tile_size(0) {}
 };
 
 /**
@@ -151,21 +159,38 @@ struct ScheduleEvaluation {
 };
 
 /**
- * @brief Pareto point on energy-latency frontier
+ * @brief Pareto point on energy-throughput frontier
+ *
+ * Note: Energy vs Latency/Throughput/L2 are NOT valid Pareto tradeoffs!
+ * - Energy vs Latency: Correlated (good schedules have both low)
+ * - Energy vs Throughput: Execution-dependent (not a resource constraint)
+ * - Energy vs L2 Footprint: Too many points with same L2, different energy
+ *
+ * Instead, use Energy vs Tile Size - THE FUNDAMENTAL TRADEOFF:
+ * - Large tiles → fewer DRAM fetches → LOWER energy
+ * - Small tiles → more DRAM fetches → HIGHER energy
+ *
+ * This is a true resource tradeoff:
+ * - To minimize energy: Need large tiles (less refetching) → HIGH tile size
+ * - To minimize tile size: Use small tiles → HIGH energy (more DRAM traffic)
+ * You cannot have both minimal energy AND minimal tile size!
  */
 struct ParetoPoint {
-    double energy;
-    Cycle latency;
+    double energy;             ///< Total energy in pJ
+    Size tile_size;            ///< Total tile size Ti×Tj×Tk (PROPER Pareto metric)
+    Size l2_footprint;         ///< L2 memory footprint in bytes (for reference)
+    double throughput_gflops;  ///< Throughput in GFLOP/s (for reference)
+    Cycle latency;             ///< Latency in cycles (for reference)
     std::shared_ptr<ScheduleEvaluation> schedule;
 
-    ParetoPoint() : energy(0), latency(0), schedule(nullptr) {}
-    ParetoPoint(double e, Cycle l, std::shared_ptr<ScheduleEvaluation> s)
-        : energy(e), latency(l), schedule(s) {}
+    ParetoPoint() : energy(0), tile_size(0), l2_footprint(0), throughput_gflops(0), latency(0), schedule(nullptr) {}
+    ParetoPoint(double e, Size ts, Size l2, double t, Cycle lat, std::shared_ptr<ScheduleEvaluation> s)
+        : energy(e), tile_size(ts), l2_footprint(l2), throughput_gflops(t), latency(lat), schedule(s) {}
 
-    // For sorting by energy
+    // For sorting by energy (primary), then tile size (secondary)
     bool operator<(const ParetoPoint& other) const {
         if (energy != other.energy) return energy < other.energy;
-        return latency < other.latency;
+        return tile_size < other.tile_size;  // Lower tile size is better at same energy
     }
 };
 
@@ -173,7 +198,8 @@ struct ParetoPoint {
  * @brief Pareto frontier (non-dominated schedules)
  */
 struct ParetoFrontier {
-    std::vector<ParetoPoint> points;  ///< Sorted by energy
+    std::vector<ParetoPoint> points;  ///< Pareto-optimal points, sorted by energy
+    std::vector<ScheduleEvaluation> all_evaluations;  ///< All evaluations (for visualization)
 
     // Statistics
     size_t total_schedules;           ///< Total schedules evaluated
@@ -382,14 +408,22 @@ private:
     /**
      * @brief Check if point dominates another (for Pareto)
      * Returns true if p1 dominates p2
+     *
+     * Uses Energy vs Tile Size - THE FUNDAMENTAL TRADEOFF:
+     * - Lower energy is better (minimize DRAM traffic and power)
+     * - Lower tile size is better (minimize on-chip storage)
+     *
+     * These are inversely related:
+     * - Large tiles → fewer DRAM fetches → low energy but high tile size
+     * - Small tiles → more DRAM fetches → high energy but low tile size
      */
     bool dominates(const ParetoPoint& p1, const ParetoPoint& p2) const {
         // p1 dominates p2 if p1 is no worse in both dimensions and better in at least one
         bool better_energy = p1.energy <= p2.energy;
-        bool better_latency = p1.latency <= p2.latency;
-        bool strictly_better = (p1.energy < p2.energy) || (p1.latency < p2.latency);
+        bool better_tile_size = p1.tile_size <= p2.tile_size;  // Lower is better!
+        bool strictly_better = (p1.energy < p2.energy) || (p1.tile_size < p2.tile_size);
 
-        return better_energy && better_latency && strictly_better;
+        return better_energy && better_tile_size && strictly_better;
     }
 };
 

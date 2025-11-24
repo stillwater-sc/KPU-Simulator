@@ -367,3 +367,516 @@ TEST_CASE("TileOptimizer - Arithmetic Intensity", "[tile_optimizer][performance]
         REQUIRE(config.arithmetic_intensity > naive_ai * 2.0);
     }
 }
+
+TEST_CASE("TileOptimizer - Weight-Stationary Basic Functionality", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("WS optimization for 512x512x512") {
+        Size M = 512, N = 512, K = 512;
+
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(ws_config.valid);
+        REQUIRE(ws_config.Ti >= 16);
+        REQUIRE(ws_config.Tj >= 16);
+        REQUIRE(ws_config.Tk >= 16);
+        REQUIRE(ws_config.Ti % 16 == 0);
+        REQUIRE(ws_config.Tj % 16 == 0);
+        REQUIRE(ws_config.Tk % 16 == 0);
+
+        // PE register capacity check (16×16 × 32 registers × 4 bytes = 32KB)
+        Size PE_capacity = 16 * 16 * 32 * 4;
+        Size B_footprint = ws_config.Tk * ws_config.Tj * 4;
+        REQUIRE(B_footprint <= PE_capacity);
+
+        // L2 holds A + C (not A + B like OS)
+        Size L2_footprint = (ws_config.Ti * ws_config.Tk + ws_config.Ti * ws_config.Tj) * 4;
+        REQUIRE(L2_footprint <= 64 * 1024);
+
+        // B reuse should be high for WS
+        Size M_tiles = (M + ws_config.Ti - 1) / ws_config.Ti;
+        Size K_tiles = (K + ws_config.Tk - 1) / ws_config.Tk;
+        Size expected_B_reuse = M_tiles * K_tiles;
+        REQUIRE(ws_config.reuse_B == expected_B_reuse);
+
+        print_config("512x512x512 Weight-Stationary", ws_config);
+    }
+}
+
+TEST_CASE("TileOptimizer - WS vs OS Comparison", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("Compare WS vs OS for batch workload (large M)") {
+        Size M = 1024, N = 256, K = 256;  // Large batch, small weights
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(ws_config.valid);
+
+        print_config("1024x256x256 Output-Stationary", os_config);
+        print_config("1024x256x256 Weight-Stationary", ws_config);
+
+        // WS should have MUCH higher B reuse for large M workloads
+        REQUIRE(ws_config.reuse_B > os_config.reuse_B);
+
+        // WS should have different tile sizes
+        bool tiles_differ = (ws_config.Ti != os_config.Ti) ||
+                           (ws_config.Tj != os_config.Tj) ||
+                           (ws_config.Tk != os_config.Tk);
+        REQUIRE(tiles_differ);
+
+        std::cout << "\n  B reuse comparison:\n";
+        std::cout << "    OS: " << os_config.reuse_B << "×\n";
+        std::cout << "    WS: " << ws_config.reuse_B << "×\n";
+        std::cout << "    WS improvement: "
+                  << (static_cast<double>(ws_config.reuse_B) / os_config.reuse_B) << "×\n";
+    }
+
+    SECTION("Compare WS vs OS for accumulation workload (large K)") {
+        Size M = 128, N = 128, K = 1024;  // Large K, small batch
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(ws_config.valid);
+
+        print_config("128x128x1024 Output-Stationary", os_config);
+        print_config("128x128x1024 Weight-Stationary", ws_config);
+
+        // Both should accumulate across K, but OS is more efficient
+        // OS accumulates in PEs (free), WS accumulates in L2 (cost)
+        REQUIRE(os_config.reuse_C > 0);
+        REQUIRE(ws_config.reuse_C > 0);
+
+        // OS should have lower DRAM accesses for large K workloads
+        REQUIRE(os_config.dram_accesses < ws_config.dram_accesses);
+
+        std::cout << "\n  Comparison for large K:\n";
+        std::cout << "    C reuse - OS: " << os_config.reuse_C << "× (in PEs)\n";
+        std::cout << "    C reuse - WS: " << ws_config.reuse_C << "× (in L2)\n";
+        std::cout << "    DRAM - OS: " << os_config.dram_accesses << " bytes\n";
+        std::cout << "    DRAM - WS: " << ws_config.dram_accesses << " bytes\n";
+        double os_advantage = 100.0 * (ws_config.dram_accesses - os_config.dram_accesses)
+                            / ws_config.dram_accesses;
+        std::cout << "    OS advantage: " << std::fixed << std::setprecision(1)
+                  << os_advantage << "%\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - WS PE Capacity Constraint", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("Small weight matrix fits in PEs") {
+        Size M = 256, N = 64, K = 64;  // Small weight matrix
+
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(ws_config.valid);
+
+        // B should fit in PE registers
+        Size PE_capacity = 16 * 16 * 32 * 4;  // 32KB
+        Size B_size = ws_config.Tk * ws_config.Tj * 4;
+        REQUIRE(B_size <= PE_capacity);
+
+        print_config("256x64x64 WS (small weights)", ws_config);
+    }
+
+    SECTION("Large weight matrix constrained by PE capacity") {
+        Size M = 256, N = 512, K = 512;  // Larger weight matrix
+
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(ws_config.valid);
+
+        // B tiles should be constrained by PE capacity
+        Size PE_capacity = 16 * 16 * 32 * 4;
+        Size B_size = ws_config.Tk * ws_config.Tj * 4;
+        REQUIRE(B_size <= PE_capacity);
+
+        // Tiles should be smaller than full matrix due to PE constraint
+        REQUIRE(ws_config.Tk < K);
+        REQUIRE(ws_config.Tj < N);
+
+        print_config("256x512x512 WS (large weights)", ws_config);
+
+        std::cout << "  PE capacity: " << PE_capacity << " bytes\n";
+        std::cout << "  B tile size: " << B_size << " bytes ("
+                  << (100.0 * B_size / PE_capacity) << "% of capacity)\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - WS L2 Allocation", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("L2 holds A + C tiles, not A + B") {
+        Size M = 512, N = 512, K = 512;
+
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(ws_config.valid);
+
+        // Calculate expected L2 footprint: A[Ti,Tk] + C[Ti,Tj]
+        Size expected_footprint = (ws_config.Ti * ws_config.Tk +
+                                  ws_config.Ti * ws_config.Tj) * 4;
+
+        REQUIRE(ws_config.l2_footprint == expected_footprint);
+        REQUIRE(ws_config.l2_footprint <= 64 * 1024);
+
+        // Compare with OS which holds A + B
+        Size os_footprint_if_ws_tiles = (ws_config.Ti * ws_config.Tk +
+                                        ws_config.Tk * ws_config.Tj) * 4;
+
+        std::cout << "\nL2 Footprint comparison for WS tiles:\n";
+        std::cout << "  WS allocation (A + C): " << ws_config.l2_footprint << " bytes\n";
+        std::cout << "  OS allocation (A + B): " << os_footprint_if_ws_tiles << " bytes\n";
+        std::cout << "  Difference: " << (int)(ws_config.l2_footprint - os_footprint_if_ws_tiles)
+                  << " bytes\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - WS Reuse Pattern Verification", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("WS reuse factors for batch processing") {
+        Size M = 512, N = 128, K = 128;  // Batch workload
+
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(ws_config.valid);
+
+        Size M_tiles = (M + ws_config.Ti - 1) / ws_config.Ti;
+        Size N_tiles = (N + ws_config.Tj - 1) / ws_config.Tj;
+        Size K_tiles = (K + ws_config.Tk - 1) / ws_config.Tk;
+
+        // A reuse: Minimal (flows through PEs)
+        Size expected_A_reuse = std::max(Size(1), ws_config.Tj / 16);
+        REQUIRE(ws_config.reuse_A == expected_A_reuse);
+
+        // B reuse: Maximal (stays in PEs)
+        Size expected_B_reuse = M_tiles * K_tiles;
+        REQUIRE(ws_config.reuse_B == expected_B_reuse);
+
+        // C reuse: Accumulated in L2
+        Size expected_C_reuse = K_tiles;
+        REQUIRE(ws_config.reuse_C == expected_C_reuse);
+
+        print_config("512x128x128 WS Reuse Analysis", ws_config);
+
+        std::cout << "\n  Tile counts:\n";
+        std::cout << "    M_tiles: " << M_tiles << "\n";
+        std::cout << "    N_tiles: " << N_tiles << "\n";
+        std::cout << "    K_tiles: " << K_tiles << "\n";
+        std::cout << "\n  Reuse verification:\n";
+        std::cout << "    A reuse: " << ws_config.reuse_A << "× (minimal)\n";
+        std::cout << "    B reuse: " << ws_config.reuse_B << "× (maximal!)\n";
+        std::cout << "    C reuse: " << ws_config.reuse_C << "× (K accumulation)\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - WS Energy Implications", "[tile_optimizer][weight_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("WS should have different DRAM access pattern than OS") {
+        Size M = 512, N = 256, K = 256;
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(ws_config.valid);
+
+        print_config("512x256x256 OS Energy", os_config);
+        print_config("512x256x256 WS Energy", ws_config);
+
+        // DRAM accesses should differ due to different reuse patterns
+        bool dram_differs = (os_config.dram_accesses != ws_config.dram_accesses);
+        REQUIRE(dram_differs);
+
+        std::cout << "\n  DRAM access comparison:\n";
+        std::cout << "    OS: " << os_config.dram_accesses << " bytes\n";
+        std::cout << "    WS: " << ws_config.dram_accesses << " bytes\n";
+
+        if (ws_config.dram_accesses < os_config.dram_accesses) {
+            double savings = 100.0 * (os_config.dram_accesses - ws_config.dram_accesses)
+                           / os_config.dram_accesses;
+            std::cout << "    WS savings: " << std::fixed << std::setprecision(1)
+                      << savings << "%\n";
+        } else {
+            double overhead = 100.0 * (ws_config.dram_accesses - os_config.dram_accesses)
+                            / os_config.dram_accesses;
+            std::cout << "    WS overhead: " << std::fixed << std::setprecision(1)
+                      << overhead << "%\n";
+        }
+    }
+}
+
+TEST_CASE("TileOptimizer - Input-Stationary Basic Functionality", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("IS optimization for 512x512x512") {
+        Size M = 512, N = 512, K = 512;
+
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(is_config.valid);
+        REQUIRE(is_config.Ti >= 16);
+        REQUIRE(is_config.Tj >= 16);
+        REQUIRE(is_config.Tk >= 16);
+        REQUIRE(is_config.Ti % 16 == 0);
+        REQUIRE(is_config.Tj % 16 == 0);
+        REQUIRE(is_config.Tk % 16 == 0);
+
+        // PE register capacity check (16×16 × 32 registers × 4 bytes = 32KB)
+        Size PE_capacity = 16 * 16 * 32 * 4;
+        Size A_footprint = is_config.Ti * is_config.Tk * 4;
+        REQUIRE(A_footprint <= PE_capacity);
+
+        // L2 holds B + C (not A + B like OS)
+        Size L2_footprint = (is_config.Tk * is_config.Tj + is_config.Ti * is_config.Tj) * 4;
+        REQUIRE(L2_footprint <= 64 * 1024);
+
+        // A reuse should be high for IS
+        Size N_tiles = (N + is_config.Tj - 1) / is_config.Tj;
+        Size K_tiles = (K + is_config.Tk - 1) / is_config.Tk;
+        Size expected_A_reuse = N_tiles * K_tiles;
+        REQUIRE(is_config.reuse_A == expected_A_reuse);
+
+        print_config("512x512x512 Input-Stationary", is_config);
+    }
+}
+
+TEST_CASE("TileOptimizer - IS vs OS Comparison", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("Compare IS vs OS for wide output workload (large N)") {
+        Size M = 256, N = 1024, K = 256;  // Large output features, small batch
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(is_config.valid);
+
+        print_config("256x1024x256 Output-Stationary", os_config);
+        print_config("256x1024x256 Input-Stationary", is_config);
+
+        // IS should have MUCH higher A reuse for large N workloads
+        REQUIRE(is_config.reuse_A > os_config.reuse_A);
+
+        // IS should have different tile sizes
+        bool tiles_differ = (is_config.Ti != os_config.Ti) ||
+                           (is_config.Tj != os_config.Tj) ||
+                           (is_config.Tk != os_config.Tk);
+        REQUIRE(tiles_differ);
+
+        std::cout << "\n  A reuse comparison:\n";
+        std::cout << "    OS: " << os_config.reuse_A << "×\n";
+        std::cout << "    IS: " << is_config.reuse_A << "×\n";
+        std::cout << "    IS improvement: "
+                  << (static_cast<double>(is_config.reuse_A) / os_config.reuse_A) << "×\n";
+    }
+
+    SECTION("Compare IS vs OS for accumulation workload (large K)") {
+        Size M = 128, N = 128, K = 1024;  // Large K, small batch
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(is_config.valid);
+
+        print_config("128x128x1024 Output-Stationary", os_config);
+        print_config("128x128x1024 Input-Stationary", is_config);
+
+        // Both should accumulate across K, but OS is more efficient
+        // OS accumulates in PEs (free), IS accumulates in L2 (cost)
+        REQUIRE(os_config.reuse_C > 0);
+        REQUIRE(is_config.reuse_C > 0);
+
+        // OS should have lower DRAM accesses for large K workloads
+        REQUIRE(os_config.dram_accesses < is_config.dram_accesses);
+
+        std::cout << "\n  Comparison for large K:\n";
+        std::cout << "    C reuse - OS: " << os_config.reuse_C << "× (in PEs)\n";
+        std::cout << "    C reuse - IS: " << is_config.reuse_C << "× (in L2)\n";
+        std::cout << "    DRAM - OS: " << os_config.dram_accesses << " bytes\n";
+        std::cout << "    DRAM - IS: " << is_config.dram_accesses << " bytes\n";
+        double os_advantage = 100.0 * (is_config.dram_accesses - os_config.dram_accesses)
+                            / is_config.dram_accesses;
+        std::cout << "    OS advantage: " << std::fixed << std::setprecision(1)
+                  << os_advantage << "%\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - IS PE Capacity Constraint", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("Small input matrix fits in PEs") {
+        Size M = 64, N = 256, K = 64;  // Small input matrix
+
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(is_config.valid);
+
+        // A should fit in PE registers
+        Size PE_capacity = 16 * 16 * 32 * 4;  // 32KB
+        Size A_size = is_config.Ti * is_config.Tk * 4;
+        REQUIRE(A_size <= PE_capacity);
+
+        print_config("64x256x64 IS (small inputs)", is_config);
+    }
+
+    SECTION("Large input matrix constrained by PE capacity") {
+        Size M = 512, N = 256, K = 512;  // Larger input matrix
+
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(is_config.valid);
+
+        // A tiles must respect PE capacity
+        Size PE_capacity = 16 * 16 * 32 * 4;
+        Size A_size = is_config.Ti * is_config.Tk * 4;
+        REQUIRE(A_size <= PE_capacity);
+
+        // Tiles should be constrained by PE capacity
+        REQUIRE(is_config.Ti * is_config.Tk <= PE_capacity / 4);
+
+        print_config("512x256x512 IS (large inputs)", is_config);
+    }
+}
+
+TEST_CASE("TileOptimizer - IS L2 Allocation", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("L2 holds B + C tiles (not A)") {
+        Size M = 256, N = 256, K = 256;
+
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(is_config.valid);
+
+        // L2 footprint should be B + C tiles
+        Size expected_l2 = (is_config.Tk * is_config.Tj + is_config.Ti * is_config.Tj) * 4;
+        REQUIRE(is_config.l2_footprint == expected_l2);
+
+        // Should NOT include A tiles (they're in PEs)
+        Size A_tile = is_config.Ti * is_config.Tk * 4;
+        REQUIRE(is_config.l2_footprint < (expected_l2 + A_tile));
+
+        print_config("256x256x256 IS L2 Allocation", is_config);
+
+        std::cout << "\n  L2 allocation:\n";
+        std::cout << "    B tile: " << (is_config.Tk * is_config.Tj * 4) << " bytes\n";
+        std::cout << "    C tile: " << (is_config.Ti * is_config.Tj * 4) << " bytes\n";
+        std::cout << "    Total:  " << is_config.l2_footprint << " bytes\n";
+        std::cout << "    A tile (in PEs): " << A_tile << " bytes\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - IS Reuse Pattern", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("IS maximizes A reuse") {
+        Size M = 128, N = 512, K = 256;
+
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(is_config.valid);
+
+        Size N_tiles = (N + is_config.Tj - 1) / is_config.Tj;
+        Size K_tiles = (K + is_config.Tk - 1) / is_config.Tk;
+
+        // A reuse should be N_tiles × K_tiles (maximal!)
+        Size expected_A_reuse = N_tiles * K_tiles;
+        REQUIRE(is_config.reuse_A == expected_A_reuse);
+
+        // B reuse should be minimal (flows through)
+        REQUIRE(is_config.reuse_B >= 1);
+        REQUIRE(is_config.reuse_B < is_config.reuse_A);
+
+        // C accumulates K_tiles times
+        REQUIRE(is_config.reuse_C == K_tiles);
+
+        print_config("128x512x256 IS Reuse", is_config);
+
+        std::cout << "\n  Reuse factors:\n";
+        std::cout << "    A: " << is_config.reuse_A << "× (MAXIMAL - stays in PEs)\n";
+        std::cout << "    B: " << is_config.reuse_B << "× (minimal - flows through)\n";
+        std::cout << "    C: " << is_config.reuse_C << "× (accumulated in L2)\n";
+    }
+}
+
+TEST_CASE("TileOptimizer - IS Energy Implications", "[tile_optimizer][input_stationary]") {
+    TileOptimizer optimizer;
+
+    SECTION("IS vs OS energy for wide output workload") {
+        Size M = 256, N = 512, K = 256;  // Favorable for IS (large N)
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(is_config.valid);
+
+        print_config("256x512x256 OS Energy", os_config);
+        print_config("256x512x256 IS Energy", is_config);
+
+        // DRAM accesses should differ due to different reuse patterns
+        bool dram_differs = (os_config.dram_accesses != is_config.dram_accesses);
+        REQUIRE(dram_differs);
+
+        std::cout << "\n  DRAM access comparison:\n";
+        std::cout << "    OS: " << os_config.dram_accesses << " bytes\n";
+        std::cout << "    IS: " << is_config.dram_accesses << " bytes\n";
+
+        if (is_config.dram_accesses < os_config.dram_accesses) {
+            double savings = 100.0 * (os_config.dram_accesses - is_config.dram_accesses)
+                           / os_config.dram_accesses;
+            std::cout << "    IS savings: " << std::fixed << std::setprecision(1)
+                      << savings << "%\n";
+        } else {
+            double overhead = 100.0 * (is_config.dram_accesses - os_config.dram_accesses)
+                            / os_config.dram_accesses;
+            std::cout << "    IS overhead: " << std::fixed << std::setprecision(1)
+                      << overhead << "%\n";
+        }
+    }
+}
+
+TEST_CASE("TileOptimizer - Three-Way Strategy Comparison", "[tile_optimizer][three_way]") {
+    TileOptimizer optimizer;
+
+    SECTION("Compare OS vs WS vs IS for balanced workload") {
+        Size M = 256, N = 256, K = 256;
+
+        auto os_config = optimizer.optimize(M, N, K);
+        auto ws_config = optimizer.optimize_weight_stationary(M, N, K);
+        auto is_config = optimizer.optimize_input_stationary(M, N, K);
+
+        REQUIRE(os_config.valid);
+        REQUIRE(ws_config.valid);
+        REQUIRE(is_config.valid);
+
+        print_config("256x256x256 Output-Stationary", os_config);
+        print_config("256x256x256 Weight-Stationary", ws_config);
+        print_config("256x256x256 Input-Stationary", is_config);
+
+        std::cout << "\n  Three-way comparison:\n";
+        std::cout << "    Reuse A - OS: " << os_config.reuse_A << "×, WS: "
+                  << ws_config.reuse_A << "×, IS: " << is_config.reuse_A << "×\n";
+        std::cout << "    Reuse B - OS: " << os_config.reuse_B << "×, WS: "
+                  << ws_config.reuse_B << "×, IS: " << is_config.reuse_B << "×\n";
+        std::cout << "    Reuse C - OS: " << os_config.reuse_C << "×, WS: "
+                  << ws_config.reuse_C << "×, IS: " << is_config.reuse_C << "×\n";
+        std::cout << "    DRAM    - OS: " << os_config.dram_accesses
+                  << ", WS: " << ws_config.dram_accesses
+                  << ", IS: " << is_config.dram_accesses << " bytes\n";
+
+        // Verify each strategy has its characteristic reuse pattern
+        REQUIRE(ws_config.reuse_B > os_config.reuse_B);  // WS maximizes B reuse
+        REQUIRE(is_config.reuse_A > os_config.reuse_A);  // IS maximizes A reuse
+    }
+}

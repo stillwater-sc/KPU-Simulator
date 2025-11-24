@@ -207,7 +207,7 @@ Cycle ScheduleCharacterizer::calculate_latency(
     Cycle latency = 0;
 
     // Compute cycles (systolic array)
-    Size num_c_tiles = schedule.num_tile_rows_C * schedule.num_tile_cols_C;
+    // Size num_c_tiles = schedule.num_tile_rows_C * schedule.num_tile_cols_C;  // Reserved for future use
     Size num_k_tiles = schedule.num_tile_cols_A;
 
     for (Size ti = 0; ti < schedule.num_tile_rows_C; ++ti) {
@@ -239,8 +239,10 @@ double ScheduleCharacterizer::calculate_utilization(
     const TensorShape& shape,
     const TileOptimizer::TileConfig& config)
 {
+    (void)shape;  // Reserved for shape-aware utilization calculation
+
     // Calculate how well tiles fill the systolic array
-    Size systolic_area = memory_.systolic_rows * memory_.systolic_cols;
+    // Size systolic_area = memory_.systolic_rows * memory_.systolic_cols;  // Reserved for future use
 
     // Average tile utilization
     double util_m = std::min(1.0, (double)config.Ti / memory_.systolic_rows);
@@ -257,10 +259,24 @@ ScheduleEvaluation ScheduleCharacterizer::evaluate_schedule(
     eval.shape = shape;
     eval.strategy = strategy;
 
-    // Optimize tiles
-    eval.tile_config = optimizer_.optimize(shape.M, shape.N, shape.K);
+    // *** KEY CHANGE: Select tile optimizer based on strategy ***
+    switch (strategy) {
+        case DataflowStrategy::OUTPUT_STATIONARY:
+            eval.tile_config = optimizer_.optimize(shape.M, shape.N, shape.K);
+            break;
 
-    // Generate L2 schedule (currently only output-stationary implemented)
+        case DataflowStrategy::WEIGHT_STATIONARY:
+            eval.tile_config = optimizer_.optimize_weight_stationary(shape.M, shape.N, shape.K);
+            break;
+
+        case DataflowStrategy::INPUT_STATIONARY:
+            eval.tile_config = optimizer_.optimize_input_stationary(shape.M, shape.N, shape.K);
+            break;
+    }
+
+    // Generate L2 schedule
+    // TODO: Implement strategy-specific schedulers (generate_schedule_ws, generate_schedule_is)
+    // For now, all strategies use output-stationary scheduler
     auto schedule = scheduler_.generate_schedule(
         shape.M, shape.N, shape.K,
         eval.tile_config,
@@ -269,6 +285,7 @@ ScheduleEvaluation ScheduleCharacterizer::evaluate_schedule(
     );
 
     // Calculate performance metrics
+    // TODO: Strategy-specific energy/latency calculations
     eval.metrics.total_energy = calculate_energy(shape, schedule);
     eval.metrics.total_cycles = calculate_latency(shape, schedule);
 
@@ -281,6 +298,18 @@ ScheduleEvaluation ScheduleCharacterizer::evaluate_schedule(
     eval.metrics.reuse_A = eval.tile_config.reuse_A;
     eval.metrics.reuse_B = eval.tile_config.reuse_B;
     eval.metrics.reuse_C = eval.tile_config.reuse_C;
+
+    // Calculate throughput metrics
+    Size total_ops = 2 * shape.M * shape.N * shape.K;  // 2 ops per MAC
+    if (eval.metrics.total_cycles > 0) {
+        // Assume 1 GHz clock for GFLOP/s calculation
+        double clock_ghz = 1.0;
+        eval.metrics.throughput_gflops = (total_ops / 1e9) * clock_ghz / (eval.metrics.total_cycles / 1e9);
+        eval.metrics.frequency_mhz = (1.0 / eval.metrics.total_cycles) * 1000.0;  // Normalized frequency
+    }
+
+    // Calculate total tile size (Ti × Tj × Tk) for Pareto analysis
+    eval.metrics.total_tile_size = eval.tile_config.Ti * eval.tile_config.Tj * eval.tile_config.Tk;
 
     // Calculate ideal
     eval.ideal = calculate_ideal(shape);
@@ -330,6 +359,10 @@ ParetoFrontier ScheduleCharacterizer::characterize_workloads(
         }
     }
 
+    // Export ALL evaluations first (before Pareto filtering)
+    std::cout << "Exporting all " << all_evaluations.size() << " evaluations...\n";
+    export_csv(all_evaluations, "all_evaluations.csv");
+
     std::cout << "Computing Pareto frontier...\n";
     return compute_pareto_frontier(all_evaluations);
 }
@@ -340,7 +373,7 @@ ParetoFrontier ScheduleCharacterizer::compute_pareto_frontier(
     ParetoFrontier frontier;
     frontier.total_schedules = evaluations.size();
 
-    // Convert to Pareto points
+    // Convert to Pareto points (Energy vs Tile Size - THE FUNDAMENTAL TRADEOFF!)
     std::vector<ParetoPoint> points;
     points.reserve(evaluations.size());
 
@@ -348,7 +381,10 @@ ParetoFrontier ScheduleCharacterizer::compute_pareto_frontier(
         auto eval_ptr = std::make_shared<ScheduleEvaluation>(evaluations[i]);
         points.emplace_back(
             eval_ptr->metrics.total_energy,
-            eval_ptr->metrics.total_cycles,
+            eval_ptr->metrics.total_tile_size,         // Tile size Ti×Tj×Tk (PROPER Pareto metric!)
+            eval_ptr->tile_config.l2_footprint,        // L2 footprint (for reference)
+            eval_ptr->metrics.throughput_gflops,       // Throughput (for reference)
+            eval_ptr->metrics.total_cycles,            // Latency (for reference)
             eval_ptr
         );
     }
@@ -375,6 +411,9 @@ ParetoFrontier ScheduleCharacterizer::compute_pareto_frontier(
 
     frontier.frontier_size = frontier.points.size();
     frontier.coverage_percentage = 100.0 * frontier.frontier_size / frontier.total_schedules;
+
+    // Store all evaluations for export (user wants to see full design space)
+    frontier.all_evaluations = evaluations;
 
     return frontier;
 }
@@ -431,7 +470,7 @@ void ScheduleCharacterizer::export_csv(
     }
 
     // CSV header
-    file << "M,N,K,Strategy,Energy_pJ,Latency_cycles,"
+    file << "M,N,K,Strategy,Energy_pJ,Tile_Size,L2_Footprint_bytes,Latency_cycles,Throughput_GFLOPS,"
          << "Energy_Slowdown,Latency_Slowdown,"
          << "DRAM_bytes,AI,Utilization,"
          << "Reuse_A,Reuse_B,Reuse_C,Is_Pareto\n";
@@ -442,7 +481,10 @@ void ScheduleCharacterizer::export_csv(
              << eval.shape.K << ","
              << ScheduleEvaluation::dataflow_to_string(eval.strategy) << ","
              << eval.metrics.total_energy << ","
+             << eval.metrics.total_tile_size << ","
+             << eval.tile_config.l2_footprint << ","
              << eval.metrics.total_cycles << ","
+             << eval.metrics.throughput_gflops << ","
              << eval.energy_slowdown << ","
              << eval.latency_slowdown << ","
              << eval.metrics.dram_accesses << ","

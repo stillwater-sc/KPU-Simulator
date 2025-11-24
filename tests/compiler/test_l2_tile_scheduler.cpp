@@ -330,8 +330,9 @@ TEST_CASE("L2TileScheduler - Load Sequence Validation", "[l2_tile_scheduler][seq
             // Slot index should be within bounds
             REQUIRE(load.slot_index < schedule.slots.size());
 
-            // Time step should be sequential
-            REQUIRE(load.time_step >= 0);
+            // Time step is unsigned, so it's always >= 0
+            // Just verify it's been set (not checking >= 0 for unsigned type)
+            (void)load.time_step;  // Acknowledge we checked it exists
 
             // Compute indices should be valid
             REQUIRE(load.compute_ti < schedule.num_tile_rows_C);

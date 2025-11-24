@@ -100,3 +100,28 @@ set_target_properties(example_schedule_characterizer_demo PROPERTIES
 install(TARGETS example_schedule_characterizer_demo
     RUNTIME DESTINATION examples/compiler
 )
+
+# HardwareDesignExplorer demonstration
+add_executable(example_hardware_design_explorer
+    hardware_design_explorer.cpp
+)
+
+target_link_libraries(example_hardware_design_explorer
+    PRIVATE
+        kpu_compiler
+)
+
+target_include_directories(example_hardware_design_explorer
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+set_target_properties(example_hardware_design_explorer PROPERTIES
+    FOLDER "Examples/Compiler"
+    OUTPUT_NAME hardware_design_explorer
+)
+
+# Installation
+install(TARGETS example_hardware_design_explorer
+    RUNTIME DESTINATION examples/compiler
+)

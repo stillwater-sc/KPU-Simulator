@@ -86,11 +86,9 @@ void L2TileScheduler::allocate_initial_tiles(L2Schedule& schedule) {
     // For output-stationary: we want to minimize reloads by loading
     // tiles that will be reused the most
 
-    // Load all A tiles if they fit (they're reused across N dimension)
-    Size num_a_tiles = schedule.num_tile_rows_A * schedule.num_tile_cols_A;
-
-    // Load all B tiles if they fit (they're reused across M dimension)
-    Size num_b_tiles = schedule.num_tile_rows_B * schedule.num_tile_cols_B;
+    // Note: num_a_tiles and num_b_tiles calculated but reserved for future capacity planning
+    // Size num_a_tiles = schedule.num_tile_rows_A * schedule.num_tile_cols_A;
+    // Size num_b_tiles = schedule.num_tile_rows_B * schedule.num_tile_cols_B;
 
     // Add A tiles
     for (Size ti = 0; ti < schedule.num_tile_rows_A; ++ti) {
@@ -144,8 +142,9 @@ void L2TileScheduler::generate_load_sequence(L2Schedule& schedule) {
 
     // Track L3 cache state (simple model: assume L3 holds recent tiles)
     std::set<TileID> l3_cache;
-    Size l3_capacity_tiles = (memory_.L3_size * memory_.L3_tile_count) /
-                            (schedule.config.Ti * schedule.config.Tk * memory_.element_size);
+    // Reserved for future L3 capacity-aware scheduling
+    // Size l3_capacity_tiles = (memory_.L3_size * memory_.L3_tile_count) /
+    //                         (schedule.config.Ti * schedule.config.Tk * memory_.element_size);
 
     // Process each compute operation
     for (const auto& [ti, tj, tk] : compute_order) {
@@ -286,6 +285,8 @@ std::optional<size_t> L2TileScheduler::find_or_allocate_slot(
     const TileID& tile_id,
     Size time_step)
 {
+    (void)time_step;  // Reserved for time-aware scheduling
+
     // Check if tile is already resident
     auto slot_idx = get_slot_index(schedule, tile_id);
     if (slot_idx) {
@@ -327,7 +328,7 @@ std::optional<size_t> L2TileScheduler::get_slot_index(
 }
 
 void L2TileScheduler::calculate_reuse_stats(L2Schedule& schedule) const {
-    // Already calculated in generate_load_sequence
+    (void)schedule;  // Stats already calculated in generate_load_sequence
 }
 
 Size L2TileScheduler::calculate_tile_bytes(
@@ -410,6 +411,8 @@ std::optional<size_t> L2TileScheduler::select_optimal_victim(
     const L2Schedule& schedule,
     Size time_step) const
 {
+    (void)time_step;  // Reserved for Belady's optimal algorithm
+
     // Belady's optimal: evict the tile that will be used furthest in the future
     // This requires future knowledge, which we have since we know the compute order
 
@@ -426,6 +429,8 @@ bool L2TileScheduler::is_in_l3(const TileID& tile_id, const L2Schedule& schedule
 }
 
 void L2TileScheduler::update_l3_state(const TileID& tile_id, L2Schedule& schedule) {
+    (void)tile_id;    // Reserved for L3 capacity tracking
+    (void)schedule;   // Reserved for L3 eviction modeling
     // Mark tile as loaded into L3
     // In a more sophisticated model, we would track L3 capacity and evictions
 }
@@ -638,6 +643,7 @@ std::string L2TileScheduler::export_json(const L2Schedule& schedule) const {
 }
 
 void L2TileScheduler::visualize_l2_timeline(const L2Schedule& schedule) const {
+    (void)schedule;  // Reserved for timeline visualization implementation
     std::cout << "L2 Timeline Visualization:\n";
     std::cout << "  (Not yet implemented)\n";
     std::cout << "\n";

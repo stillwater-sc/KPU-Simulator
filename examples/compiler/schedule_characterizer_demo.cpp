@@ -44,8 +44,8 @@ void demo_small_characterization() {
     // Print results
     characterizer.print_summary(frontier);
 
-    // Export
-    characterizer.export_pareto_csv(frontier, "pareto_frontier_small.csv");
+    // Export ALL evaluations (not just Pareto frontier) for better design space visualization
+    characterizer.export_csv(frontier.all_evaluations, "pareto_frontier_small.csv");
 }
 
 void demo_network_layers() {
@@ -77,7 +77,7 @@ void demo_network_layers() {
     std::cout << "\nCharacterization time: " << duration.count() << " ms\n";
 
     characterizer.print_summary(frontier);
-    characterizer.export_pareto_csv(frontier, "pareto_frontier_networks.csv");
+    characterizer.export_csv(frontier.all_evaluations, "pareto_frontier_networks.csv");
 }
 
 void demo_parameter_sweep() {
@@ -108,7 +108,7 @@ void demo_parameter_sweep() {
     std::cout << "\nCharacterization time: " << duration.count() << " ms\n";
 
     characterizer.print_summary(frontier);
-    characterizer.export_pareto_csv(frontier, "pareto_frontier_sweep.csv");
+    characterizer.export_csv(frontier.all_evaluations, "pareto_frontier_sweep.csv");
 }
 
 void demo_large_scale_characterization() {
@@ -137,7 +137,7 @@ void demo_large_scale_characterization() {
     std::cout << "\nCharacterization time: " << duration.count() << " seconds\n";
 
     characterizer.print_summary(frontier);
-    characterizer.export_pareto_csv(frontier, "pareto_frontier_large.csv");
+    characterizer.export_csv(frontier.all_evaluations, "pareto_frontier_large.csv");
 }
 
 void demo_slowdown_analysis() {
