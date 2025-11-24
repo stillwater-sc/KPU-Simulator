@@ -50,3 +50,53 @@ set_target_properties(example_schedule_generator_demo PROPERTIES
 install(TARGETS example_schedule_generator_demo
     RUNTIME DESTINATION examples/compiler
 )
+
+# L2TileScheduler demonstration
+add_executable(example_l2_tile_scheduler_demo
+    l2_tile_scheduler_demo.cpp
+)
+
+target_link_libraries(example_l2_tile_scheduler_demo
+    PRIVATE
+        kpu_compiler
+)
+
+target_include_directories(example_l2_tile_scheduler_demo
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+set_target_properties(example_l2_tile_scheduler_demo PROPERTIES
+    FOLDER "Examples/Compiler"
+    OUTPUT_NAME l2_tile_scheduler_demo
+)
+
+# Installation
+install(TARGETS example_l2_tile_scheduler_demo
+    RUNTIME DESTINATION examples/compiler
+)
+
+# ScheduleCharacterizer demonstration
+add_executable(example_schedule_characterizer_demo
+    schedule_characterizer_demo.cpp
+)
+
+target_link_libraries(example_schedule_characterizer_demo
+    PRIVATE
+        kpu_compiler
+)
+
+target_include_directories(example_schedule_characterizer_demo
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+set_target_properties(example_schedule_characterizer_demo PROPERTIES
+    FOLDER "Examples/Compiler"
+    OUTPUT_NAME schedule_characterizer_demo
+)
+
+# Installation
+install(TARGETS example_schedule_characterizer_demo
+    RUNTIME DESTINATION examples/compiler
+)

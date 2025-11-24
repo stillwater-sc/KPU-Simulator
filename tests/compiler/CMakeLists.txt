@@ -86,3 +86,29 @@ set_target_properties(schedule_generator_test PROPERTIES
     FOLDER "Tests/Compiler"
     LABELS "unit;compiler"
 )
+
+# L2 tile scheduler tests
+add_executable(l2_tile_scheduler_test
+    test_l2_tile_scheduler.cpp
+)
+
+target_link_libraries(l2_tile_scheduler_test
+    PRIVATE
+        kpu_compiler
+        Catch2::Catch2WithMain
+)
+
+target_include_directories(l2_tile_scheduler_test
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+# Register with CTest
+add_test(NAME l2_tile_scheduler_test
+    COMMAND l2_tile_scheduler_test
+)
+
+set_target_properties(l2_tile_scheduler_test PROPERTIES
+    FOLDER "Tests/Compiler"
+    LABELS "unit;compiler"
+)
