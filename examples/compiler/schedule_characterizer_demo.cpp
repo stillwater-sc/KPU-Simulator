@@ -16,7 +16,7 @@ using namespace sw::kpu::compiler;
 void demo_small_characterization() {
     std::cout << "\n";
     std::cout << "╔════════════════════════════════════════════════════════════════════╗\n";
-    std::cout << "║        DEMO 1: Small-Scale Characterization (100 workloads)       ║\n";
+    std::cout << "║         DEMO 1: Small-Scale Characterization (100 workloads)       ║\n";
     std::cout << "╚════════════════════════════════════════════════════════════════════╝\n";
     std::cout << "\n";
 
@@ -143,7 +143,7 @@ void demo_large_scale_characterization() {
 void demo_slowdown_analysis() {
     std::cout << "\n";
     std::cout << "╔════════════════════════════════════════════════════════════════════╗\n";
-    std::cout << "║         DEMO 5: Slowdown Analysis (Non-Ideal Tensors)             ║\n";
+    std::cout << "║          DEMO 5: Slowdown Analysis (Non-Ideal Tensors)             ║\n";
     std::cout << "╚════════════════════════════════════════════════════════════════════╝\n";
     std::cout << "\n";
 
@@ -239,8 +239,8 @@ int main(int argc, char** argv) {
     std::cout << "█                                                                          █\n";
     std::cout << "█            SCHEDULE CHARACTERIZATION & PARETO FRONTIER ANALYSIS          █\n";
     std::cout << "█                                                                          █\n";
-    std::cout << "█  This tool evaluates scheduling strategies across realistic workloads   █\n";
-    std::cout << "█  to identify the Pareto frontier of energy-latency trade-offs.          █\n";
+    std::cout << "█  This tool evaluates scheduling strategies across realistic workloads    █\n";
+    std::cout << "█  to identify the Pareto frontier of energy-latency trade-offs.           █\n";
     std::cout << "█                                                                          █\n";
     std::cout << "████████████████████████████████████████████████████████████████████████████\n";
 

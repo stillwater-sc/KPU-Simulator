@@ -78,25 +78,33 @@ def plot_pareto_frontier(csv_file, output_prefix=None):
         # Create size metric (product of dimensions)
         df['Size'] = df['M'] * df['N'] * df['K']
 
-        # Bin by size
-        size_bins = np.logspace(np.log10(df['Size'].min()),
-                               np.log10(df['Size'].max()), 20)
-        df['Size_bin'] = pd.cut(df['Size'], bins=size_bins)
+        # Check if we have variation in sizes
+        if df['Size'].nunique() > 1:
+            # Bin by size only if we have multiple unique sizes
+            size_bins = np.logspace(np.log10(df['Size'].min()),
+                                   np.log10(df['Size'].max()), 20)
+            df['Size_bin'] = pd.cut(df['Size'], bins=size_bins, duplicates='drop')
 
-        # Average energy per bin
-        bin_stats = df.groupby('Size_bin').agg({
-            'Energy_pJ': 'mean',
-            'Latency_cycles': 'mean',
-            'Size': 'mean'
-        }).dropna()
+            # Average energy per bin
+            bin_stats = df.groupby('Size_bin').agg({
+                'Energy_pJ': 'mean',
+                'Latency_cycles': 'mean',
+                'Size': 'mean'
+            }).dropna()
 
-        ax.scatter(bin_stats['Size'], bin_stats['Energy_pJ'],
-                  s=100, c='purple', alpha=0.6)
+            ax.scatter(bin_stats['Size'], bin_stats['Energy_pJ'],
+                      s=100, c='purple', alpha=0.6)
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+        else:
+            # All same size - just plot raw data
+            ax.scatter(df['Size'], df['Energy_pJ'],
+                      s=100, c='purple', alpha=0.6)
+            # Don't use log scale if only one point
+
         ax.set_xlabel('Tensor Size (M×N×K)', fontsize=12)
         ax.set_ylabel('Average Energy (pJ)', fontsize=12)
         ax.set_title('Energy vs Tensor Size')
-        ax.set_xscale('log')
-        ax.set_yscale('log')
         ax.grid(True, alpha=0.3, which='both')
 
     plt.tight_layout()

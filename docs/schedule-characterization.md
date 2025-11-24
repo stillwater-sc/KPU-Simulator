@@ -44,17 +44,17 @@ Typical slowdowns:
 ### Components
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                  Schedule Characterizer                         │
-│                                                                 │
+┌──────────────────────────────────────────────────────────────┐
+│                  Schedule Characterizer                      │
+│                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
-│  │   Workload   │  │    Dataflow  │  │   Pareto     │        │
-│  │  Generator   │→ │  Evaluator   │→ │  Analyzer    │        │
+│  │   Workload   │  │   Dataflow   │  │    Pareto    │        │
+│  │  Generator   │→ │   Evaluator  │→ │   Analyzer   │        │
 │  └──────────────┘  └──────────────┘  └──────────────┘        │
-│         │                  │                  │                │
-│         ↓                  ↓                  ↓                │
-│   Tensor Shapes     Schedule Metrics   Frontier Points        │
-└─────────────────────────────────────────────────────────────────┘
+│         │                  │                  │              │
+│         ↓                  ↓                  ↓              │
+│   Tensor Shapes     Schedule Metrics   Frontier Points       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -101,7 +101,7 @@ Based on Eyeriss / TPU-like accelerator parameters:
 | L1 access | 1 cycle |
 | MAC | 1 cycle |
 
-**Systolic Array Latency** = K + max(M, N) cycles per tile
+**Systolic Array Latency** = K + max(M, N) cycles per tile (with KPU tau=[1 1 1] schedule latency is M+K+N)
 
 **Total Latency** = Compute_cycles + Data_movement_cycles (with overlap)
 
@@ -114,7 +114,8 @@ ideal_cycles = (M × N × K) / (systolic_rows × systolic_cols)
 
 **Ideal Energy**:
 ```
-total_MACs = 2 × M × N × K
+total_MACs = M × N × K
+total_FLOPs = 2 × total_MACs
 compute_energy = total_MACs × MAC_energy
 data_energy = (M×K + K×N + M×N) × element_size × DRAM_read_energy
 ideal_energy = compute_energy + data_energy
