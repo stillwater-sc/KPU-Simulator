@@ -1,0 +1,103 @@
+████████████████████████████████████████████████████████████████████████████
+█                                                                          █
+█            COMPREHENSIVE L3 OVERFETCH ANALYSIS                           █
+█                                                                          █
+█  Explores: Non-square matrices × Dataflow strategies × L3 sizes         █
+█                                                                          █
+████████████████████████████████████████████████████████████████████████████
+
+Generated 27 diverse workloads
+  - Square, Tall, Wide, Deep, and Extreme aspect ratios
+  - Realistic transformer layers (BERT, GPT, LLaMA)
+  - Size range: 64×64 to 100k×100k
+
+Testing 7 L3 cache sizes: 1MB, 2MB, 4MB, 16MB, 64MB, 256MB, 1GB
+Testing 3 dataflow strategies: WS, IS, OS
+
+Total configurations to analyze: 567
+
+Starting analysis...
+  Progress: 0/27 workloads completed...
+  Progress: 5/27 workloads completed...
+  Progress: 10/27 workloads completed...
+  Progress: 15/27 workloads completed...
+  Progress: 20/27 workloads completed...
+  Progress: 25/27 workloads completed...
+
+Analysis complete in 11294 seconds
+Analyzed 567 configurations
+
+
+╔════════════════════════════════════════════════════════════════════╗
+║              SUMMARY BY TENSOR ASPECT RATIO                        ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Balanced:
+  Workloads: 1
+  Overfetch - Min: 1.00×, Max: 3.62×, Avg: 1.12×
+
+Deep:
+  Workloads: 5
+  Overfetch - Min: 0.64×, Max: 73.77×, Avg: 12.84×
+
+Deep-ish:
+  Workloads: 2
+  Overfetch - Min: 0.80×, Max: 60.08×, Avg: 7.91×
+
+Extreme Deep:
+  Workloads: 1
+  Overfetch - Min: 0.59×, Max: 16.08×, Avg: 3.64×
+
+Extreme Tall:
+  Workloads: 1
+  Overfetch - Min: 1.02×, Max: 3.85×, Avg: 1.56×
+
+Extreme Wide:
+  Workloads: 1
+  Overfetch - Min: 0.32×, Max: 4.00×, Avg: 1.89×
+
+Square:
+  Workloads: 7
+  Overfetch - Min: 0.67×, Max: 86.33×, Avg: 13.10×
+
+Square-ish:
+  Workloads: 1
+  Overfetch - Min: 1.02×, Max: 8.64×, Avg: 2.13×
+
+Tall:
+  Workloads: 4
+  Overfetch - Min: 1.02×, Max: 4.59×, Avg: 1.32×
+
+Tall-ish:
+  Workloads: 4
+  Overfetch - Min: 0.27×, Max: 114.89×, Avg: 18.30×
+
+Very Deep:
+  Workloads: 2
+  Overfetch - Min: 0.55×, Max: 225.12×, Avg: 71.54×
+
+Wide:
+  Workloads: 4
+  Overfetch - Min: 0.14×, Max: 8.98×, Avg: 2.83×
+
+
+╔════════════════════════════════════════════════════════════════════╗
+║              SUMMARY BY DATAFLOW STRATEGY                          ║
+╚════════════════════════════════════════════════════════════════════╝
+
+IS: Average overfetch = 6.54× across all workloads
+OS: Average overfetch = 24.90× across all workloads
+WS: Average overfetch = 7.82× across all workloads
+
+Exported 567 results to l3_comprehensive_analysis.csv
+
+╔════════════════════════════════════════════════════════════════════╗
+║                    ANALYSIS COMPLETE                               ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Next steps:
+  1. Analyze CSV with pandas/Excel to explore multi-dimensional relationships
+  2. Plot overfetch vs aspect ratio for each strategy
+  3. Identify which strategies work best for which tensor shapes
+  4. Find optimal L3 size for different workload categories
+
