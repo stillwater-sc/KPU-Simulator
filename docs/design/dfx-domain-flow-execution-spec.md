@@ -1,7 +1,3 @@
-# Here’s a **mock-up of a PTX-style specification introduction**, but adapted for **DFX (Domain Flow Execution)** — the hypothetical abstraction layer for Stillwater KPUs. I’ve mirrored the tone and structure of PTX docs: concise, technical, and authoritative.  
-
----
-
 # DFX: Domain Flow Execution Specification  
 **Version 1.0 (Draft)**  
 
