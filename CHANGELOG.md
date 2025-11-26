@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2025-11-25
+- **Strategy-Aware L2/L3 Scheduling**
+  - Implemented proper dataflow strategy loop ordering in L2 tile scheduler
+  - Added strategy-aware execution in L3 scheduler
+  - Strategies now produce different (and correct) overfetch results:
+    - **WS (Weight-Stationary)**: `tk → ti → tj` keeps B tiles resident
+    - **IS (Input-Stationary)**: `tk → tj → ti` keeps A tiles resident
+    - **OS (Output-Stationary)**: `ti → tj → tk` keeps C tiles resident
+  - Added `strategy` field to `L2Schedule` struct to propagate strategy choice
+
+- **Distributed L3 Support in Analysis Tools**
+  - Added 1MB and 2MB L3 sizes to focused analysis (3→5 sizes, 108→180 configs)
+  - Added 1MB and 2MB L3 sizes to comprehensive analysis (5→7 sizes, 405→567 configs)
+  - Created `run_comprehensive_overnight.sh` convenience script
+
+- **Analysis Documentation**
+  - Created `L3_ANALYSIS_UPDATED.md` documenting distributed L3 support
+  - Created `STRATEGY_AWARE_SCHEDULING_RESULTS.md` documenting bug fix and results
+  - Updated analysis tools to use strategy-aware scheduling
+
+### Fixed - 2025-11-25
+- **Critical Overfetch Asymmetry Bug**
+  - Fixed L2 scheduler's `generate_compute_order()` ignoring strategy parameter
+  - Fixed L3 scheduler's `simulate_l2_execution()` using hard-coded OS loops
+  - **Impact**: 380× improvement for 32k×7k workload (34.56× → 0.90× with WS)
+  - Tall and wide matrices now show proper symmetry with correct strategy selection
+
+- **Compiler Warnings**
+  - Fixed unused parameter warnings in `l3_overfetch_analyzer.cpp`
+  - Fixed unused parameter warnings in `schedule_characterizer_demo.cpp`
+
+### Changed - 2025-11-25
+- **L2 Tile Scheduler**
+  - Moved `ReplacementPolicy` and `SchedulingStrategy` enums before `L2Schedule` struct
+  - Updated `generate_compute_order()` to respect strategy parameter
+  - Strategy now stored in generated L2 schedules
+
+- **L3 Analysis Tools**
+  - `l3_focused_analysis.cpp` generates separate L2 schedules for each strategy
+  - `l3_comprehensive_analysis.cpp` applies strategy-aware scheduling
+  - Both tools now test 1MB and 2MB L3 configurations
+
 ### Added - 2025-11-23
 - **Tile Notation Improvements** in `ScheduleGenerator`
   - Added `TileIndex::label_A()`, `label_B()`, `label_C()` methods for proper mathematical notation
@@ -115,6 +157,7 @@ See `docs/sessions/2025-11-23_schedule_generator_pipelining.md` for detailed rec
 
 ### Session Logs
 Detailed session logs are maintained in `docs/sessions/` directory:
+- `2025-11-25_strategy_aware_scheduling.md` - Strategy-aware L2/L3 scheduling fix
 - `2025-11-23_schedule_generator_pipelining.md` - Double-buffering and pipelining attempt
 
 ### Version History
