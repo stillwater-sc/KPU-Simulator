@@ -101,6 +101,31 @@ install(TARGETS example_schedule_characterizer_demo
     RUNTIME DESTINATION examples/compiler
 )
 
+# DataFlow strategy demonstration
+add_executable(dataflow_strategy
+    dataflow_strategy.cpp
+)
+
+target_link_libraries(dataflow_strategy
+    PRIVATE
+        kpu_compiler
+)
+
+target_include_directories(dataflow_strategy
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+)
+
+set_target_properties(dataflow_strategy PROPERTIES
+    FOLDER "Examples/Compiler"
+    OUTPUT_NAME dataflow_strategy
+)
+
+# Installation
+install(TARGETS dataflow_strategy
+    RUNTIME DESTINATION examples/compiler
+)
+
 # HardwareDesignExplorer demonstration
 add_executable(example_hardware_design_explorer
     hardware_design_explorer.cpp
