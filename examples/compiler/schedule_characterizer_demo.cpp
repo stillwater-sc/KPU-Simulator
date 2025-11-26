@@ -234,6 +234,8 @@ void demo_strategy_comparison() {
 }
 
 int main(int argc, char** argv) {
+    (void)argc;  // No command-line arguments currently used
+    (void)argv;
     std::cout << "\n";
     std::cout << "████████████████████████████████████████████████████████████████████████████\n";
     std::cout << "█                                                                          █\n";

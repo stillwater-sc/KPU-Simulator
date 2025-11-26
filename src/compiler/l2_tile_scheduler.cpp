@@ -36,6 +36,7 @@ L2TileScheduler::L2Schedule L2TileScheduler::generate_schedule(
     schedule.N = N;
     schedule.K = K;
     schedule.config = config;
+    schedule.strategy = strategy;
 
     // Calculate tile grid dimensions
     schedule.num_tile_rows_A = (M + config.Ti - 1) / config.Ti;
@@ -356,14 +357,46 @@ std::vector<std::tuple<Size, Size, Size>> L2TileScheduler::generate_compute_orde
 {
     std::vector<std::tuple<Size, Size, Size>> order;
 
-    // Output-stationary: iterate over C tiles (ti, tj)
-    // For each C tile, accumulate across K dimension (tk)
-    for (Size ti = 0; ti < schedule.num_tile_rows_C; ++ti) {
-        for (Size tj = 0; tj < schedule.num_tile_cols_C; ++tj) {
+    switch (strategy_) {
+        case SchedulingStrategy::WEIGHT_STATIONARY:
+            // Weight-stationary: tk → ti → tj
+            // Keep B tiles resident across output tiles
+            // Best for: WIDE and DEEP matrices (large B)
             for (Size tk = 0; tk < schedule.num_tile_cols_A; ++tk) {
-                order.push_back(std::make_tuple(ti, tj, tk));
+                for (Size ti = 0; ti < schedule.num_tile_rows_C; ++ti) {
+                    for (Size tj = 0; tj < schedule.num_tile_cols_C; ++tj) {
+                        order.push_back(std::make_tuple(ti, tj, tk));
+                    }
+                }
             }
-        }
+            break;
+
+        case SchedulingStrategy::INPUT_STATIONARY:
+            // Input-stationary: tk → tj → ti
+            // Keep A tiles resident across output tiles
+            // Best for: TALL matrices (large A)
+            for (Size tk = 0; tk < schedule.num_tile_cols_A; ++tk) {
+                for (Size tj = 0; tj < schedule.num_tile_cols_C; ++tj) {
+                    for (Size ti = 0; ti < schedule.num_tile_rows_C; ++ti) {
+                        order.push_back(std::make_tuple(ti, tj, tk));
+                    }
+                }
+            }
+            break;
+
+        case SchedulingStrategy::OUTPUT_STATIONARY:
+        default:
+            // Output-stationary: ti → tj → tk
+            // Keep C tiles resident, accumulate across K
+            // Best for: Small C, or when both A and B fit in L3
+            for (Size ti = 0; ti < schedule.num_tile_rows_C; ++ti) {
+                for (Size tj = 0; tj < schedule.num_tile_cols_C; ++tj) {
+                    for (Size tk = 0; tk < schedule.num_tile_cols_A; ++tk) {
+                        order.push_back(std::make_tuple(ti, tj, tk));
+                    }
+                }
+            }
+            break;
     }
 
     return order;

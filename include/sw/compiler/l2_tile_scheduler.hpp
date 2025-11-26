@@ -136,6 +136,25 @@ public:
         }
     };
 
+    /// Cache replacement policy
+    enum class ReplacementPolicy {
+        LRU,            ///< Least Recently Used
+        FIFO,           ///< First In First Out
+        OPTIMAL,        ///< Belady's optimal (requires future knowledge)
+        MANUAL          ///< User-specified eviction order
+    };
+
+    /// Scheduling strategy for tile loads
+    enum class SchedulingStrategy {
+        WEIGHT_STATIONARY,      ///< B (weights) stay resident, stream A and C
+        INPUT_STATIONARY,       ///< A (inputs) stay resident, stream B and C
+        OUTPUT_STATIONARY,      ///< C tiles stay in systolic array, A/B streamed
+        ROW_MAJOR_C,           ///< Process C tiles in row-major order
+        COLUMN_MAJOR_C,        ///< Process C tiles in column-major order
+        MORTON_ORDER,          ///< Z-order/Morton curve for spatial locality
+        CUSTOM                 ///< User-defined tile ordering
+    };
+
     /// Complete L2 schedule for a matrix multiplication
     struct L2Schedule {
         // Matrix dimensions
@@ -143,6 +162,9 @@ public:
 
         // Tile configuration
         TileOptimizer::TileConfig config;
+
+        // Scheduling strategy used to generate this schedule
+        SchedulingStrategy strategy;
 
         // Tile grid dimensions
         Size num_tile_rows_A;   ///< Number of A tile rows (M / Ti)
@@ -191,23 +213,6 @@ public:
                       l3_hits(0), l3_misses(0),
                       total_bytes_loaded(0), wasted_loads(0),
                       l2_hit_rate(0.0), l3_hit_rate(0.0) {}
-    };
-
-    /// Cache replacement policy
-    enum class ReplacementPolicy {
-        LRU,            ///< Least Recently Used
-        FIFO,           ///< First In First Out
-        OPTIMAL,        ///< Belady's optimal (requires future knowledge)
-        MANUAL          ///< User-specified eviction order
-    };
-
-    /// Scheduling strategy for tile loads
-    enum class SchedulingStrategy {
-        OUTPUT_STATIONARY,      ///< C tiles stay in systolic array, A/B streamed
-        ROW_MAJOR_C,           ///< Process C tiles in row-major order
-        COLUMN_MAJOR_C,        ///< Process C tiles in column-major order
-        MORTON_ORDER,          ///< Z-order/Morton curve for spatial locality
-        CUSTOM                 ///< User-defined tile ordering
     };
 
 public:
