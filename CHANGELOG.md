@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2025-11-26
+- **Domain Flow Execution (DFX) Layer**
+  - Created PTX-equivalent hardware-agnostic intermediate representation for KPU
+  - `include/sw/compiler/dfx/dfx.hpp` - Core DFX types and structures:
+    - `DataType`, `MemoryLevel`, `DataflowStrategy` enums
+    - `TensorDescriptor`, `TileSpec`, `TilingConfig` structures
+    - `Operation` base class with `DataMoveOp`, `ComputeOp`, `BarrierOp` derived types
+    - `Program` struct containing complete compiled kernel representation
+  - `include/sw/compiler/dfx/dfx_object_file.hpp` - JSON serialization for .kpu files
+
+- **KPU Kernel Compiler (`kpu-kernel-compiler`)**
+  - Full compilation pipeline from DFG to .kpu object files
+  - `tools/compiler/kpu-kernel-compiler/dfg_parser.hpp/cpp` - DFG/JSON file parsing
+  - `tools/compiler/kpu-kernel-compiler/dfx_generator.hpp/cpp` - DFX program generation
+  - `tools/compiler/kpu-kernel-compiler/object_writer.hpp/cpp` - .kpu file writer
+  - CLI options: `-o`, `-d` (dataflow), `-t` (tile-strategy), `--emit-dfx`, `--dump`, `-v`
+  - Supports output-stationary, weight-stationary, and input-stationary dataflows
+  - Integrates with existing TileOptimizer for optimal tile size selection
+
+- **KPU Loader Framework** (skeleton)
+  - `tools/runtime/kpu-loader/` - Loader/driver framework
+  - `object_reader.hpp/cpp` - Read and validate .kpu files
+  - `schedule_binder.hpp/cpp` - Bind DFX operations to concrete hardware resources
+  - Maps abstract operations to DMA engines, BlockMovers, and Streamers
+
+- **Tools Directory Reorganization**
+  - New category-based structure: `compiler/`, `runtime/`, `analysis/`, `development/`, `configuration/`, `benchmark/`
+  - `kpu_add_tool()` CMake helper function for consistent tool creation
+  - Moved Python tools to appropriate subdirectories
+
+- **Implementation Plan Document**
+  - `docs/compiler/KPU_COMPILER_IMPLEMENTATION_PLAN.md` - Comprehensive design document
+  - Covers architecture, DFX format, object file structure, CLI design
+
+### Changed - 2025-11-26
+- **Renamed KIR to DFX**
+  - Renamed namespace from `sw::kpu::compiler::kir` to `sw::kpu::compiler::dfx`
+  - Renamed directory from `include/sw/compiler/kir/` to `include/sw/compiler/dfx/`
+  - Renamed files: `kir.hpp` → `dfx.hpp`, `object_file.hpp` → `dfx_object_file.hpp`
+  - Renamed class: `KIRGenerator` → `DFXGenerator` (with backward compatibility alias)
+  - Updated version constants: `KIR_VERSION_*` → `DFX_VERSION_*`
+  - Updated CLI flag: `--emit-kir` → `--emit-dfx`
+  - Updated JSON key: `"kir_version"` → `"dfx_version"`
+
 ### Added - 2025-11-25
 - **Strategy-Aware L2/L3 Scheduling**
   - Implemented proper dataflow strategy loop ordering in L2 tile scheduler
@@ -157,6 +201,7 @@ See `docs/sessions/2025-11-23_schedule_generator_pipelining.md` for detailed rec
 
 ### Session Logs
 Detailed session logs are maintained in `docs/sessions/` directory:
+- `2025-11-26_dfx_compiler_implementation.md` - DFX layer and kernel compiler implementation
 - `2025-11-25_strategy_aware_scheduling.md` - Strategy-aware L2/L3 scheduling fix
 - `2025-11-23_schedule_generator_pipelining.md` - Double-buffering and pipelining attempt
 
