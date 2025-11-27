@@ -2,15 +2,15 @@
  * @file disassembler.cpp
  * @brief KPU Disassembler - Object file disassembler
  *
- * Reads .kpu object files and prints human-readable KIR.
+ * Reads .kpu object files and prints human-readable DFX.
  */
 
-#include <sw/compiler/kir/kir.hpp>
-#include <sw/compiler/kir/object_file.hpp>
+#include <sw/compiler/dfx/dfx.hpp>
+#include <sw/compiler/dfx/dfx_object_file.hpp>
 #include <iostream>
 #include <string>
 
-using namespace sw::kpu::compiler;
+using namespace sw::kpu::compiler::dfx;
 
 void print_usage(const char* program_name) {
     std::cout << "KPU Disassembler - Disassembles KPU object files\n\n";
@@ -31,14 +31,14 @@ int main(int argc, char* argv[]) {
     }
 
     try {
-        auto program = kir::read_object_file(filename);
+        auto program = read_object_file(filename);
 
         std::cout << "=== KPU Object File: " << filename << " ===\n\n";
         std::cout << "Name: " << program.name << "\n";
         std::cout << "Source: " << program.source_graph << "\n";
-        std::cout << "KIR Version: " << program.version_major << "."
+        std::cout << "DFX Version: " << program.version_major << "."
                   << program.version_minor << "." << program.version_patch << "\n";
-        std::cout << "Dataflow: " << kir::dataflow_to_string(program.dataflow) << "\n";
+        std::cout << "Dataflow: " << dataflow_to_string(program.dataflow) << "\n";
 
         std::cout << "\nTiling:\n";
         std::cout << "  Ti=" << program.tiling.Ti
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
                 if (i > 0) std::cout << ", ";
                 std::cout << t.shape[i];
             }
-            std::cout << "] " << kir::dtype_to_string(t.dtype);
+            std::cout << "] " << dtype_to_string(t.dtype);
             if (t.is_constant) std::cout << " (const)";
             if (t.is_output) std::cout << " (output)";
             std::cout << "\n";
