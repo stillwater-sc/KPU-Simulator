@@ -5,11 +5,13 @@
 
 #pragma once
 
-#include <sw/compiler/kir/kir.hpp>
-#include <sw/compiler/kir/object_file.hpp>
+#include <sw/compiler/dfx/dfx.hpp>
+#include <sw/compiler/dfx/dfx_object_file.hpp>
 #include <string>
 
 namespace sw::kpu::runtime {
+
+using namespace sw::kpu::compiler;
 
 /**
  * @brief Reads KPU object files
@@ -17,12 +19,12 @@ namespace sw::kpu::runtime {
 class ObjectReader {
 public:
     /**
-     * @brief Read a KIR program from an object file
+     * @brief Read a DFX program from an object file
      *
      * @param filename Input filename (.kpu)
-     * @return Loaded KIR program
+     * @return Loaded DFX program
      */
-    kir::Program read(const std::string& filename);
+    dfx::Program read(const std::string& filename);
 
     /**
      * @brief Validate a loaded program
@@ -30,7 +32,7 @@ public:
      * @param program Program to validate
      * @return true if valid, false otherwise
      */
-    bool validate(const kir::Program& program);
+    bool validate(const dfx::Program& program);
 
     /**
      * @brief Get validation errors

@@ -122,10 +122,10 @@ std::vector<MatrixOpInfo> DFGParser::extract_matrix_ops(const ComputationalGraph
     return ops;
 }
 
-std::pair<std::vector<size_t>, kir::DataType>
+std::pair<std::vector<size_t>, dfx::DataType>
 DFGParser::parse_tensor_type(const std::string& type_str) {
     std::vector<size_t> shape;
-    kir::DataType dtype = kir::DataType::FLOAT32;
+    dfx::DataType dtype = dfx::DataType::FLOAT32;
 
     // Pattern: tensor<4x16xf32>
     std::regex tensor_regex(R"(tensor<(.+)>)");
@@ -146,43 +146,43 @@ DFGParser::parse_tensor_type(const std::string& type_str) {
 
         // Extract dtype suffix
         if (dims_str.find("f32") != std::string::npos) {
-            dtype = kir::DataType::FLOAT32;
+            dtype = dfx::DataType::FLOAT32;
         } else if (dims_str.find("f16") != std::string::npos) {
-            dtype = kir::DataType::FLOAT16;
+            dtype = dfx::DataType::FLOAT16;
         } else if (dims_str.find("bf16") != std::string::npos) {
-            dtype = kir::DataType::BFLOAT16;
+            dtype = dfx::DataType::BFLOAT16;
         } else if (dims_str.find("i32") != std::string::npos) {
-            dtype = kir::DataType::INT32;
+            dtype = dfx::DataType::INT32;
         } else if (dims_str.find("i8") != std::string::npos) {
-            dtype = kir::DataType::INT8;
+            dtype = dfx::DataType::INT8;
         }
     }
 
     return {shape, dtype};
 }
 
-kir::DataType DFGParser::infer_dtype(const TensorDescriptor& tensor) {
+dfx::DataType DFGParser::infer_dtype(const TensorDescriptor& tensor) {
     // Use the tensor's dtype string
     const std::string& dtype = tensor.dtype;
 
     if (dtype == "float32" || dtype == "f32") {
-        return kir::DataType::FLOAT32;
+        return dfx::DataType::FLOAT32;
     } else if (dtype == "float16" || dtype == "f16") {
-        return kir::DataType::FLOAT16;
+        return dfx::DataType::FLOAT16;
     } else if (dtype == "bfloat16" || dtype == "bf16") {
-        return kir::DataType::BFLOAT16;
+        return dfx::DataType::BFLOAT16;
     } else if (dtype == "int32" || dtype == "i32") {
-        return kir::DataType::INT32;
+        return dfx::DataType::INT32;
     } else if (dtype == "int16" || dtype == "i16") {
-        return kir::DataType::INT16;
+        return dfx::DataType::INT16;
     } else if (dtype == "int8" || dtype == "i8") {
-        return kir::DataType::INT8;
+        return dfx::DataType::INT8;
     } else if (dtype == "uint8" || dtype == "u8") {
-        return kir::DataType::UINT8;
+        return dfx::DataType::UINT8;
     }
 
     // Default to float32
-    return kir::DataType::FLOAT32;
+    return dfx::DataType::FLOAT32;
 }
 
 } // namespace sw::kpu::compiler

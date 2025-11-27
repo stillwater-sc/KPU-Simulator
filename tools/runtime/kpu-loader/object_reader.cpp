@@ -9,17 +9,17 @@ namespace sw::kpu::runtime {
 
 using namespace sw::kpu::compiler;
 
-kir::Program ObjectReader::read(const std::string& filename) {
+dfx::Program ObjectReader::read(const std::string& filename) {
     errors_.clear();
-    return kir::read_object_file(filename);
+    return dfx::read_object_file(filename);
 }
 
-bool ObjectReader::validate(const kir::Program& program) {
+bool ObjectReader::validate(const dfx::Program& program) {
     errors_.clear();
 
     // Check version compatibility
-    if (program.version_major > kir::KIR_VERSION_MAJOR) {
-        errors_.push_back("Incompatible KIR version: " +
+    if (program.version_major > dfx::DFX_VERSION_MAJOR) {
+        errors_.push_back("Incompatible DFX version: " +
                          std::to_string(program.version_major) + "." +
                          std::to_string(program.version_minor));
         return false;

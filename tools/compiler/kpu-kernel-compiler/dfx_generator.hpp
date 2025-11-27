@@ -1,8 +1,8 @@
 /**
- * @file kir_generator.hpp
- * @brief KIR (KPU Intermediate Representation) generator
+ * @file dfx_generator.hpp
+ * @brief DFX (Domain Flow Execution) generator
  *
- * Transforms parsed DFG operators into hardware-agnostic KIR programs.
+ * Transforms parsed DFG operators into hardware-agnostic DFX programs.
  * Uses TileOptimizer to determine tiling parameters and generates
  * the sequence of data movement and compute operations.
  */
@@ -10,18 +10,18 @@
 #pragma once
 
 #include "dfg_parser.hpp"
-#include <sw/compiler/kir/kir.hpp>
+#include <sw/compiler/dfx/dfx.hpp>
 #include <sw/compiler/tile_optimizer.hpp>
 #include <sw/compiler/l2_tile_scheduler.hpp>
 
 namespace sw::kpu::compiler {
 
 /**
- * @brief Options for KIR generation
+ * @brief Options for DFX generation
  */
-struct KIRGeneratorOptions {
+struct DFXGeneratorOptions {
     // Dataflow strategy selection
-    kir::DataflowStrategy dataflow = kir::DataflowStrategy::OUTPUT_STATIONARY;
+    dfx::DataflowStrategy dataflow = dfx::DataflowStrategy::OUTPUT_STATIONARY;
 
     // Tile optimization strategy
     TileOptimizer::Strategy tile_strategy = TileOptimizer::Strategy::ANALYTICAL;
@@ -35,47 +35,47 @@ struct KIRGeneratorOptions {
     // Verbose output for debugging
     bool verbose = false;
 
-    KIRGeneratorOptions() {
+    DFXGeneratorOptions() {
         // Default memory hierarchy from TileOptimizer
     }
 };
 
 /**
- * @brief Generates KIR programs from DFG operators
+ * @brief Generates DFX programs from DFG operators
  *
  * This class is the core of the compiler - it transforms high-level
  * operators into sequences of data movement and compute operations
  * that can be executed by the KPU.
  */
-class KIRGenerator {
+class DFXGenerator {
 public:
     /**
      * @brief Constructor
      * @param options Generation options
      */
-    explicit KIRGenerator(const KIRGeneratorOptions& options = KIRGeneratorOptions());
+    explicit DFXGenerator(const DFXGeneratorOptions& options = DFXGeneratorOptions());
 
     /**
-     * @brief Generate KIR program from a MATMUL operation
+     * @brief Generate DFX program from a MATMUL operation
      *
      * @param op_info Matrix operation information
      * @param graph_name Name of the source graph
-     * @return Generated KIR program
+     * @return Generated DFX program
      */
-    kir::Program generate_matmul(const MatrixOpInfo& op_info,
+    dfx::Program generate_matmul(const MatrixOpInfo& op_info,
                                   const std::string& graph_name);
 
     /**
-     * @brief Generate KIR program from a complete computational graph
+     * @brief Generate DFX program from a complete computational graph
      *
      * Handles multi-operator graphs by generating operations in
      * topological order and managing intermediate tensors.
      *
      * @param graph Parsed computational graph
      * @param ops Matrix operations extracted from graph
-     * @return Generated KIR program
+     * @return Generated DFX program
      */
-    kir::Program generate_program(const ComputationalGraph& graph,
+    dfx::Program generate_program(const ComputationalGraph& graph,
                                    const std::vector<MatrixOpInfo>& ops);
 
     /**
@@ -94,15 +94,15 @@ public:
     /**
      * @brief Set generation options
      */
-    void set_options(const KIRGeneratorOptions& options) { options_ = options; }
+    void set_options(const DFXGeneratorOptions& options) { options_ = options; }
 
     /**
      * @brief Get current options
      */
-    const KIRGeneratorOptions& options() const { return options_; }
+    const DFXGeneratorOptions& options() const { return options_; }
 
 private:
-    KIRGeneratorOptions options_;
+    DFXGeneratorOptions options_;
     TileOptimizer tile_optimizer_;
     GenerationStats stats_;
 
@@ -122,11 +122,11 @@ private:
      * @param depends_on Dependencies for the first operation
      * @return Operation ID of the final L1 load
      */
-    uint64_t generate_tile_load(kir::Program& program,
+    uint64_t generate_tile_load(dfx::Program& program,
                                 const std::string& tensor_name,
                                 const std::vector<size_t>& tile_idx,
                                 const std::vector<size_t>& tile_shape,
-                                kir::DataType dtype,
+                                dfx::DataType dtype,
                                 const std::vector<uint64_t>& depends_on);
 
     /**
@@ -142,11 +142,11 @@ private:
      * @param depends_on Dependencies (typically the compute that produced the tile)
      * @return Operation ID of the final store
      */
-    uint64_t generate_tile_store(kir::Program& program,
+    uint64_t generate_tile_store(dfx::Program& program,
                                  const std::string& tensor_name,
                                  const std::vector<size_t>& tile_idx,
                                  const std::vector<size_t>& tile_shape,
-                                 kir::DataType dtype,
+                                 dfx::DataType dtype,
                                  const std::vector<uint64_t>& depends_on);
 
     /**
@@ -160,17 +160,17 @@ private:
      * @param depends_on Dependencies
      * @return Compute operation ID
      */
-    uint64_t generate_matmul_compute(kir::Program& program,
-                                     const kir::TileSpec& a_tile,
-                                     const kir::TileSpec& b_tile,
-                                     const kir::TileSpec& c_tile,
+    uint64_t generate_matmul_compute(dfx::Program& program,
+                                     const dfx::TileSpec& a_tile,
+                                     const dfx::TileSpec& b_tile,
+                                     const dfx::TileSpec& c_tile,
                                      bool accumulate,
                                      const std::vector<uint64_t>& depends_on);
 
     /**
      * @brief Generate tile iteration loops
      */
-    void generate_tile_loops(kir::Program& program,
+    void generate_tile_loops(dfx::Program& program,
                              const TileOptimizer::TileConfig& tile_config,
                              size_t M, size_t N, size_t K);
 
@@ -181,7 +181,7 @@ private:
      * - Outer loops iterate over C tiles (output stationary)
      * - Inner loop streams through K dimension
      */
-    void generate_output_stationary_schedule(kir::Program& program,
+    void generate_output_stationary_schedule(dfx::Program& program,
                                               const MatrixOpInfo& op_info,
                                               const TileOptimizer::TileConfig& config);
 
@@ -191,17 +191,17 @@ private:
      * Loop order: for tk: for tj: for ti: compute(ti, tj, tk)
      * - B tiles stay resident longer
      */
-    void generate_weight_stationary_schedule(kir::Program& program,
+    void generate_weight_stationary_schedule(dfx::Program& program,
                                               const MatrixOpInfo& op_info,
                                               const TileOptimizer::TileConfig& config);
 
     /**
      * @brief Add tensor descriptor to program
      */
-    void add_tensor(kir::Program& program,
+    void add_tensor(dfx::Program& program,
                     const std::string& name,
                     const std::vector<size_t>& shape,
-                    kir::DataType dtype,
+                    dfx::DataType dtype,
                     bool is_constant,
                     bool is_output);
 
@@ -217,5 +217,9 @@ private:
      */
     uint64_t get_next_op_id() { return next_op_id_++; }
 };
+
+// Backward compatibility aliases
+using KIRGeneratorOptions = DFXGeneratorOptions;
+using KIRGenerator = DFXGenerator;
 
 } // namespace sw::kpu::compiler

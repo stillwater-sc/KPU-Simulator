@@ -15,7 +15,7 @@ ScheduleBinder::ScheduleBinder(const KPUSimulator::Config& config)
 {
 }
 
-BoundSchedule ScheduleBinder::bind(const kir::Program& program) {
+BoundSchedule ScheduleBinder::bind(const dfx::Program& program) {
     BoundSchedule schedule;
     schedule.program = &program;
     schedule.total_cycles = 0;
@@ -35,32 +35,32 @@ BoundSchedule ScheduleBinder::bind(const kir::Program& program) {
 
     for (const auto& op : program.operations) {
         BoundOperation bound;
-        bound.kir_op = op.get();
+        bound.dfx_op = op.get();
         bound.start_cycle = current_cycle;
 
-        if (auto* data_move = dynamic_cast<const kir::DataMoveOp*>(op.get())) {
+        if (auto* data_move = dynamic_cast<const dfx::DataMoveOp*>(op.get())) {
             // Determine which data movement engine to use based on levels
-            kir::MemoryLevel src_level = data_move->source.level;
-            kir::MemoryLevel dst_level = data_move->destination.level;
+            dfx::MemoryLevel src_level = data_move->source.level;
+            dfx::MemoryLevel dst_level = data_move->destination.level;
 
-            if (src_level == kir::MemoryLevel::EXTERNAL ||
-                dst_level == kir::MemoryLevel::EXTERNAL) {
+            if (src_level == dfx::MemoryLevel::EXTERNAL ||
+                dst_level == dfx::MemoryLevel::EXTERNAL) {
                 // Use DMA engine for external memory transfers
                 bound.dma_engine_id = current_dma;
                 current_dma = (current_dma + 1) % config_.dma_engine_count;
                 schedule.resources.dma_engines_used =
                     std::max(schedule.resources.dma_engines_used, current_dma + 1);
             }
-            else if ((src_level == kir::MemoryLevel::L3 && dst_level == kir::MemoryLevel::L2) ||
-                     (src_level == kir::MemoryLevel::L2 && dst_level == kir::MemoryLevel::L3)) {
+            else if ((src_level == dfx::MemoryLevel::L3 && dst_level == dfx::MemoryLevel::L2) ||
+                     (src_level == dfx::MemoryLevel::L2 && dst_level == dfx::MemoryLevel::L3)) {
                 // Use BlockMover for L3↔L2 transfers
                 bound.block_mover_id = current_block_mover;
                 current_block_mover = (current_block_mover + 1) % config_.block_mover_count;
                 schedule.resources.block_movers_used =
                     std::max(schedule.resources.block_movers_used, current_block_mover + 1);
             }
-            else if ((src_level == kir::MemoryLevel::L2 && dst_level == kir::MemoryLevel::L1) ||
-                     (src_level == kir::MemoryLevel::L1 && dst_level == kir::MemoryLevel::L2)) {
+            else if ((src_level == dfx::MemoryLevel::L2 && dst_level == dfx::MemoryLevel::L1) ||
+                     (src_level == dfx::MemoryLevel::L1 && dst_level == dfx::MemoryLevel::L2)) {
                 // Use Streamer for L2↔L1 transfers
                 bound.streamer_id = current_streamer;
                 current_streamer = (current_streamer + 1) % config_.streamer_count;
@@ -83,10 +83,10 @@ BoundSchedule ScheduleBinder::bind(const kir::Program& program) {
             bound.dest_addr = calculate_address(data_move->destination, dst_level);
 
             // Estimate cycles (simplified)
-            size_t bytes = data_move->source.size_bytes(kir::DataType::FLOAT32);
+            size_t bytes = data_move->source.size_bytes(dfx::DataType::FLOAT32);
             bound.end_cycle = bound.start_cycle + (bytes / 64);  // Simplified: 64 bytes/cycle
         }
-        else if (auto* compute = dynamic_cast<const kir::ComputeOp*>(op.get())) {
+        else if (auto* compute = dynamic_cast<const dfx::ComputeOp*>(op.get())) {
             // Compute operations use systolic array
             // Estimate cycles based on tile size
             size_t tile_m = compute->output.tile_shape[0];
@@ -98,7 +98,7 @@ BoundSchedule ScheduleBinder::bind(const kir::Program& program) {
             size_t flops_per_cycle = config_.systolic_array_rows * config_.systolic_array_cols * 2;
             bound.end_cycle = bound.start_cycle + (flops / flops_per_cycle);
         }
-        else if (auto* barrier = dynamic_cast<const kir::BarrierOp*>(op.get())) {
+        else if (auto* barrier = dynamic_cast<const dfx::BarrierOp*>(op.get())) {
             // Barriers have zero cycles
             bound.end_cycle = bound.start_cycle;
         }
@@ -121,25 +121,25 @@ BoundSchedule ScheduleBinder::bind(const kir::Program& program) {
     return schedule;
 }
 
-uint64_t ScheduleBinder::calculate_address(const kir::TileSpec& tile, kir::MemoryLevel level) {
+uint64_t ScheduleBinder::calculate_address(const dfx::TileSpec& tile, dfx::MemoryLevel level) {
     // Simplified address calculation
     // In a real implementation, this would use the AddressDecoder
 
     uint64_t base = 0;
     switch (level) {
-        case kir::MemoryLevel::EXTERNAL:
+        case dfx::MemoryLevel::EXTERNAL:
             base = config_.external_memory_base;
             break;
-        case kir::MemoryLevel::L3:
+        case dfx::MemoryLevel::L3:
             base = config_.l3_tile_base;
             break;
-        case kir::MemoryLevel::L2:
+        case dfx::MemoryLevel::L2:
             base = config_.l2_bank_base;
             break;
-        case kir::MemoryLevel::L1:
+        case dfx::MemoryLevel::L1:
             base = config_.l1_buffer_base;
             break;
-        case kir::MemoryLevel::REGISTER:
+        case dfx::MemoryLevel::REGISTER:
             return 0;  // Registers don't have addresses
     }
 

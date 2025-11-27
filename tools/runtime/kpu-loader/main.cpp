@@ -8,7 +8,7 @@
  *   kpu-loader program.kpu [options]
  *
  * This tool:
- * 1. Reads the .kpu object file (KIR program)
+ * 1. Reads the .kpu object file (DFX program)
  * 2. Binds abstract operations to concrete hardware resources
  * 3. Allocates memory in L1/L2/L3 based on micro-architecture
  * 4. Schedules operations on DMA engines, BlockMovers, and Streamers

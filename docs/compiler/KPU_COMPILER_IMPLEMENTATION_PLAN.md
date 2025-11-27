@@ -45,7 +45,7 @@ The design follows the NVIDIA PTX model where high-level abstractions remain har
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ Layer 2: KPU Intermediate Representation (KIR) - "PTX-equivalent"               │
+│ Layer 2: Domain Flow Execution (DFX) - "PTX-equivalent"                         │
 │ - Tiled computation specification (Ti, Tj, Tk parameters)                       │
 │ - Data movement commands (abstract DMA, BlockMover, Streamer ops)              │
 │ - Synchronization barriers                                                      │
@@ -74,20 +74,23 @@ The design follows the NVIDIA PTX model where high-level abstractions remain har
 
 ---
 
-## 2. PTX-Equivalent Intermediate Representation (KIR)
+## 2. PTX-Equivalent Intermediate Representation (DFX)
+
+DFX = Domain Flow Execution - the hardware-agnostic intermediate representation for KPU programs,
+analogous to NVIDIA's PTX (Parallel Thread Execution).
 
 ### 2.1 Design Principles
 
-The KIR must capture computation and data movement at a level that:
-1. **Hardware-agnostic**: Same KIR works on different KPU configurations
+The DFX must capture computation and data movement at a level that:
+1. **Hardware-agnostic**: Same DFX works on different KPU configurations
 2. **Expressive**: Captures all necessary scheduling decisions
 3. **Optimizable**: Allows driver-level optimization
 4. **Serializable**: Can be saved to disk and loaded later
 
-### 2.2 KIR Operations
+### 2.2 DFX Operations
 
 ```cpp
-namespace kir {
+namespace dfx {
 
 // ============================================================================
 // Memory Region Specification (Abstract - no concrete addresses)
@@ -182,12 +185,12 @@ struct TileLoop {
     std::vector<size_t> iteration_order;  // Pre-computed iteration sequence
 };
 
-} // namespace kir
+} // namespace dfx
 ```
 
 ### 2.3 Hardware-Agnostic Properties
 
-| Property | Specified in KIR | Determined by Driver |
+| Property | Specified in DFX | Determined by Driver |
 |----------|------------------|----------------------|
 | Tile dimensions (Ti, Tj, Tk) | ✓ | |
 | Tile iteration order | ✓ | |
@@ -228,7 +231,7 @@ struct TileLoop {
 │   - Shapes, dtypes, memory hints          │
 ├───────────────────────────────────────────┤
 │ Operation Sequence Section                │
-│   - Serialized KIR operations             │
+│   - Serialized DFX operations             │
 │   - DataMoveOps, ComputeOps, BarrierOps   │
 ├───────────────────────────────────────────┤
 │ Dependency Graph Section                  │
@@ -277,8 +280,8 @@ tools/
 │   │   ├── main.cpp
 │   │   ├── dfg_parser.hpp
 │   │   ├── dfg_parser.cpp
-│   │   ├── kir_generator.hpp
-│   │   ├── kir_generator.cpp
+│   │   ├── dfx_generator.hpp
+│   │   ├── dfx_generator.cpp
 │   │   ├── object_writer.hpp
 │   │   └── object_writer.cpp
 │   └── python/             # Python compiler tools
@@ -330,8 +333,8 @@ tools/
 - Create CMakeLists.txt for each category
 - Move existing tools to appropriate locations
 
-**5.1.2 Define KIR data structures**
-- Header files for KIR types
+**5.1.2 Define DFX data structures**
+- Header files for DFX types
 - Serialization/deserialization
 - Unit tests
 
@@ -347,14 +350,14 @@ tools/
 - Support for MATMUL operator extraction
 - Tensor shape and dependency analysis
 
-**5.2.2 KIR Generator**
-- Transform DFG operators to KIR operations
+**5.2.2 DFX Generator**
+- Transform DFG operators to DFX operations
 - Integrate TileOptimizer for tile size selection
 - Generate data movement operations
 - Create dependency graph
 
 **5.2.3 Object File Writer**
-- Serialize KIR to .kpu format
+- Serialize DFX to .kpu format
 - Include metadata and hints
 - Validate output
 
@@ -363,7 +366,7 @@ tools/
 **5.3.1 Object File Reader**
 - Load .kpu files
 - Validate format and version
-- Extract KIR operations
+- Extract DFX operations
 
 **5.3.2 Schedule Binder**
 - Bind abstract ops to concrete resources
@@ -398,7 +401,7 @@ The compiler must select tiling parameters that work across hardware configurati
 
 ```cpp
 struct TilingConstraints {
-    // Minimum requirements (from KIR)
+    // Minimum requirements (from DFX)
     size_t min_tile_elements;   // Must have enough work per tile
     size_t max_tiles_per_dim;   // Limit iteration overhead
 
@@ -459,7 +462,7 @@ kpu-kernel-compiler matmul.dfg \
     --verbose
 
 # Generate human-readable output
-kpu-kernel-compiler matmul.dfg --emit-kir --dump
+kpu-kernel-compiler matmul.dfg --emit-dfx --dump
 ```
 
 ### 7.2 kpu-loader
@@ -485,7 +488,7 @@ kpu-loader matmul.kpu --dry-run --verbose
 
 ### 8.1 Unit Tests
 
-- KIR serialization/deserialization
+- DFX serialization/deserialization
 - Object file read/write
 - Tile optimizer integration
 - Schedule binder correctness
@@ -508,8 +511,8 @@ kpu-loader matmul.kpu --dry-run --verbose
 
 | Component | Location |
 |-----------|----------|
-| KIR definitions | `include/sw/compiler/kir/` |
-| Object file format | `include/sw/compiler/object_file.hpp` |
+| DFX definitions | `include/sw/compiler/dfx/` |
+| Object file format | `include/sw/compiler/dfx/dfx_object_file.hpp` |
 | Kernel compiler | `tools/compiler/kpu-kernel-compiler/` |
 | Loader/driver | `tools/runtime/kpu-loader/` |
 | Tests | `tests/compiler/` |
@@ -537,7 +540,7 @@ kpu-loader matmul.kpu --dry-run --verbose
 
 1. **Approve this plan** - Review and iterate on design decisions
 2. **Create directory structure** - Set up new tools layout
-3. **Implement KIR headers** - Define core data structures
+3. **Implement DFX headers** - Define core data structures
 4. **Implement object file format** - JSON-based serialization
 5. **Build kernel compiler skeleton** - Main CLI with parsing
 6. **Integrate existing schedulers** - Connect TileOptimizer and L2TileScheduler
@@ -546,11 +549,11 @@ kpu-loader matmul.kpu --dry-run --verbose
 
 ---
 
-## Appendix A: Example KIR for MATMUL
+## Appendix A: Example DFX for MATMUL
 
 ```json
 {
-  "kir_version": "1.0",
+  "dfx_version": "1.0",
   "graph_name": "non-batched-2-input-matmul",
   "metadata": {
     "M": 4, "N": 4, "K": 16,
@@ -656,7 +659,7 @@ kpu-loader matmul.kpu --dry-run --verbose
 | Existing Component | Role in New System |
 |-------------------|-------------------|
 | `GraphLoader` | Used by kpu-kernel-compiler to parse .dfg files |
-| `TileOptimizer` | Generates Ti, Tj, Tk for KIR |
+| `TileOptimizer` | Generates Ti, Tj, Tk for DFX |
 | `L2TileScheduler` | Informs tile iteration order and reuse patterns |
 | `L3Scheduler` | Provides DRAM traffic estimates for hints |
 | `DMAEngine` | Target for driver binding of DATA_MOVE ops |

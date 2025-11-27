@@ -18,7 +18,7 @@
  */
 
 #include "dfg_parser.hpp"
-#include "kir_generator.hpp"
+#include "dfx_generator.hpp"
 #include "object_writer.hpp"
 
 #include <iostream>
@@ -56,13 +56,13 @@ void print_usage(const char* program_name) {
     std::cout << "                          analytical (default)\n";
     std::cout << "                          search\n";
     std::cout << "                          heuristic\n";
-    std::cout << "  --emit-kir              Print KIR to stdout\n";
+    std::cout << "  --emit-dfx              Print DFX to stdout\n";
     std::cout << "  --dump                  Dump parsed graph information\n";
     std::cout << "  -v, --verbose           Verbose output\n";
     std::cout << "  -h, --help              Show this help message\n";
     std::cout << "\nExamples:\n";
     std::cout << "  " << program_name << " matmul.dfg -o matmul.kpu\n";
-    std::cout << "  " << program_name << " matmul.dfg --emit-kir\n";
+    std::cout << "  " << program_name << " matmul.dfg --emit-dfx\n";
     std::cout << "  " << program_name << " conv2d.dfg -d weight-stationary -o conv2d.kpu\n";
 }
 
@@ -103,8 +103,8 @@ CommandLineArgs parse_args(int argc, char* argv[]) {
                 return args;
             }
         }
-        else if (arg == "--emit-kir") {
-            args.emit_kir = true;
+        else if (arg == "--emit-dfx" || arg == "--emit-kir") {
+            args.emit_kir = true;  // Keep field name for backward compatibility
         }
         else if (arg == "--dump") {
             args.dump_graph = true;
@@ -143,13 +143,13 @@ CommandLineArgs parse_args(int argc, char* argv[]) {
     return args;
 }
 
-sw::kpu::compiler::kir::DataflowStrategy parse_dataflow(const std::string& str) {
+sw::kpu::compiler::dfx::DataflowStrategy parse_dataflow(const std::string& str) {
     if (str == "output-stationary" || str == "os") {
-        return sw::kpu::compiler::kir::DataflowStrategy::OUTPUT_STATIONARY;
+        return sw::kpu::compiler::dfx::DataflowStrategy::OUTPUT_STATIONARY;
     } else if (str == "weight-stationary" || str == "ws") {
-        return sw::kpu::compiler::kir::DataflowStrategy::WEIGHT_STATIONARY;
+        return sw::kpu::compiler::dfx::DataflowStrategy::WEIGHT_STATIONARY;
     } else if (str == "input-stationary" || str == "is") {
-        return sw::kpu::compiler::kir::DataflowStrategy::INPUT_STATIONARY;
+        return sw::kpu::compiler::dfx::DataflowStrategy::INPUT_STATIONARY;
     }
     throw std::runtime_error("Unknown dataflow strategy: " + str);
 }
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
 
     try {
         if (args.verbose) {
-            std::cout << "KPU Kernel Compiler v" << sw::kpu::compiler::kir::kir_version_string() << "\n";
+            std::cout << "KPU Kernel Compiler v" << sw::kpu::compiler::dfx::dfx_version_string() << "\n";
             std::cout << "Input: " << args.input_file << "\n";
             std::cout << "Output: " << args.output_file << "\n";
             std::cout << "Dataflow: " << args.dataflow << "\n";
@@ -254,24 +254,24 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Configure KIR generator
-        sw::kpu::compiler::KIRGeneratorOptions gen_options;
+        // Configure DFX generator
+        sw::kpu::compiler::DFXGeneratorOptions gen_options;
         gen_options.dataflow = parse_dataflow(args.dataflow);
         gen_options.tile_strategy = parse_tile_strategy(args.tile_strategy);
         gen_options.verbose = args.verbose;
 
-        // Generate KIR program
+        // Generate DFX program
         if (args.verbose) {
-            std::cout << "\nGenerating KIR...\n";
+            std::cout << "\nGenerating DFX...\n";
         }
 
-        sw::kpu::compiler::KIRGenerator generator(gen_options);
+        sw::kpu::compiler::DFXGenerator generator(gen_options);
         auto program = generator.generate_program(*graph, matrix_ops);
 
-        // Emit KIR to stdout if requested
+        // Emit DFX to stdout if requested
         if (args.emit_kir) {
             sw::kpu::compiler::ObjectWriter writer;
-            std::cout << "\n=== KIR Program ===\n";
+            std::cout << "\n=== DFX Program ===\n";
             std::cout << writer.to_string(program);
             std::cout << "\n";
         }

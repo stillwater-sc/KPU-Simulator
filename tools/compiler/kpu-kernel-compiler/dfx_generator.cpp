@@ -1,28 +1,28 @@
 /**
- * @file kir_generator.cpp
- * @brief Implementation of KIR generator
+ * @file dfx_generator.cpp
+ * @brief Implementation of DFX generator
  */
 
-#include "kir_generator.hpp"
+#include "dfx_generator.hpp"
 #include <iostream>
 #include <algorithm>
 
 namespace sw::kpu::compiler {
 
-KIRGenerator::KIRGenerator(const KIRGeneratorOptions& options)
+DFXGenerator::DFXGenerator(const DFXGeneratorOptions& options)
     : options_(options),
       tile_optimizer_(options.memory_hierarchy),
       stats_{}
 {
 }
 
-kir::Program KIRGenerator::generate_matmul(const MatrixOpInfo& op_info,
+dfx::Program DFXGenerator::generate_matmul(const MatrixOpInfo& op_info,
                                             const std::string& graph_name) {
     // Reset state
     next_op_id_ = 1;
     stats_ = GenerationStats{};
 
-    kir::Program program;
+    dfx::Program program;
     program.name = graph_name;
     program.source_graph = graph_name;
     program.dataflow = options_.dataflow;
@@ -39,15 +39,15 @@ kir::Program KIRGenerator::generate_matmul(const MatrixOpInfo& op_info,
     TileOptimizer::TileConfig tile_config;
 
     switch (options_.dataflow) {
-        case kir::DataflowStrategy::OUTPUT_STATIONARY:
+        case dfx::DataflowStrategy::OUTPUT_STATIONARY:
             tile_config = tile_optimizer_.optimize(
                 op_info.M, op_info.N, op_info.K, options_.tile_strategy);
             break;
-        case kir::DataflowStrategy::WEIGHT_STATIONARY:
+        case dfx::DataflowStrategy::WEIGHT_STATIONARY:
             tile_config = tile_optimizer_.optimize_weight_stationary(
                 op_info.M, op_info.N, op_info.K);
             break;
-        case kir::DataflowStrategy::INPUT_STATIONARY:
+        case dfx::DataflowStrategy::INPUT_STATIONARY:
             tile_config = tile_optimizer_.optimize_input_stationary(
                 op_info.M, op_info.N, op_info.K);
             break;
@@ -75,13 +75,13 @@ kir::Program KIRGenerator::generate_matmul(const MatrixOpInfo& op_info,
 
     // Generate schedule based on dataflow strategy
     switch (options_.dataflow) {
-        case kir::DataflowStrategy::OUTPUT_STATIONARY:
+        case dfx::DataflowStrategy::OUTPUT_STATIONARY:
             generate_output_stationary_schedule(program, op_info, tile_config);
             break;
-        case kir::DataflowStrategy::WEIGHT_STATIONARY:
+        case dfx::DataflowStrategy::WEIGHT_STATIONARY:
             generate_weight_stationary_schedule(program, op_info, tile_config);
             break;
-        case kir::DataflowStrategy::INPUT_STATIONARY:
+        case dfx::DataflowStrategy::INPUT_STATIONARY:
             // TODO: Implement input stationary schedule
             generate_output_stationary_schedule(program, op_info, tile_config);
             break;
@@ -105,7 +105,7 @@ kir::Program KIRGenerator::generate_matmul(const MatrixOpInfo& op_info,
     stats_.estimated_compute_cycles = static_cast<double>(program.hints.estimated_compute_cycles);
 
     if (options_.verbose) {
-        std::cout << "KIR Generation Summary:\n";
+        std::cout << "DFX Generation Summary:\n";
         std::cout << "  Matrix: " << op_info.M << "x" << op_info.N << "x" << op_info.K << "\n";
         std::cout << "  Tiles: " << tile_config.Ti << "x" << tile_config.Tj << "x" << tile_config.Tk << "\n";
         std::cout << "  Tile grid: " << program.tiling.num_tiles_m << "x"
@@ -118,7 +118,7 @@ kir::Program KIRGenerator::generate_matmul(const MatrixOpInfo& op_info,
     return program;
 }
 
-kir::Program KIRGenerator::generate_program(const ComputationalGraph& graph,
+dfx::Program DFXGenerator::generate_program(const ComputationalGraph& graph,
                                              const std::vector<MatrixOpInfo>& ops) {
     if (ops.empty()) {
         throw std::runtime_error("No operations to compile");
@@ -129,7 +129,7 @@ kir::Program KIRGenerator::generate_program(const ComputationalGraph& graph,
     return generate_matmul(ops[0], graph.name);
 }
 
-void KIRGenerator::generate_tile_loops(kir::Program& program,
+void DFXGenerator::generate_tile_loops(dfx::Program& program,
                                         const TileOptimizer::TileConfig& tile_config,
                                         size_t M, size_t N, size_t K) {
     size_t num_m = ceil_div(M, tile_config.Ti);
@@ -140,39 +140,39 @@ void KIRGenerator::generate_tile_loops(kir::Program& program,
     // Output stationary: ti -> tj -> tk (C tiles outer)
     // Weight stationary: tk -> tj -> ti (B tiles outer)
 
-    kir::TileLoop ti_loop;
+    dfx::TileLoop ti_loop;
     ti_loop.induction_var = "ti";
     ti_loop.start = 0;
     ti_loop.end = num_m;
     ti_loop.step = 1;
 
-    kir::TileLoop tj_loop;
+    dfx::TileLoop tj_loop;
     tj_loop.induction_var = "tj";
     tj_loop.start = 0;
     tj_loop.end = num_n;
     tj_loop.step = 1;
 
-    kir::TileLoop tk_loop;
+    dfx::TileLoop tk_loop;
     tk_loop.induction_var = "tk";
     tk_loop.start = 0;
     tk_loop.end = num_k;
     tk_loop.step = 1;
 
     switch (options_.dataflow) {
-        case kir::DataflowStrategy::OUTPUT_STATIONARY:
+        case dfx::DataflowStrategy::OUTPUT_STATIONARY:
             program.tile_loops = {ti_loop, tj_loop, tk_loop};
             break;
-        case kir::DataflowStrategy::WEIGHT_STATIONARY:
+        case dfx::DataflowStrategy::WEIGHT_STATIONARY:
             program.tile_loops = {tk_loop, tj_loop, ti_loop};
             break;
-        case kir::DataflowStrategy::INPUT_STATIONARY:
+        case dfx::DataflowStrategy::INPUT_STATIONARY:
             program.tile_loops = {ti_loop, tk_loop, tj_loop};
             break;
     }
 }
 
-void KIRGenerator::generate_output_stationary_schedule(
-    kir::Program& program,
+void DFXGenerator::generate_output_stationary_schedule(
+    dfx::Program& program,
     const MatrixOpInfo& op_info,
     const TileOptimizer::TileConfig& config) {
 
@@ -212,19 +212,19 @@ void KIRGenerator::generate_output_stationary_schedule(
                     op_info.dtype, {});
 
                 // Compute: C += A * B
-                kir::TileSpec a_tile, b_tile, c_tile;
+                dfx::TileSpec a_tile, b_tile, c_tile;
                 a_tile.tensor_name = op_info.tensor_a;
-                a_tile.level = kir::MemoryLevel::L1;
+                a_tile.level = dfx::MemoryLevel::L1;
                 a_tile.tile_indices = {ti, tk};
                 a_tile.tile_shape = {tile_m, tile_k};
 
                 b_tile.tensor_name = op_info.tensor_b;
-                b_tile.level = kir::MemoryLevel::L1;
+                b_tile.level = dfx::MemoryLevel::L1;
                 b_tile.tile_indices = {tk, tj};
                 b_tile.tile_shape = {tile_k, tile_n};
 
                 c_tile.tensor_name = op_info.tensor_c;
-                c_tile.level = kir::MemoryLevel::REGISTER;
+                c_tile.level = dfx::MemoryLevel::REGISTER;
                 c_tile.tile_indices = {ti, tj};
                 c_tile.tile_shape = {tile_m, tile_n};
 
@@ -249,8 +249,8 @@ void KIRGenerator::generate_output_stationary_schedule(
     }
 }
 
-void KIRGenerator::generate_weight_stationary_schedule(
-    kir::Program& program,
+void DFXGenerator::generate_weight_stationary_schedule(
+    dfx::Program& program,
     const MatrixOpInfo& op_info,
     const TileOptimizer::TileConfig& config) {
 
@@ -293,19 +293,19 @@ void KIRGenerator::generate_weight_stationary_schedule(
                     op_info.dtype, {});
 
                 // Compute
-                kir::TileSpec a_tile, b_tile, c_tile;
+                dfx::TileSpec a_tile, b_tile, c_tile;
                 a_tile.tensor_name = op_info.tensor_a;
-                a_tile.level = kir::MemoryLevel::L1;
+                a_tile.level = dfx::MemoryLevel::L1;
                 a_tile.tile_indices = {ti, tk};
                 a_tile.tile_shape = {tile_m, tile_k};
 
                 b_tile.tensor_name = op_info.tensor_b;
-                b_tile.level = kir::MemoryLevel::L1;
+                b_tile.level = dfx::MemoryLevel::L1;
                 b_tile.tile_indices = {tk, tj};
                 b_tile.tile_shape = {tile_k, tile_n};
 
                 c_tile.tensor_name = op_info.tensor_c;
-                c_tile.level = kir::MemoryLevel::REGISTER;
+                c_tile.level = dfx::MemoryLevel::REGISTER;
                 c_tile.tile_indices = {ti, tj};
                 c_tile.tile_shape = {tile_m, tile_n};
 
@@ -339,24 +339,24 @@ void KIRGenerator::generate_weight_stationary_schedule(
     }
 }
 
-uint64_t KIRGenerator::generate_tile_load(kir::Program& program,
+uint64_t DFXGenerator::generate_tile_load(dfx::Program& program,
                                            const std::string& tensor_name,
                                            const std::vector<size_t>& tile_idx,
                                            const std::vector<size_t>& tile_shape,
-                                           kir::DataType dtype,
+                                           dfx::DataType dtype,
                                            const std::vector<uint64_t>& depends_on) {
     // Generate load chain: EXTERNAL → L3 → L2 → L1
 
     // EXTERNAL → L3
-    auto& ext_to_l3 = program.add_operation<kir::DataMoveOp>();
+    auto& ext_to_l3 = program.add_operation<dfx::DataMoveOp>();
     ext_to_l3.op_id = get_next_op_id();
-    ext_to_l3.move_type = kir::DataMoveType::LOAD;
+    ext_to_l3.move_type = dfx::DataMoveType::LOAD;
     ext_to_l3.source.tensor_name = tensor_name;
-    ext_to_l3.source.level = kir::MemoryLevel::EXTERNAL;
+    ext_to_l3.source.level = dfx::MemoryLevel::EXTERNAL;
     ext_to_l3.source.tile_indices = tile_idx;
     ext_to_l3.source.tile_shape = tile_shape;
     ext_to_l3.destination.tensor_name = tensor_name;
-    ext_to_l3.destination.level = kir::MemoryLevel::L3;
+    ext_to_l3.destination.level = dfx::MemoryLevel::L3;
     ext_to_l3.destination.tile_indices = tile_idx;
     ext_to_l3.destination.tile_shape = tile_shape;
     ext_to_l3.depends_on = depends_on;
@@ -365,15 +365,15 @@ uint64_t KIRGenerator::generate_tile_load(kir::Program& program,
     stats_.num_data_moves++;
 
     // L3 → L2
-    auto& l3_to_l2 = program.add_operation<kir::DataMoveOp>();
+    auto& l3_to_l2 = program.add_operation<dfx::DataMoveOp>();
     l3_to_l2.op_id = get_next_op_id();
-    l3_to_l2.move_type = kir::DataMoveType::LOAD;
+    l3_to_l2.move_type = dfx::DataMoveType::LOAD;
     l3_to_l2.source.tensor_name = tensor_name;
-    l3_to_l2.source.level = kir::MemoryLevel::L3;
+    l3_to_l2.source.level = dfx::MemoryLevel::L3;
     l3_to_l2.source.tile_indices = tile_idx;
     l3_to_l2.source.tile_shape = tile_shape;
     l3_to_l2.destination.tensor_name = tensor_name;
-    l3_to_l2.destination.level = kir::MemoryLevel::L2;
+    l3_to_l2.destination.level = dfx::MemoryLevel::L2;
     l3_to_l2.destination.tile_indices = tile_idx;
     l3_to_l2.destination.tile_shape = tile_shape;
     l3_to_l2.depends_on = {ext_to_l3.op_id};
@@ -381,15 +381,15 @@ uint64_t KIRGenerator::generate_tile_load(kir::Program& program,
     stats_.num_data_moves++;
 
     // L2 → L1
-    auto& l2_to_l1 = program.add_operation<kir::DataMoveOp>();
+    auto& l2_to_l1 = program.add_operation<dfx::DataMoveOp>();
     l2_to_l1.op_id = get_next_op_id();
-    l2_to_l1.move_type = kir::DataMoveType::LOAD;
+    l2_to_l1.move_type = dfx::DataMoveType::LOAD;
     l2_to_l1.source.tensor_name = tensor_name;
-    l2_to_l1.source.level = kir::MemoryLevel::L2;
+    l2_to_l1.source.level = dfx::MemoryLevel::L2;
     l2_to_l1.source.tile_indices = tile_idx;
     l2_to_l1.source.tile_shape = tile_shape;
     l2_to_l1.destination.tensor_name = tensor_name;
-    l2_to_l1.destination.level = kir::MemoryLevel::L1;
+    l2_to_l1.destination.level = dfx::MemoryLevel::L1;
     l2_to_l1.destination.tile_indices = tile_idx;
     l2_to_l1.destination.tile_shape = tile_shape;
     l2_to_l1.depends_on = {l3_to_l2.op_id};
@@ -399,24 +399,24 @@ uint64_t KIRGenerator::generate_tile_load(kir::Program& program,
     return l2_to_l1.op_id;
 }
 
-uint64_t KIRGenerator::generate_tile_store(kir::Program& program,
+uint64_t DFXGenerator::generate_tile_store(dfx::Program& program,
                                             const std::string& tensor_name,
                                             const std::vector<size_t>& tile_idx,
                                             const std::vector<size_t>& tile_shape,
-                                            kir::DataType dtype,
+                                            dfx::DataType dtype,
                                             const std::vector<uint64_t>& depends_on) {
     // Generate store chain: REGISTER → L1 → L2 → L3 → EXTERNAL
 
     // REGISTER → L1
-    auto& reg_to_l1 = program.add_operation<kir::DataMoveOp>();
+    auto& reg_to_l1 = program.add_operation<dfx::DataMoveOp>();
     reg_to_l1.op_id = get_next_op_id();
-    reg_to_l1.move_type = kir::DataMoveType::STORE;
+    reg_to_l1.move_type = dfx::DataMoveType::STORE;
     reg_to_l1.source.tensor_name = tensor_name;
-    reg_to_l1.source.level = kir::MemoryLevel::REGISTER;
+    reg_to_l1.source.level = dfx::MemoryLevel::REGISTER;
     reg_to_l1.source.tile_indices = tile_idx;
     reg_to_l1.source.tile_shape = tile_shape;
     reg_to_l1.destination.tensor_name = tensor_name;
-    reg_to_l1.destination.level = kir::MemoryLevel::L1;
+    reg_to_l1.destination.level = dfx::MemoryLevel::L1;
     reg_to_l1.destination.tile_indices = tile_idx;
     reg_to_l1.destination.tile_shape = tile_shape;
     reg_to_l1.depends_on = depends_on;
@@ -424,15 +424,15 @@ uint64_t KIRGenerator::generate_tile_store(kir::Program& program,
     stats_.num_data_moves++;
 
     // L1 → L2
-    auto& l1_to_l2 = program.add_operation<kir::DataMoveOp>();
+    auto& l1_to_l2 = program.add_operation<dfx::DataMoveOp>();
     l1_to_l2.op_id = get_next_op_id();
-    l1_to_l2.move_type = kir::DataMoveType::STORE;
+    l1_to_l2.move_type = dfx::DataMoveType::STORE;
     l1_to_l2.source.tensor_name = tensor_name;
-    l1_to_l2.source.level = kir::MemoryLevel::L1;
+    l1_to_l2.source.level = dfx::MemoryLevel::L1;
     l1_to_l2.source.tile_indices = tile_idx;
     l1_to_l2.source.tile_shape = tile_shape;
     l1_to_l2.destination.tensor_name = tensor_name;
-    l1_to_l2.destination.level = kir::MemoryLevel::L2;
+    l1_to_l2.destination.level = dfx::MemoryLevel::L2;
     l1_to_l2.destination.tile_indices = tile_idx;
     l1_to_l2.destination.tile_shape = tile_shape;
     l1_to_l2.depends_on = {reg_to_l1.op_id};
@@ -440,15 +440,15 @@ uint64_t KIRGenerator::generate_tile_store(kir::Program& program,
     stats_.num_data_moves++;
 
     // L2 → L3
-    auto& l2_to_l3 = program.add_operation<kir::DataMoveOp>();
+    auto& l2_to_l3 = program.add_operation<dfx::DataMoveOp>();
     l2_to_l3.op_id = get_next_op_id();
-    l2_to_l3.move_type = kir::DataMoveType::STORE;
+    l2_to_l3.move_type = dfx::DataMoveType::STORE;
     l2_to_l3.source.tensor_name = tensor_name;
-    l2_to_l3.source.level = kir::MemoryLevel::L2;
+    l2_to_l3.source.level = dfx::MemoryLevel::L2;
     l2_to_l3.source.tile_indices = tile_idx;
     l2_to_l3.source.tile_shape = tile_shape;
     l2_to_l3.destination.tensor_name = tensor_name;
-    l2_to_l3.destination.level = kir::MemoryLevel::L3;
+    l2_to_l3.destination.level = dfx::MemoryLevel::L3;
     l2_to_l3.destination.tile_indices = tile_idx;
     l2_to_l3.destination.tile_shape = tile_shape;
     l2_to_l3.depends_on = {l1_to_l2.op_id};
@@ -456,15 +456,15 @@ uint64_t KIRGenerator::generate_tile_store(kir::Program& program,
     stats_.num_data_moves++;
 
     // L3 → EXTERNAL
-    auto& l3_to_ext = program.add_operation<kir::DataMoveOp>();
+    auto& l3_to_ext = program.add_operation<dfx::DataMoveOp>();
     l3_to_ext.op_id = get_next_op_id();
-    l3_to_ext.move_type = kir::DataMoveType::STORE;
+    l3_to_ext.move_type = dfx::DataMoveType::STORE;
     l3_to_ext.source.tensor_name = tensor_name;
-    l3_to_ext.source.level = kir::MemoryLevel::L3;
+    l3_to_ext.source.level = dfx::MemoryLevel::L3;
     l3_to_ext.source.tile_indices = tile_idx;
     l3_to_ext.source.tile_shape = tile_shape;
     l3_to_ext.destination.tensor_name = tensor_name;
-    l3_to_ext.destination.level = kir::MemoryLevel::EXTERNAL;
+    l3_to_ext.destination.level = dfx::MemoryLevel::EXTERNAL;
     l3_to_ext.destination.tile_indices = tile_idx;
     l3_to_ext.destination.tile_shape = tile_shape;
     l3_to_ext.depends_on = {l2_to_l3.op_id};
@@ -474,15 +474,15 @@ uint64_t KIRGenerator::generate_tile_store(kir::Program& program,
     return l3_to_ext.op_id;
 }
 
-uint64_t KIRGenerator::generate_matmul_compute(kir::Program& program,
-                                                const kir::TileSpec& a_tile,
-                                                const kir::TileSpec& b_tile,
-                                                const kir::TileSpec& c_tile,
+uint64_t DFXGenerator::generate_matmul_compute(dfx::Program& program,
+                                                const dfx::TileSpec& a_tile,
+                                                const dfx::TileSpec& b_tile,
+                                                const dfx::TileSpec& c_tile,
                                                 bool accumulate,
                                                 const std::vector<uint64_t>& depends_on) {
-    auto& compute = program.add_operation<kir::ComputeOp>();
+    auto& compute = program.add_operation<dfx::ComputeOp>();
     compute.op_id = get_next_op_id();
-    compute.compute_type = kir::ComputeType::MATMUL_TILE;
+    compute.compute_type = dfx::ComputeType::MATMUL_TILE;
     compute.inputs = {a_tile, b_tile};
     compute.output = c_tile;
     compute.accumulate = accumulate;
@@ -495,13 +495,13 @@ uint64_t KIRGenerator::generate_matmul_compute(kir::Program& program,
     return compute.op_id;
 }
 
-void KIRGenerator::add_tensor(kir::Program& program,
+void DFXGenerator::add_tensor(dfx::Program& program,
                                const std::string& name,
                                const std::vector<size_t>& shape,
-                               kir::DataType dtype,
+                               dfx::DataType dtype,
                                bool is_constant,
                                bool is_output) {
-    kir::TensorDescriptor tensor;
+    dfx::TensorDescriptor tensor;
     tensor.name = name;
     tensor.shape = shape;
     tensor.dtype = dtype;

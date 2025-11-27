@@ -1,13 +1,17 @@
 /**
- * @file kir.hpp
- * @brief KPU Intermediate Representation (KIR) - The PTX-equivalent layer
+ * @file dfx.hpp
+ * @brief Domain Flow Execution (DFX) - The PTX-equivalent layer for KPU
  *
- * KIR is the hardware-agnostic intermediate representation for KPU programs.
- * Like NVIDIA's PTX, KIR captures computation and data movement semantics
+ * DFX is the hardware-agnostic intermediate representation for KPU programs.
+ * Like NVIDIA's PTX, DFX captures computation and data movement semantics
  * without binding to specific hardware resources.
  *
+ * DFX = Domain Flow Execution
+ * - "Domain Flow" refers to the data flow patterns in domain-specific computations
+ * - "Execution" emphasizes the executable nature of this representation
+ *
  * Key Design Principles:
- * 1. Hardware-agnostic: Same KIR works on different KPU configurations
+ * 1. Hardware-agnostic: Same DFX works on different KPU configurations
  * 2. Expressive: Captures all necessary scheduling decisions
  * 3. Optimizable: Allows driver-level optimization
  * 4. Serializable: Can be saved to disk and loaded later
@@ -29,20 +33,20 @@
 #include <variant>
 #include <memory>
 
-namespace sw::kpu::compiler::kir {
+namespace sw::kpu::compiler::dfx {
 
 // ============================================================================
 // Version and Identification
 // ============================================================================
 
-constexpr uint32_t KIR_VERSION_MAJOR = 1;
-constexpr uint32_t KIR_VERSION_MINOR = 0;
-constexpr uint32_t KIR_VERSION_PATCH = 0;
+constexpr uint32_t DFX_VERSION_MAJOR = 1;
+constexpr uint32_t DFX_VERSION_MINOR = 0;
+constexpr uint32_t DFX_VERSION_PATCH = 0;
 
-inline std::string kir_version_string() {
-    return std::to_string(KIR_VERSION_MAJOR) + "." +
-           std::to_string(KIR_VERSION_MINOR) + "." +
-           std::to_string(KIR_VERSION_PATCH);
+inline std::string dfx_version_string() {
+    return std::to_string(DFX_VERSION_MAJOR) + "." +
+           std::to_string(DFX_VERSION_MINOR) + "." +
+           std::to_string(DFX_VERSION_PATCH);
 }
 
 // ============================================================================
@@ -50,7 +54,7 @@ inline std::string kir_version_string() {
 // ============================================================================
 
 /**
- * @brief Element data types supported by KIR
+ * @brief Element data types supported by DFX
  */
 enum class DataType {
     FLOAT32,    ///< 32-bit floating point
@@ -220,7 +224,7 @@ struct TileSpec {
 // ============================================================================
 
 /**
- * @brief Base class for all KIR operations
+ * @brief Base class for all DFX operations
  */
 struct Operation {
     uint64_t op_id;                     ///< Unique operation identifier
@@ -443,11 +447,11 @@ struct PerformanceHints {
 };
 
 // ============================================================================
-// KIR Program
+// DFX Program
 // ============================================================================
 
 /**
- * @brief A complete KIR program representing a compiled kernel
+ * @brief A complete DFX program representing a compiled kernel
  *
  * Contains all information needed for the driver to execute the kernel
  * on any compatible KPU configuration.
@@ -456,9 +460,9 @@ struct Program {
     // Metadata
     std::string name;                   ///< Program/kernel name
     std::string source_graph;           ///< Original DFG file name
-    uint32_t version_major;             ///< KIR version major
-    uint32_t version_minor;             ///< KIR version minor
-    uint32_t version_patch;             ///< KIR version patch
+    uint32_t version_major;             ///< DFX version major
+    uint32_t version_minor;             ///< DFX version minor
+    uint32_t version_patch;             ///< DFX version patch
 
     // Configuration
     DataflowStrategy dataflow;          ///< Dataflow strategy
@@ -477,9 +481,9 @@ struct Program {
     PerformanceHints hints;
 
     Program()
-        : version_major(KIR_VERSION_MAJOR),
-          version_minor(KIR_VERSION_MINOR),
-          version_patch(KIR_VERSION_PATCH),
+        : version_major(DFX_VERSION_MAJOR),
+          version_minor(DFX_VERSION_MINOR),
+          version_patch(DFX_VERSION_PATCH),
           dataflow(DataflowStrategy::OUTPUT_STATIONARY) {}
 
     /**
@@ -514,4 +518,4 @@ struct Program {
     }
 };
 
-} // namespace sw::kpu::compiler::kir
+} // namespace sw::kpu::compiler::dfx

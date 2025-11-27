@@ -9,7 +9,7 @@
 #pragma once
 
 #include <sw/compiler/graph_loader.hpp>
-#include <sw/compiler/kir/kir.hpp>
+#include <sw/compiler/dfx/dfx.hpp>
 #include <string>
 #include <vector>
 #include <memory>
@@ -38,12 +38,12 @@ struct MatrixOpInfo {
     std::optional<std::string> tensor_bias;
 
     // Data type
-    kir::DataType dtype;
+    dfx::DataType dtype;
 
     MatrixOpInfo()
         : op_type(OperatorType::MATMUL),
           M(0), N(0), K(0),
-          dtype(kir::DataType::FLOAT32) {}
+          dtype(dfx::DataType::FLOAT32) {}
 };
 
 /**
@@ -93,13 +93,13 @@ private:
      *
      * Format: "tensor<4x16xf32>" -> shape=[4,16], dtype=f32
      */
-    static std::pair<std::vector<size_t>, kir::DataType>
+    static std::pair<std::vector<size_t>, dfx::DataType>
     parse_tensor_type(const std::string& type_str);
 
     /**
-     * @brief Convert OperatorType to KIR DataType based on tensor info
+     * @brief Convert OperatorType to DFX DataType based on tensor info
      */
-    static kir::DataType infer_dtype(const TensorDescriptor& tensor);
+    static dfx::DataType infer_dtype(const TensorDescriptor& tensor);
 };
 
 } // namespace sw::kpu::compiler

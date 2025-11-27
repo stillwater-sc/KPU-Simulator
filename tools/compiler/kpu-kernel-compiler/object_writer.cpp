@@ -14,7 +14,7 @@ ObjectWriter::ObjectWriter(const ObjectWriterOptions& options)
 {
 }
 
-void ObjectWriter::write(const kir::Program& program, const std::string& filename) {
+void ObjectWriter::write(const dfx::Program& program, const std::string& filename) {
     std::ofstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open file for writing: " + filename);
@@ -23,12 +23,12 @@ void ObjectWriter::write(const kir::Program& program, const std::string& filenam
     write(program, file);
 }
 
-void ObjectWriter::write(const kir::Program& program, std::ostream& os) {
+void ObjectWriter::write(const dfx::Program& program, std::ostream& os) {
     os << to_string(program);
 }
 
-std::string ObjectWriter::to_string(const kir::Program& program) {
-    kir::json j = kir::program_to_json(program);
+std::string ObjectWriter::to_string(const dfx::Program& program) {
+    dfx::json j = dfx::program_to_json(program);
 
     // Remove labels if not requested
     if (!options_.include_labels) {

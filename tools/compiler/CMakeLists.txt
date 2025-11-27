@@ -11,7 +11,7 @@ kpu_add_tool(kernel-compiler
     SOURCES
         kpu-kernel-compiler/main.cpp
         kpu-kernel-compiler/dfg_parser.cpp
-        kpu-kernel-compiler/kir_generator.cpp
+        kpu-kernel-compiler/dfx_generator.cpp
         kpu-kernel-compiler/object_writer.cpp
     LIBS
         nlohmann_json::nlohmann_json

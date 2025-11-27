@@ -1,8 +1,8 @@
 /**
- * @file object_file.hpp
+ * @file dfx_object_file.hpp
  * @brief KPU Object File (.kpu) format definitions
  *
- * Defines the serialization format for KIR programs. The object file
+ * Defines the serialization format for DFX programs. The object file
  * contains all information needed to load and execute a kernel on
  * the KPU simulator.
  *
@@ -13,13 +13,13 @@
 
 #pragma once
 
-#include <sw/compiler/kir/kir.hpp>
+#include <sw/compiler/dfx/dfx.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <fstream>
 #include <stdexcept>
 
-namespace sw::kpu::compiler::kir {
+namespace sw::kpu::compiler::dfx {
 
 // Use nlohmann::json for serialization
 using json = nlohmann::json;
@@ -332,13 +332,13 @@ inline std::unique_ptr<Operation> operation_from_json(const json& j) {
 // ============================================================================
 
 /**
- * @brief Serialize a KIR Program to JSON
+ * @brief Serialize a DFX Program to JSON
  */
 inline json program_to_json(const Program& program) {
     json j;
 
     // Metadata
-    j["kir_version"] = kir_version_string();
+    j["dfx_version"] = dfx_version_string();
     j["name"] = program.name;
     j["source_graph"] = program.source_graph;
 
@@ -366,7 +366,7 @@ inline json program_to_json(const Program& program) {
 }
 
 /**
- * @brief Deserialize a KIR Program from JSON
+ * @brief Deserialize a DFX Program from JSON
  */
 inline Program program_from_json(const json& j) {
     Program program;
@@ -375,8 +375,8 @@ inline Program program_from_json(const json& j) {
     program.name = j.at("name").get<std::string>();
     program.source_graph = j.value("source_graph", std::string{});
 
-    // Parse version if present
-    if (j.contains("kir_version")) {
+    // Parse version if present (support both old kir_version and new dfx_version)
+    if (j.contains("dfx_version") || j.contains("kir_version")) {
         // Could validate version here
     }
 
@@ -415,7 +415,7 @@ inline Program program_from_json(const json& j) {
 constexpr const char* KPU_OBJECT_MAGIC = "KPU";
 
 /**
- * @brief Write a KIR program to a .kpu object file
+ * @brief Write a DFX program to a .kpu object file
  *
  * @param program The program to write
  * @param filename Output filename (should end in .kpu)
@@ -439,7 +439,7 @@ inline void write_object_file(const Program& program,
 }
 
 /**
- * @brief Read a KIR program from a .kpu object file
+ * @brief Read a DFX program from a .kpu object file
  *
  * @param filename Input filename (should end in .kpu)
  * @return Loaded program
@@ -456,4 +456,4 @@ inline Program read_object_file(const std::string& filename) {
     return program_from_json(j);
 }
 
-} // namespace sw::kpu::compiler::kir
+} // namespace sw::kpu::compiler::dfx
