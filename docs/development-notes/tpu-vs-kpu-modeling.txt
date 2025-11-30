@@ -1,0 +1,21 @@
+
+  What Should Be Modeled (Per Your Specification)
+
+  TPU (Weight-Stationary):
+  - Load weights into array registers (one-time setup)
+  - Shift inputs through array (N×N register writes per input row)
+  - Shift partial sums through array (N×N register writes per output)
+  - Total: 3 matrices × N×N register writes
+
+  KPU (Streaming Dataflow):
+  - Stream weights through array (with token control: 1.5× energy)
+  - Stream inputs through array (with token control: 1.5× energy)
+  - Outputs stay local (no streaming)
+  - Total: 2 matrices × 1.5× = 3× equivalent
+
+automotive company have no clue about the computer science
+
+we provide 
+- design explorer
+- compiler/runtime
+- energy efficient IP
