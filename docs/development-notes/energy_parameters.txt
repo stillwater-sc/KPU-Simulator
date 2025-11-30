@@ -1,0 +1,551 @@
+# CPU Energy Parameters (based on literature for modern server CPUs)
+# Process: 7nm (Intel 4 / AMD Zen 4)
+# Frequency: 3.0-4.0 GHz
+# Voltage: ~0.9V
+
+CPU_ENERGY_PARAMS = {
+    # Instruction overhead
+    'instruction_fetch_pj': 1.5,      # I-cache read (64B line)
+    'instruction_decode_pj': 0.8,     # x86-64 variable length decode
+    'instructions_per_op': 2.0,       # x86 CISC overhead (micro-ops)
+
+    # Register file (180 physical registers, 6-8 read ports, 3-4 write ports)
+    'register_read_pj': 2.5,          # Per read port access
+    'register_write_pj': 3.0,         # Per write port access
+
+    # Execution units
+    'alu_energy_pj': 4.0,             # Integer/FP ALU operation
+
+    # Memory hierarchy (per byte)
+    'l1_cache_pj_per_byte': 1.0,      # L1 D-cache
+    'l2_cache_pj_per_byte': 2.5,      # L2 cache
+    'l3_cache_pj_per_byte': 5.0,      # L3/LLC
+    'dram_pj_per_byte': 20.0,         # DDR4/DDR5
+}
+
+# DSP Energy Parameters (based on Qualcomm Hexagon / TI C7x)
+# Process: 5-7nm
+# Frequency: 1.0-1.5 GHz
+# Voltage: ~0.7V
+
+DSP_ENERGY_PARAMS = {
+    # VLIW instruction overhead
+    'vliw_fetch_pj': 2.5,             # VLIW bundle (256-512 bit)
+    'vliw_decode_pj': 0.8,            # 4-wide parallel decode
+    'vliw_width': 4,                  # Operations per VLIW bundle
+
+    # Register file (VLIW needs many ports: 8+ read, 4 write)
+    'register_read_pj': 1.5,          # Per read (more ports than CPU!)
+    'register_write_pj': 1.8,         # Per write
+
+    # Execution units
+    'tensor_mac_pj': 0.4,             # Tensor/MAC unit (INT8/INT16)
+    'vector_op_pj': 0.8,              # Vector unit (SIMD)
+    'scalar_op_pj': 2.0,              # Scalar ALU
+
+    # Workload mix (typical AI workload)
+    'mac_fraction': 0.70,             # 70% MACs
+    'vector_fraction': 0.20,          # 20% vector ops
+    'scalar_fraction': 0.10,          # 10% scalar ops
+
+    # Memory (software-managed scratchpad)
+    'scratchpad_pj_per_byte': 0.8,    # SRAM scratchpad (no tag overhead!)
+    'dram_pj_per_byte': 15.0,         # LPDDR4/5
+}
+
+# GPU Energy Parameters (based on NVIDIA H100 / modern datacenter GPUs)
+# Process: 4nm (TSMC)
+# Frequency: 1.8-2.0 GHz
+# Voltage: ~0.8V
+
+GPU_ENERGY_PARAMS = {
+    # Instruction overhead (amortized across warp)
+    'instruction_fetch_pj': 2.0,      # Per warp (shared by 32 threads)
+    'instruction_decode_pj': 0.5,     # SIMT decode + predication
+    'instructions_per_op': 0.1,       # Amortized across 32 threads
+
+    # Register file (256KB per SM, banked)
+    'register_access_pj': 0.6,        # Per access (banked structure)
+
+    # Execution units
+    'tensor_core_mac_pj': 0.3,        # Tensor Core MAC (FP16/BF16)
+    'cuda_core_mac_pj': 0.8,          # CUDA Core MAC (FP32)
+    'tensor_core_utilization': 0.8,   # Fraction using Tensor Cores
+
+    # SIMT Fixed Overhead (per kernel invocation)
+    'kernel_launch_pj': 100_000.0,    # ~100 nJ per kernel launch
+    'sm_activation_pj': 5_000.0,      # Per SM activation
+    'memory_controller_pj': 50_000.0, # Memory subsystem setup
+
+    # SIMT Variable Overhead
+    'warp_scheduler_pj': 0.5,         # Per scheduling decision
+    'thread_context_pj': 0.2,         # Per thread context access
+    'scoreboard_pj': 0.3,             # Per dependency check
+
+    # Coherence (L2+ modes only)
+    'request_queue_pj': 1.0,          # Per request enqueue
+    'coalesce_pj': 0.8,               # Address coalescing
+    'l1_tag_pj': 0.5,                 # L1 tag lookup
+    'l2_directory_pj': 1.5,           # L2 coherence directory
+    'ordering_pj': 0.3,               # Memory ordering
+
+    # Coherence (L1 mode - shared memory)
+    'bank_conflict_pj': 0.3,          # Bank conflict check
+
+    # Synchronization
+    'divergence_mask_pj': 1.0,        # Warp divergence
+    'reconverge_pj': 2.0,             # Reconvergence stack
+    'barrier_pj': 10.0,               # Thread block barrier
+    'atomic_pj': 5.0,                 # Atomic operation
+
+    # Memory hierarchy (per byte)
+    'shared_l1_pj_per_byte': 0.25,    # Shared memory / L1 unified
+    'l2_cache_pj_per_byte': 0.8,      # L2 cache
+    'hbm_pj_per_byte': 10.0,          # HBM2/HBM3
+
+    # Divergence rate
+    'warp_divergence_rate': 0.05,     # 5% of ops cause divergence
+}
+
+# TPU Energy Parameters (based on Google TPU v4 / Coral Edge TPU)
+# Process: 7nm
+# Frequency: 1.0-1.5 GHz
+# Voltage: ~0.75V
+
+TPU_ENERGY_PARAMS = {
+    # Systolic array dimensions
+    'array_size': 128,                # 128x128 systolic array (TPU v4)
+
+    # Systolic compute (extremely efficient!)
+    'mac_pj': 0.1,                    # Per MAC in systolic array
+    'accumulator_pj': 0.05,           # Per accumulation
+    'activation_pj': 0.2,             # Per activation function
+
+    # Data loading overhead
+    'weight_load_pj_per_byte': 0.5,   # Loading weights into systolic array
+    'input_feed_pj_per_byte': 0.3,    # Feeding inputs (one edge)
+    'output_drain_pj_per_byte': 0.3,  # Draining outputs (one edge)
+
+    # Control overhead (minimal for systolic)
+    'control_pj_per_tile': 50.0,      # Control per matrix tile
+    'config_pj': 1000.0,              # Configuration overhead
+
+    # Memory hierarchy
+    'sram_pj_per_byte': 0.5,          # On-chip SRAM buffer
+    'hbm_pj_per_byte': 8.0,           # HBM (more efficient than GPU HBM)
+
+    # Utilization factors
+    'weight_reuse': 64,               # Weight reuse factor (batch size effect)
+    'input_reuse': 128,               # Input reuse (filter size effect)
+}
+
+# KPU Energy Parameters (based on Stillwater KPU-T64 / Domain Flow Architecture)
+# Process: 16nm (edge), moving to 7nm for higher tiers
+# Frequency: 900 MHz (T64), 1.4 GHz (T256)
+# Voltage: ~0.8V
+
+KPU_ENERGY_PARAMS = {
+    # Tile array configuration (T64 baseline)
+    'num_tiles': 64,                  # 8x8 heterogeneous tile array
+    'int8_tiles': 44,                 # 70% INT8 tiles
+    'bf16_tiles': 13,                 # 20% BF16 tiles
+    'matrix_tiles': 7,                # 10% Matrix tiles
+
+    # Domain Flow overhead (per inference / domain program execution)
+    # These are one-time costs, NOT per-operation
+    'domain_program_load_pj': 500.0,  # Load domain flow program (once per layer)
+    'domain_tracker_pj': 20.0,        # Domain tracking per tile activation
+    'network_overlay_pj': 100.0,      # Configure SURE network overlay
+
+    # Stream processing (continuous data flow)
+    'stream_setup_pj': 50.0,          # Stream buffer initialization
+    'stream_sync_pj': 10.0,           # Inter-tile synchronization
+    'stream_pj_per_byte': 0.15,       # Per-byte streaming (very efficient)
+
+    # Domain Flow compute (extremely efficient - no instruction fetch!)
+    'mac_int8_pj': 0.25,              # INT8 MAC in domain flow tile
+    'mac_bf16_pj': 0.40,              # BF16 MAC
+    'mac_fp32_pj': 0.80,              # FP32 MAC (less common)
+    'accumulator_pj': 0.08,           # Per accumulation
+    'activation_pj': 0.12,            # Per activation (ReLU/etc)
+
+    # Workload mix (typical AI inference)
+    'int8_fraction': 0.70,            # 70% INT8 ops
+    'bf16_fraction': 0.20,            # 20% BF16 ops
+    'fp32_fraction': 0.10,            # 10% FP32 ops
+
+    # Distributed scratchpad memory (256KB per tile - no cache tags!)
+    'scratchpad_read_pj_per_byte': 0.2,   # L1 scratchpad read
+    'scratchpad_write_pj_per_byte': 0.3,  # L1 scratchpad write
+    'l2_sram_pj_per_byte': 0.7,           # Tile-local L2 SRAM
+    'l3_sram_pj_per_byte': 1.5,           # Shared L3 SRAM
+    'dram_pj_per_byte': 12.0,             # LPDDR5 (edge devices)
+
+    # Efficiency factors (Domain Flow advantage)
+    'tile_utilization': 0.85,         # 85% typical (near 100% at batch=1!)
+    'pipeline_efficiency': 0.90,      # Minimal pipeline bubbles
+    'domain_flow_efficiency': 0.95,   # SURE execution efficiency
+
+    # Tiling overhead (when data doesn't fit in 256KB scratchpad)
+    'tiling_overhead_per_iteration': 0.10,  # 10% overhead per tiling iteration
+}
+
+
+
+####
+
+Changes required to make TechnologyProfile the required (and only) source for energy parameters. Here's a summary of what was done:
+
+  Summary of Changes
+
+  Core Energy Model Files
+
+  1. technology_profile.py - Added DEFAULT_PROFILE = DATACENTER_7NM_DDR5 export for convenient default usage
+  2. architectural_energy.py - Updated all four energy models:
+    - StoredProgramEnergyModel - tech_profile required, energy fields derived in __post_init__
+    - DataParallelEnergyModel - tech_profile required, energy fields derived in __post_init__
+    - SystolicArrayEnergyModel - tech_profile required, energy fields derived in __post_init__
+    - DomainFlowEnergyModel - tech_profile required, energy fields derived in __post_init__
+
+  Cycle Energy Models (removed hardcoded *_ENERGY_PARAMS)
+
+  3. cycle_energy/cpu.py - Removed CPU_ENERGY_PARAMS, tech_profile required, raises ValueError if missing
+  4. cycle_energy/gpu.py - Removed GPU_ENERGY_PARAMS, tech_profile required
+  5. cycle_energy/tpu.py - Removed TPU_ENERGY_PARAMS, tech_profile required
+  6. cycle_energy/kpu.py - Removed KPU_ENERGY_PARAMS, tech_profile required
+  7. cycle_energy/dsp.py - Removed DSP_ENERGY_PARAMS, tech_profile required
+
+  Hardware Mappers (pass tech_profile to energy models)
+
+  8. mappers/cpu.py - Intel Xeon and Jetson Orin CPU mappers use appropriate profiles
+  9. mappers/gpu.py - H100, B100, Jetson Orin GPU mappers use appropriate profiles
+  10. mappers/accelerators/tpu.py - TPU v4 mapper uses DATACENTER_7NM_DDR5
+  11. models/edge/tpu_edge_pro.py - Edge TPU uses EDGE_8NM_LPDDR5
+
+  CLI Tools (pass tech_profile)
+
+  12. cli/compare_architecture_energy.py - All calls to build_*_cycle_energy pass DEFAULT_PROFILE
+  13. cli/spm_architectural_energy.py - All calls to build_*_cycle_energy pass DEFAULT_PROFILE
+
+  Tests (pass tech_profile)
+
+  14. tests/test_end_to_end_phase3.py - Uses DEFAULT_PROFILE with DataParallelEnergyModel
+  15. tests/test_energy_model_phase3.py - Uses DEFAULT_PROFILE with DataParallelEnergyModel
+
+  Examples (pass tech_profile)
+
+  16. examples/demo_architectural_energy.py - Uses appropriate profiles for each architecture class
+
+  Key Benefits
+
+  - Single source of truth: Energy parameters now come exclusively from TechnologyProfile
+  - No dual definitions: Removed all hardcoded *_ENERGY_PARAMS dictionaries
+  - Clear error messages: Models raise ValueError with guidance when tech_profile is missing
+  - Technology-aware: Energy scales correctly with process node (3nm to 28nm) and memory type (DDR to HBM)
+  - Reduced maintenance burden: Only need to update technology_profile.py to change energy parameters
+
+# Creating consistent technology profiles for the different architectures
+
+ I've implemented the product category approach for fair architectural energy comparisons. Here's what was done:
+
+  Changes to technology_profile.py
+
+  1. Added ProductCategoryProfiles dataclass - Groups architecture-specific profiles that share the same process node and memory technology
+  2. Created factory functions for each architecture type:
+    - _create_category_cpu_profile() - Applies custom_datacenter multiplier (2.75x) for datacenter CPUs, standard cells for edge/mobile
+    - _create_category_gpu_profile() - Uses tensor_core multiplier (0.85x)
+    - _create_category_tpu_profile() - Uses systolic_mac multiplier (0.80x)
+    - _create_category_kpu_profile() - Uses domain_flow multiplier (0.75x)
+  3. Defined 4 product categories:
+    - datacenter: 4nm + HBM3 (H100, TPU v5p, EPYC)
+    - embodied_ai: 8nm + LPDDR5 (Jetson Thor, Hailo-15H)
+    - edge_ai: 8nm + LPDDR4X (Jetson Orin NX, Coral Edge TPU)
+    - mobile: 4nm + LPDDR5X (Snapdragon 8 Gen3, Apple M3)
+
+  Changes to compare_architecture_energy.py
+
+  1. Added --product-category option - Selects a market segment for fair comparison
+  2. Added --category-sweep option - Compares all categories side-by-side
+  3. Updated all energy functions to use category-specific profiles
+
+  Key Energy Baseline Differences (per the category sweep output)
+
+  | Category    | CPU ALU (pJ) | GPU Tensor (pJ) | TPU Systolic (pJ) | KPU Domain (pJ) |
+  |-------------|--------------|-----------------|-------------------|-----------------|
+  | datacenter  | 3.58         | 1.10            | 1.04              | 0.98            |
+  | embodied_ai | 1.90         | 1.61            | 1.52              | 1.42            |
+  | edge_ai     | 1.90         | 1.61            | 1.52              | 1.42            |
+  | mobile      | 1.30         | 1.10            | 1.04              | 0.98            |
+
+
+  Refactored the energy comparison framework to properly support your two goals:
+
+  Goal 1: Fair Architecture Comparison (Same Process Node)
+
+  The new ArchitectureComparisonSet class creates profiles for CPU/GPU/TPU/KPU that share:
+  - Same process node (8nm, 4nm, etc.)
+  - Same memory technology (LPDDR5, HBM3, etc.)
+
+  But with architecture-appropriate circuit multipliers:
+
+  | Circuit Type    | Multiplier | Description                                    |
+  |-----------------|------------|------------------------------------------------|
+  | x86_performance | 2.50x      | Intel i7/i9, AMD Ryzen 9 (5GHz, full IEEE-754) |
+  | x86_efficiency  | 1.50x      | Intel E-cores (simpler pipeline)               |
+  | arm_performance | 1.80x      | ARM Cortex-X4, Apple Firestorm                 |
+  | arm_efficiency  | 1.00x      | ARM Cortex-A520 (baseline)                     |
+  | tensor_core     | 0.85x      | GPU Tensor Cores                               |
+  | systolic_mac    | 0.80x      | TPU systolic array                             |
+  | domain_flow     | 0.75x      | KPU domain flow                                |
+
+  Predefined Comparison Sets
+
+  8nm-x86:       8nm + LPDDR5 + x86_performance CPU (i7 NUC-class)
+  8nm-arm:       8nm + LPDDR5 + arm_efficiency CPU (Cortex-A class)
+  4nm-datacenter: 4nm + HBM3 + x86_performance CPU
+  4nm-mobile:    4nm + LPDDR5X + arm_performance CPU
+
+  CLI Usage
+
+  # Fair comparison at 8nm with x86 performance CPU (i7-class)
+  ./cli/compare_architecture_energy.py --arch-comparison 8nm-x86
+
+  # Fair comparison at 8nm with ARM efficiency CPU
+  ./cli/compare_architecture_energy.py --arch-comparison 8nm-arm
+
+  # Custom comparison
+  ./cli/compare_architecture_energy.py --process-node 7 --cpu-type x86_efficiency --memory lpddr5
+
+  # Compare all predefined sets
+  ./cli/compare_architecture_energy.py --comparison-sweep
+
+  Key Results at 8nm (10K ops, 40KB data)
+
+  | Architecture | x86_performance (i7) | arm_efficiency  |
+  |--------------|----------------------|-----------------|
+  | CPU          | 398 nJ (1.00x)       | 162 nJ (1.00x)  |
+  | GPU          | 1.47 uJ (3.70x)      | 1.47 uJ (9.11x) |
+  | TPU          | 109 nJ (0.27x)       | 109 nJ (0.67x)  |
+  | KPU          | 52 nJ (0.13x)        | 52 nJ (0.32x)   |
+
+  The key insight is that the x86 performance CPU uses 2.5x more energy per op than an ARM efficiency core, but the accelerators (TPU, KPU) remain the
+  same since they use specialized circuits regardless of what CPU is in the system.
+
+# RCAing energy differences
+
+  Energy Analysis: TPU vs KPU (108.68 nJ vs 51.73 nJ = 2.1x difference)
+
+  Based on the detailed breakdown, here's the analysis of why KPU shows better energy efficiency than TPU:
+
+  1. Memory Hierarchy Differences (THE DOMINANT FACTOR)
+
+  | Memory Level   | TPU          | KPU          |
+  |----------------|--------------|--------------|
+  | SRAM (on-chip) | 15.0nJ (14%) | 15.0nJ (29%) |
+  | L2 Cache       | -            | 11.9nJ (23%) |
+  | L3 Cache       | -            | 3.8nJ (7%)   |
+  | DRAM           | -            | 984pJ (2%)   |
+  | HBM            | 65.5nJ (60%) | -            |
+
+  Key Finding: TPU's HBM access at 65.5nJ (60% of total) is the dominant energy consumer.
+
+  Your hypothesis is confirmed: TPU's lack of L3 cache creates massive HBM traffic. The KPU's cache hierarchy (L2 + L3) acts as a filter that
+  dramatically reduces off-chip memory accesses:
+  - KPU DRAM energy: 984 pJ (2% of total)
+  - TPU HBM energy: 65.5 nJ (60% of total)
+
+  That's a 66x difference in off-chip memory energy!
+
+  2. Why This Happens Architecturally
+
+  TPU Architecture:
+  - Systolic array feeds directly from on-chip Unified Buffer (SRAM)
+  - When working set exceeds on-chip buffer, it goes straight to HBM
+  - No intermediate cache hierarchy to catch data reuse
+  - HBM energy: 5.5 pJ/byte (from technology profile)
+
+  KPU Architecture:
+  - Domain flow processor has a standard cache hierarchy (L1 → L2 → L3 → DRAM)
+  - L3 cache captures most temporal reuse
+  - Only ~2% of data movement goes to DRAM
+  - LPDDR5 energy: 8.0 pJ/byte, but volume is vastly reduced
+
+  3. Compute Energy Comparison
+
+  The compute units themselves are similar in efficiency:
+  - TPU compute: 15.3 nJ (14%)
+  - KPU compute: 9.6 nJ (18%)
+
+  The difference (1.6x) comes from the circuit multipliers:
+  - systolic_mac: 0.80x base energy
+  - domain_flow: 0.75x base energy
+
+  4. Control Overhead
+
+  Both architectures have minimal control overhead compared to stored-program machines:
+  - TPU control: 1.2 nJ (1%)
+  - KPU configuration: 940 pJ (2%)
+
+  Summary
+
+  The 4x efficiency difference in the original data (202.69 nJ vs 47.55 nJ) and the 2.1x difference in my current run both stem from the same root cause:
+
+  TPU's weight-stationary systolic array architecture trades cache hierarchy for simplicity, but this means:
+  1. All data must be explicitly staged in the Unified Buffer
+  2. Any data not in on-chip SRAM goes directly to HBM
+  3. HBM access energy (even at 5.5 pJ/byte) accumulates quickly
+
+  KPU's domain flow architecture retains a cache hierarchy, which:
+  1. Captures temporal reuse in L3 cache
+  2. Filters DRAM accesses down to ~2% of data movement
+  3. Results in dramatically lower off-chip memory energy
+
+  The architectural lesson: For workloads with temporal reuse patterns, a cache hierarchy is worth its energy cost - it filters out expensive DRAM/HBM
+  accesses. TPU's fixed-function approach assumes the compiler will perfectly tile everything to fit in on-chip buffers, but when that fails, the energy
+  penalty is severe.
+
+# comment
+
+  KPU/Domain Flow Architecture uses software-managed scratchpad hierarchies with EDDO (Explicit Data Distribution and Orchestration), NOT
+  hardware-managed caches.
+
+  The key differences:
+
+  | Aspect          | Cache Hierarchy (CPU)       | EDDO Scratchpad (KPU)          |
+  |-----------------|-----------------------------|--------------------------------|
+  | Management      | Hardware-managed, automatic | Software-managed, explicit     |
+  | Data placement  | Tag-based, reactive         | Compiler-directed, proactive   |
+  | Miss handling   | Hardware stalls, fetches    | No misses - data is pre-staged |
+  | Energy overhead | Tag lookups, coherence      | Zero tag energy, no coherence  |
+  | Predictability  | Variable latency            | Deterministic timing           |
+
+  The energy model showing L2/L3/DRAM entries for KPU is misleading - it's using CPU-style naming but should reflect the EDDO scratchpad tiers. The
+  reason KPU has lower off-chip access energy isn't because of "cache hit rates" - it's because the compiler explicitly orchestrates data movement so
+  that:
+
+  1. Data is pre-fetched into scratchpad before it's needed
+  2. Data reuse is explicitly managed (no speculative caching)
+  3. No tag lookup energy (scratchpads are directly addressed)
+  4. No coherence overhead (single writer, explicit handoff)
+
+  To help me remember this, I should update the architectural energy model's naming and comments to reflect EDDO terminology rather than cache
+  terminology. Would you like me to fix the DomainFlowEnergyModel class to use proper scratchpad/EDDO naming (e.g., scratchpad_l1, scratchpad_l2,
+  streaming_buffer) instead of the misleading cache terminology?
+
+# Labeling KPU data movement as Explicit Data Distribution and Orchestration
+
+ The DomainFlowEnergyModel now shows proper EDDO terminology:
+
+  1. EDDO SCRATCHPAD HIERARCHY (software-managed, NO cache misses):
+    - Tile Scratchpad: 5061925.74 pJ (9011.2 KB @ 0.55 pJ/B)
+    - Global Scratchpad: 224694.86 pJ (256.0 KB @ 0.86 pJ/B)
+    - Streaming Buffer: 16231956.48 pJ (11558.4 KB @ 1.37 pJ/B)
+    - DRAM (via DMA): 94686412.80 pJ (11558.4 KB @ 8.0 pJ/B)
+    - DMA Setup: 16508.57 pJ (2889 transfers)
+  2. EDDO vs CACHE ADVANTAGES:
+    - No tag lookup energy (scratchpads are directly addressed)
+    - No coherence protocol energy (explicit data distribution)
+    - No cache misses (compiler pre-stages all data)
+    - Deterministic timing (no variable miss latencies)
+    - Scratchpad energy is ~40-60% of equivalent cache energy
+
+  The updates have been made to:
+
+  1. /home/stillwater/dev/branes/clones/graphs/src/graphs/hardware/architectural_energy.py - Updated DomainFlowEnergyModel with:
+    - Comprehensive docstring explaining EDDO (Explicit Data Distribution and Orchestration)
+    - Software-managed scratchpad hierarchy (Tile Scratchpad, Global Scratchpad, Streaming Buffer)
+    - Explicit DMA setup modeling
+    - Clear distinction that these are NOT caches (no tags, no coherence, no misses)
+  2. /home/stillwater/dev/branes/clones/graphs/src/graphs/hardware/cycle_energy/base.py - Added new CyclePhase enums:
+    - EDDO_TILE_SCRATCHPAD
+    - EDDO_GLOBAL_SCRATCHPAD
+    - EDDO_STREAMING_BUFFER
+    - EDDO_DMA_SETUP
+  3. /home/stillwater/dev/branes/clones/graphs/src/graphs/hardware/cycle_energy/kpu.py - Updated memory section to use EDDO terminology instead of cache
+  terminology
+  4. /home/stillwater/dev/branes/clones/graphs/cli/compare_architecture_energy.py - Added "KPU EDDO SCRATCHPADS" section to the detailed phase breakdown
+
+# final result
+
+(p311) stillwater@sw-21:~/dev/branes/clones/graphs$ ./cli/compare_architecture_energy.py -h
+usage: compare_architecture_energy.py [-h] [--ops OPS] [--bytes BYTES] [--threads THREADS] [--mode {l1,l2,l3,dram}] [--layers LAYERS]
+                                      [--arch-comparison {8nm-x86,8nm-arm,4nm-datacenter,4nm-mobile}] [--process-node PROCESS_NODE]
+                                      [--cpu-type {x86_performance,x86_efficiency,arm_performance,arm_efficiency}]
+                                      [--memory {lpddr4,lpddr5,lpddr5x,ddr5,hbm3}] [--comparison-sweep]
+                                      [--product-category {datacenter,embodied_ai,edge_ai,mobile}] [--category-sweep] [--verbose] [--diagram] [--sweep]
+                                      [--mode-sweep] [--output OUTPUT]
+
+Compare energy across CPU, GPU, TPU, and KPU architectures
+
+options:
+  -h, --help            show this help message and exit
+  --ops OPS             Number of operations (default: 10000)
+  --bytes BYTES         Bytes transferred (default: 40960)
+  --threads THREADS     GPU concurrent threads (default: 200000)
+  --mode {l1,l2,l3,dram}
+                        Operating mode: l1, l2, l3 (CPU/KPU only), dram (default: dram)
+  --layers LAYERS       Number of neural network layers for KPU (default: 1)
+  --arch-comparison {8nm-x86,8nm-arm,4nm-datacenter,4nm-mobile}, -a {8nm-x86,8nm-arm,4nm-datacenter,4nm-mobile}
+                        Predefined architecture comparison set (8nm-x86, 8nm-arm, 4nm-datacenter, 4nm-mobile)
+  --process-node PROCESS_NODE
+                        Custom process node in nm (requires --cpu-type)
+  --cpu-type {x86_performance,x86_efficiency,arm_performance,arm_efficiency}
+                        CPU circuit type (x86_performance, x86_efficiency, arm_performance, arm_efficiency)
+  --memory {lpddr4,lpddr5,lpddr5x,ddr5,hbm3}
+                        Memory type for custom comparison
+  --comparison-sweep    Compare energy across all predefined comparison sets
+  --product-category {datacenter,embodied_ai,edge_ai,mobile}, -p {datacenter,embodied_ai,edge_ai,mobile}
+                        (DEPRECATED) Use --arch-comparison instead
+  --category-sweep      (DEPRECATED) Use --comparison-sweep instead
+  --verbose, -v         Show detailed phase breakdown
+  --diagram, -d         Show architecture diagrams
+  --sweep               Run scaling sweep across operation counts
+  --mode-sweep          Compare energy across all operating modes
+  --output OUTPUT, -o OUTPUT
+                        Output file (JSON format)
+
+Architecture Comparison Sets (fair comparison at same process node):
+    8nm-x86: 8nm process with x86 performance CPU (i7-class) vs GPU/TPU/KPU
+    8nm-arm: 8nm process with ARM efficiency CPU (Cortex-A class) vs GPU/TPU/KPU
+    4nm-datacenter: 4nm datacenter with x86 performance CPU vs GPU/TPU/KPU
+    4nm-mobile: 4nm mobile with ARM performance CPU vs GPU/TPU/KPU
+
+CPU Circuit Types:
+    x86_performance: 2.50x - Intel i7/i9, AMD Ryzen 9 (5GHz, full IEEE-754)
+    x86_efficiency:  1.50x - Intel E-cores (lower clocks, simpler pipeline)
+    arm_performance: 1.80x - ARM Cortex-X4, Apple Firestorm
+    arm_efficiency:  1.00x - ARM Cortex-A520, Apple Icestorm (baseline)
+
+Examples:
+  # Fair comparison at 8nm with x86 performance CPU
+  compare_architecture_energy.py --arch-comparison 8nm-x86
+
+  # Fair comparison at 8nm with ARM efficiency CPU
+  compare_architecture_energy.py --arch-comparison 8nm-arm
+
+  # Custom comparison: 7nm with x86 efficiency CPU
+  compare_architecture_energy.py --process-node 7 --cpu-type x86_efficiency --memory lpddr5
+
+  # Compare in L1-resident mode (all data on-chip)
+  compare_architecture_energy.py --mode l1 --arch-comparison 8nm-x86
+
+  # Show architecture diagrams
+  compare_architecture_energy.py --diagram
+
+  # Detailed phase breakdown
+  compare_architecture_energy.py --verbose --arch-comparison 4nm-datacenter
+
+  # Operation scaling sweep
+  compare_architecture_energy.py --sweep --arch-comparison 8nm-x86
+
+  # Mode comparison (all modes side-by-side)
+  compare_architecture_energy.py --mode-sweep --arch-comparison 8nm-arm
+
+  # Compare all predefined comparison sets
+  compare_architecture_energy.py --comparison-sweep
+
+  # JSON output
+  compare_architecture_energy.py --output results.json --arch-comparison 8nm-x86
+
+
+
