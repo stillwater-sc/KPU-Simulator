@@ -23,12 +23,14 @@
 
 #include <sw/kpu/isa/data_movement_isa.hpp>
 #include <sw/kpu/isa/program_executor.hpp>
+#include <sw/kpu/isa/concurrent_executor.hpp>
 #include <iostream>
 #include <iomanip>
 #include <chrono>
 
 using namespace sw::kpu::isa;
 using sw::kpu::Size;
+using sw::kpu::Cycle;
 
 // ============================================================================
 // Helper Functions
@@ -318,11 +320,99 @@ void example_tile_size_comparison() {
 }
 
 // ============================================================================
-// Example 4: Output-Stationary Loop Structure Visualization
+// Example 4: Concurrent Resource Execution
+// ============================================================================
+
+void example_concurrent_execution() {
+    print_separator("Example 4: Concurrent Resource Execution");
+
+    std::cout << R"(
+The KPU has multiple hardware resources that execute CONCURRENTLY:
+  - Multiple DMA engines (one per memory channel)
+  - Multiple BlockMovers (L3 -> L2)
+  - Multiple Streamers (L2 -> L1)
+  - Compute fabric (systolic array)
+
+The previous sequential instruction trace is misleading because it doesn't
+show the true parallelism. This example uses the ConcurrentExecutor to
+schedule operations onto resources and visualize their occupancy over time.
+)";
+
+    // Configure a moderate-sized matmul
+    OutputStationaryProgramBuilder::Config config;
+    config.M = 128;
+    config.N = 128;
+    config.K = 128;
+    config.Ti = 32;
+    config.Tj = 32;
+    config.Tk = 32;
+    config.L1_Ki = 16;
+    config.systolic_size = 16;
+    config.element_size = 4;
+
+    config.l3_tile_capacity = 128 * 1024;
+    config.l2_bank_capacity = 64 * 1024;
+    config.l1_buffer_capacity = 32 * 1024;
+    config.num_l3_tiles = 4;
+    config.num_l2_banks = 8;
+    config.num_l1_buffers = 4;
+    config.double_buffer = true;
+
+    OutputStationaryProgramBuilder builder(config);
+    DMProgram program = builder.build();
+
+    std::cout << "\nProgram: " << program.name << "\n";
+    std::cout << "Instructions: " << program.instructions.size() << "\n\n";
+
+    // Configure the hardware resources
+    ResourceConfig hw_config;
+    hw_config.num_memory_channels = 4;   // 4 DMA engines
+    hw_config.num_block_movers = 4;       // 4 block movers
+    hw_config.num_streamers = 4;          // 4 streamers
+    hw_config.dma_bandwidth_gb_s = 50.0;  // 50 GB/s per channel
+    hw_config.block_mover_bandwidth_gb_s = 100.0;
+    hw_config.streamer_bandwidth_gb_s = 200.0;
+
+    std::cout << "Hardware Configuration:\n";
+    std::cout << "  Memory channels: " << (int)hw_config.num_memory_channels
+              << " @ " << hw_config.dma_bandwidth_gb_s << " GB/s each\n";
+    std::cout << "  Block movers:    " << (int)hw_config.num_block_movers
+              << " @ " << hw_config.block_mover_bandwidth_gb_s << " GB/s each\n";
+    std::cout << "  Streamers:       " << (int)hw_config.num_streamers
+              << " @ " << hw_config.streamer_bandwidth_gb_s << " GB/s each\n";
+
+    // Execute with concurrent model
+    ConcurrentExecutor executor(hw_config);
+    Cycle total_cycles = executor.execute(program);
+
+    std::cout << "\nExecution complete in " << total_cycles << " cycles\n";
+
+    // Show utilization stats
+    auto stats = executor.get_utilization();
+    std::cout << "\nResource Utilization:\n";
+    std::cout << "  DMA engines:   " << std::fixed << std::setprecision(1)
+              << (stats.dma_utilization * 100) << "%\n";
+    std::cout << "  Block movers:  " << (stats.block_mover_utilization * 100) << "%\n";
+    std::cout << "  Streamers:     " << (stats.streamer_utilization * 100) << "%\n";
+
+    // Generate timeline visualization
+    std::cout << executor.generate_timeline(100);
+
+    // Generate occupancy table
+    std::cout << executor.generate_cycle_report();
+
+    // Show first few cycles in detail
+    std::cout << "\nDetailed cycle-by-cycle view (first 30 cycles):\n";
+    std::cout << TimelineFormatter::format_cycle_view(
+        executor.get_all_operations(), hw_config, 0, 30);
+}
+
+// ============================================================================
+// Example 5: Output-Stationary Loop Structure Visualization
 // ============================================================================
 
 void example_loop_structure() {
-    print_separator("Example 4: Output-Stationary Loop Structure");
+    print_separator("Example 5: Output-Stationary Loop Structure");
 
     std::cout << R"(
 Output-Stationary Dataflow for MatMul C[M,N] = A[M,K] x B[K,N]:
@@ -416,6 +506,7 @@ testing individual hardware blocks.
     example_small_matmul();
     example_large_matmul_double_buffered();
     example_tile_size_comparison();
+    example_concurrent_execution();
     example_loop_structure();
 
     print_separator("Summary");
@@ -438,6 +529,12 @@ The Data Movement ISA provides:
    - Maps ISA instructions to hardware components
    - Cycle-accurate execution tracking
    - Performance metric collection
+
+4. CONCURRENT EXECUTOR for true parallel execution:
+   - Multiple DMA engines (one per memory channel)
+   - Multiple BlockMovers and Streamers
+   - Resource occupancy visualization
+   - Timeline/Gantt chart generation
 
 Next steps:
   - Implement weight-stationary and input-stationary builders

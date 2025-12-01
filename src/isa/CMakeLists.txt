@@ -5,6 +5,7 @@
 add_library(kpu_isa STATIC
     data_movement_isa.cpp
     program_executor.cpp
+    concurrent_executor.cpp
 )
 
 target_include_directories(kpu_isa PUBLIC

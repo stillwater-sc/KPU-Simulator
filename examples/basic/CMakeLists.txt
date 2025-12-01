@@ -89,3 +89,14 @@ kpu_add_example(config_formatter_demo
 target_link_libraries(example_config_formatter_demo PRIVATE
     StillwaterKPU::System
 )
+
+kpu_add_example(concurrent_execution_debug
+    FOLDER "basic"
+    DESCRIPTION "Debug tool for concurrent execution model"
+    SOURCES concurrent_execution_debug.cpp
+)
+
+# Link concurrent execution debug against ISA library
+target_link_libraries(example_concurrent_execution_debug PRIVATE
+    kpu_isa
+)
