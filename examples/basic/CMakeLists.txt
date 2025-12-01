@@ -41,8 +41,19 @@ kpu_add_example(hello_kpu
 
 kpu_add_example(data_movement_pipeline
     FOLDER "basic"
-    DESCRIPTION "Full data movement pipeline"
+    DESCRIPTION "Full data movement pipeline (direct component API)"
     SOURCES data_movement_pipeline.cpp
+)
+
+kpu_add_example(data_movement_isa_matmul
+    FOLDER "basic"
+    DESCRIPTION "Matrix multiplication using Data Movement ISA"
+    SOURCES data_movement_isa_matmul.cpp
+)
+
+# Link ISA matmul example against ISA library
+target_link_libraries(example_data_movement_isa_matmul PRIVATE
+    kpu_isa
 )
 
 kpu_add_example(matrix_multiply

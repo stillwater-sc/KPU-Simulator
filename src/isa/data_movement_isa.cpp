@@ -29,10 +29,21 @@ DMInstruction DMInstruction::dma_load(MatrixID mat, TileCoord tile, Address ext_
 
     instr.operands = ops;
 
-    // Generate label
-    const char* mat_name = (mat == MatrixID::A) ? "A" : (mat == MatrixID::B) ? "B" : "C";
+    // Generate label using matrix-space tile coordinates:
+    // A[M,K] -> tile[ti,tk], B[K,N] -> tile[tk,tj], C[M,N] -> tile[ti,tj]
     std::ostringstream oss;
-    oss << "DMA_LOAD " << mat_name << "[" << tile.ti << "," << tile.tk << "]";
+    oss << "DMA_LOAD ";
+    switch (mat) {
+        case MatrixID::A:
+            oss << "A_tile[" << tile.ti << "," << tile.tk << "]";
+            break;
+        case MatrixID::B:
+            oss << "B_tile[" << tile.tk << "," << tile.tj << "]";
+            break;
+        case MatrixID::C:
+            oss << "C_tile[" << tile.ti << "," << tile.tj << "]";
+            break;
+    }
     instr.label = oss.str();
 
     return instr;
@@ -63,10 +74,21 @@ DMInstruction DMInstruction::bm_move(MatrixID mat, TileCoord tile,
 
     instr.operands = ops;
 
-    // Generate label
-    const char* mat_name = (mat == MatrixID::A) ? "A" : (mat == MatrixID::B) ? "B" : "C";
+    // Generate label using matrix-space tile coordinates
     std::ostringstream oss;
-    oss << "BM_MOVE " << mat_name << "[" << tile.ti << "," << tile.tk << "] L3→L2";
+    oss << "BM_MOVE ";
+    switch (mat) {
+        case MatrixID::A:
+            oss << "A_tile[" << tile.ti << "," << tile.tk << "]";
+            break;
+        case MatrixID::B:
+            oss << "B_tile[" << tile.tk << "," << tile.tj << "]";
+            break;
+        case MatrixID::C:
+            oss << "C_tile[" << tile.ti << "," << tile.tj << "]";
+            break;
+    }
+    oss << " L3→L2";
     instr.label = oss.str();
 
     return instr;
@@ -93,9 +115,20 @@ DMInstruction DMInstruction::str_feed_rows(MatrixID mat, TileCoord tile,
 
     instr.operands = ops;
 
-    const char* mat_name = (mat == MatrixID::A) ? "A" : (mat == MatrixID::B) ? "B" : "C";
+    // Generate label using matrix-space tile coordinates
     std::ostringstream oss;
-    oss << "STR_ROWS " << mat_name << "[" << tile.ti << "," << tile.tk << "]";
+    oss << "STR_ROWS ";
+    switch (mat) {
+        case MatrixID::A:
+            oss << "A_tile[" << tile.ti << "," << tile.tk << "]";
+            break;
+        case MatrixID::B:
+            oss << "B_tile[" << tile.tk << "," << tile.tj << "]";
+            break;
+        case MatrixID::C:
+            oss << "C_tile[" << tile.ti << "," << tile.tj << "]";
+            break;
+    }
     instr.label = oss.str();
 
     return instr;
@@ -122,9 +155,20 @@ DMInstruction DMInstruction::str_feed_cols(MatrixID mat, TileCoord tile,
 
     instr.operands = ops;
 
-    const char* mat_name = (mat == MatrixID::A) ? "A" : (mat == MatrixID::B) ? "B" : "C";
+    // Generate label using matrix-space tile coordinates
     std::ostringstream oss;
-    oss << "STR_COLS " << mat_name << "[" << tile.tk << "," << tile.tj << "]";
+    oss << "STR_COLS ";
+    switch (mat) {
+        case MatrixID::A:
+            oss << "A_tile[" << tile.ti << "," << tile.tk << "]";
+            break;
+        case MatrixID::B:
+            oss << "B_tile[" << tile.tk << "," << tile.tj << "]";
+            break;
+        case MatrixID::C:
+            oss << "C_tile[" << tile.ti << "," << tile.tj << "]";
+            break;
+    }
     instr.label = oss.str();
 
     return instr;
@@ -151,8 +195,9 @@ DMInstruction DMInstruction::str_drain(TileCoord tile,
 
     instr.operands = ops;
 
+    // C_tile uses [ti, tj] - the output matrix tile coordinates
     std::ostringstream oss;
-    oss << "STR_DRAIN C[" << tile.ti << "," << tile.tj << "]";
+    oss << "STR_DRAIN C_tile[" << tile.ti << "," << tile.tj << "]";
     instr.label = oss.str();
 
     return instr;
@@ -445,8 +490,9 @@ void OutputStationaryProgramBuilder::emit_store_c_tile(DMProgram& prog, TileCoor
     instr.operands = ops;
     instr.instruction_id = next_instruction_id_++;
 
+    // C_tile uses [ti, tj] - the output matrix tile coordinates
     std::ostringstream oss;
-    oss << "DMA_STORE C[" << tile.ti << "," << tile.tj << "]";
+    oss << "DMA_STORE C_tile[" << tile.ti << "," << tile.tj << "]";
     instr.label = oss.str();
 
     prog.instructions.push_back(instr);
