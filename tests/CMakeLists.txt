@@ -53,6 +53,7 @@ add_subdirectory(streamer)
 add_subdirectory(compute)
 add_subdirectory(storage)
 add_subdirectory(compiler)
+add_subdirectory(isa)
 add_subdirectory(integration)
 #add_subdirectory(benchmarks)
 

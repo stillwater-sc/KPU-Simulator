@@ -16,6 +16,9 @@ add_subdirectory(driver)
 # Add compiler components (graph loading, schedule generation)
 add_subdirectory(compiler)
 
+# Add ISA components (Data Movement ISA for Domain Flow Architecture)
+add_subdirectory(isa)
+
 # Keep old memory directory for backward compatibility during transition
 # add_subdirectory(memory)  # Disabled - all components moved to src/components/
 
