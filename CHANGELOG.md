@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - 2025-12-01
+- **Tile Layout Policies for Memory Channel Interleaving**
+  - `include/sw/kpu/isa/tile_layout.hpp` - Four configurable layout policies:
+    - `MATRIX_PARTITIONED`: Dedicates channels to specific matrices (0% conflicts)
+    - `ROUND_ROBIN`: Distributes tiles evenly across all channels (~25% conflicts)
+    - `ITERATION_AWARE`: Places A on even channels, B on odd channels (0% conflicts)
+    - `HARDWARE_INTERLEAVED`: Address bits determine channel selection (realistic HW model)
+  - `src/isa/tile_layout.cpp` - Full implementations with conflict analysis and reports
+  - Factory function `create_tile_layout()` for runtime policy selection
+  - `TileLocation` struct for physical tile placement (channel, address, L3/L2 IDs)
+  - `LayoutConfig` struct with channel assignments and tile dimensions
+
+- **Concurrent Executor Integration with Tile Layout**
+  - Updated `ConcurrentExecutor` to use `TileLayout` for resource selection
+  - `select_dma_channel()` now uses layout policy for conflict-free A/B access
+  - `select_block_mover()` and `select_streamer()` distribute operations across all resources
+  - Automatic layout initialization from program dimensions
+
+- **Realistic Clock Domain and Bandwidth Modeling**
+  - `ResourceConfig` now includes clock frequencies for each domain:
+    - Compute fabric: 2.0 GHz (500 ps cycle time)
+    - L1/L2/Streamer/BlockMover: 500 MHz (2 ns cycle time)
+    - L3/DMA engines: 250 MHz (4 ns cycle time)
+  - Bus widths: 64-byte (512-bit) for cache-line aligned transfers
+  - Derived bandwidths: DMA 16 GB/s, BM 32 GB/s, STR 32 GB/s per resource
+
+- **Enhanced Timeline Visualization**
+  - Clock domain legend with frequencies, cycle times, and bandwidths
+  - Total execution time in nanoseconds and microseconds
+  - Scale information mapping cycles to real time
+  - Aggregate bandwidth display for each resource type
+  - Cycle-by-cycle view header shows time range in nanoseconds
+
+- **Debug and Test Tools**
+  - `examples/basic/tile_layout_test.cpp` - Compares all four layout policies
+  - `examples/basic/concurrent_execution_debug.cpp` - Debug tool for concurrent scheduling
+  - `docs/MEMORY_INTERLEAVING_DESIGN.md` - Design document for layout options
+
+### Changed - 2025-12-01
+- **Fixed Concurrent Resource Utilization**
+  - Previously BM[2], BM[3], STR[2], STR[3] showed 0% utilization
+  - Root cause: Hash-based channel selection caused A and B to collide
+  - Fix: TileLayout ensures A and B tiles are always on different channels
+  - Result: ~46% faster execution, all resources now utilized
+
+- **Updated Default Bandwidths**
+  - DMA: 50 GB/s → 16 GB/s (realistic LPDDR5X x16 @ 250 MHz)
+  - BlockMover: 100 GB/s → 32 GB/s (64-byte bus @ 500 MHz)
+  - Streamer: 200 GB/s → 32 GB/s (64-byte bus @ 500 MHz)
+
 ### Added - 2025-11-26
 - **Domain Flow Execution (DFX) Layer**
   - Created PTX-equivalent hardware-agnostic intermediate representation for KPU
