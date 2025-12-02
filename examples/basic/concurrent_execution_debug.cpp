@@ -2,14 +2,14 @@
  * @file concurrent_execution_debug.cpp
  * @brief Debug example for concurrent resource execution
  *
- * This standalone example is extracted for debugging the concurrent
- * execution model. The current output shows non-sensical schedules:
+ * This tool demonstrates the concurrent execution model with tile layout
+ * policies for conflict-free channel assignment.
  *
- * Issues observed:
- * 1. BM[2], BM[3], STR[2], STR[3] are completely idle (0% utilization)
- * 2. DMA operations show only B and C, rarely A in the timeline
- * 3. The cycle-by-cycle view shows only DMA0 active for first 30 cycles
- * 4. Barriers don't seem to properly sequence operations
+ * Key features:
+ * 1. TileLayout integration ensures A and B tiles are on different channels
+ * 2. All DMA engines, BlockMovers, and Streamers are utilized
+ * 3. Resources are distributed based on the selected layout policy
+ * 4. MATRIX_PARTITIONED layout is used by default (configurable)
  */
 
 #include <sw/kpu/isa/data_movement_isa.hpp>
@@ -159,14 +159,12 @@ void debug_resource_assignment() {
     OutputStationaryProgramBuilder builder(config);
     DMProgram program = builder.build();
 
-    // Configure resources
+    // Configure resources with realistic LPDDR5X bandwidth
     ResourceConfig hw_config;
     hw_config.num_memory_channels = 4;
     hw_config.num_block_movers = 4;
     hw_config.num_streamers = 4;
-    hw_config.dma_bandwidth_gb_s = 50.0;
-    hw_config.block_mover_bandwidth_gb_s = 100.0;
-    hw_config.streamer_bandwidth_gb_s = 200.0;
+    // Use defaults from ResourceConfig (LPDDR5X @ 12.8 GB/s per channel)
 
     ConcurrentExecutor executor(hw_config);
     Cycle total_cycles = executor.execute(program);
@@ -374,13 +372,13 @@ int main() {
            Concurrent Execution Debug Tool
 ================================================================================
 
-This tool analyzes the concurrent execution model to find scheduling issues.
+This tool demonstrates the concurrent execution model with TileLayout policies.
 
-Known problems:
-1. BM[2], BM[3], STR[2], STR[3] show 0% utilization
-2. DMA timeline shows mostly B, rarely A
-3. First 30 cycles show only DMA0 with A, nothing else active
-4. Barriers may not be sequencing operations correctly
+Current behavior (with TileLayout integration):
+1. A and B tiles are assigned to different memory channels (no conflicts)
+2. All DMA engines are utilized for parallel transfers
+3. BlockMovers and Streamers are distributed based on tile location
+4. MATRIX_PARTITIONED layout: A on channels 0,1; B on channels 2,3
 
 ================================================================================
 )";
@@ -390,35 +388,36 @@ Known problems:
     debug_barrier_handling();
     debug_timing_calculation();
 
-    print_separator("Summary of Issues Found");
+    print_separator("Summary: TileLayout Integration");
 
     std::cout << R"(
-Root Cause Analysis:
+The concurrent execution model now uses TileLayout policies for
+conflict-free channel assignment:
 
-1. RESOURCE SELECTION HASH:
-   The select_dma_channel() function uses:
-     hash = matrix * 1000 + ti * 100 + tj * 10 + tk
-   For a 32x32x32 with Ti=Tj=Tk=16, we have tiles [0,0,0], [0,0,1], [0,1,0], etc.
-   - A[0,0]: hash = 0*1000 + 0*100 + 0*10 + 0 = 0 -> DMA[0]
-   - B[0,0]: hash = 1*1000 + 0*100 + 0*10 + 0 = 1000 -> DMA[0] (1000 % 4 = 0)
-   This causes DMA[0] to be overloaded!
+1. CHANNEL ASSIGNMENT (via TileLayout):
+   - MATRIX_PARTITIONED: A on channels {0,1}, B on channels {2,3}
+   - Each tile's channel is determined by the layout policy
+   - A and B tiles for the same iteration are ALWAYS on different channels
 
-2. BLOCK MOVER SELECTION:
-   Uses src_l3_tile_id % num_block_movers
-   But src_l3_tile_id is always 0 in current program generation!
+2. BLOCKMOVER DISTRIBUTION:
+   - Uses tile location's L3 ID to select BlockMover
+   - Spreads operations across all available BlockMovers
 
-3. STREAMER SELECTION:
-   Uses l2_bank_id % num_streamers
-   But l2_bank_id is always 0 in current program generation!
+3. STREAMER DISTRIBUTION:
+   - Uses tile location's L2 bank ID to select Streamer
+   - Spreads operations across all available Streamers
 
 4. BARRIER HANDLING:
-   Barriers wait for all resources, but operations between barriers
-   should run in parallel. Current model may be too sequential.
+   - Operations within a barrier section run concurrently
+   - Barriers synchronize all resources before next section
 
-Fixes needed:
-1. Better resource hashing to distribute load
-2. Program builder should assign varied L3/L2 IDs
-3. Operations between barriers should overlap
+Available Layout Policies (configurable):
+- MATRIX_PARTITIONED: Simple, 0% conflicts, good for initial development
+- ROUND_ROBIN: Even distribution, ~25% conflict rate
+- ITERATION_AWARE: 0% conflicts, A on even channels, B on odd
+- HARDWARE_INTERLEAVED: Address bits select channel, realistic HW model
+
+Run example_tile_layout_test to compare all policies.
 
 )";
 

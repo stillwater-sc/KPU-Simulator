@@ -364,22 +364,27 @@ schedule operations onto resources and visualize their occupancy over time.
     std::cout << "\nProgram: " << program.name << "\n";
     std::cout << "Instructions: " << program.instructions.size() << "\n\n";
 
-    // Configure the hardware resources
+    // Configure the hardware resources with realistic LPDDR5X bandwidth
+    // LPDDR5X at 8533 MT/s with 16-bit channel = ~17 GB/s per channel
+    // But effective bandwidth with protocol overhead is ~12-14 GB/s
+    // Using conservative 12.8 GB/s per channel (x16 LPDDR5X)
     ResourceConfig hw_config;
-    hw_config.num_memory_channels = 4;   // 4 DMA engines
+    hw_config.num_memory_channels = 4;   // 4 DMA engines (one per channel)
     hw_config.num_block_movers = 4;       // 4 block movers
     hw_config.num_streamers = 4;          // 4 streamers
-    hw_config.dma_bandwidth_gb_s = 50.0;  // 50 GB/s per channel
-    hw_config.block_mover_bandwidth_gb_s = 100.0;
-    hw_config.streamer_bandwidth_gb_s = 200.0;
+    hw_config.dma_bandwidth_gb_s = 12.8;  // LPDDR5X x16 channel @ 8533 MT/s
+    hw_config.block_mover_bandwidth_gb_s = 64.0;   // On-chip L3->L2 (faster)
+    hw_config.streamer_bandwidth_gb_s = 128.0;     // On-chip L2->L1 (fastest)
 
     std::cout << "Hardware Configuration:\n";
     std::cout << "  Memory channels: " << (int)hw_config.num_memory_channels
-              << " @ " << hw_config.dma_bandwidth_gb_s << " GB/s each\n";
+              << " x LPDDR5X @ " << hw_config.dma_bandwidth_gb_s << " GB/s each\n";
     std::cout << "  Block movers:    " << (int)hw_config.num_block_movers
-              << " @ " << hw_config.block_mover_bandwidth_gb_s << " GB/s each\n";
+              << " @ " << hw_config.block_mover_bandwidth_gb_s << " GB/s each (L3->L2)\n";
     std::cout << "  Streamers:       " << (int)hw_config.num_streamers
-              << " @ " << hw_config.streamer_bandwidth_gb_s << " GB/s each\n";
+              << " @ " << hw_config.streamer_bandwidth_gb_s << " GB/s each (L2->L1)\n";
+    std::cout << "  Total external BW: " << (hw_config.num_memory_channels * hw_config.dma_bandwidth_gb_s)
+              << " GB/s\n";
 
     // Execute with concurrent model
     ConcurrentExecutor executor(hw_config);
@@ -401,10 +406,13 @@ schedule operations onto resources and visualize their occupancy over time.
     // Generate occupancy table
     std::cout << executor.generate_cycle_report();
 
-    // Show first few cycles in detail
-    std::cout << "\nDetailed cycle-by-cycle view (first 30 cycles):\n";
+    // Show cycle-by-cycle view covering first DMA->BM->STR pipeline
+    // With LPDDR5X bandwidth: 4096 bytes / 12.8 GB/s = 320 cycles for DMA
+    // BM: 4096 / 64 = 64 cycles, STR: 4096 / 128 = 32 cycles
+    // Show first 500 cycles to see full pipeline activity
+    std::cout << "\nDetailed cycle-by-cycle view (first iteration pipeline):\n";
     std::cout << TimelineFormatter::format_cycle_view(
-        executor.get_all_operations(), hw_config, 0, 30);
+        executor.get_all_operations(), hw_config, 0, 500);
 }
 
 // ============================================================================

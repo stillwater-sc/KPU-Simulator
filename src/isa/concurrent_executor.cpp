@@ -19,7 +19,8 @@ ConcurrentExecutor::ConcurrentExecutor(const ResourceConfig& config)
       compute_fabric_(ResourceType::COMPUTE_FABRIC, 0, config.compute_throughput_gflops),
       current_cycle_(0),
       makespan_(0),
-      last_barrier_cycle_(0)
+      last_barrier_cycle_(0),
+      tile_layout_(nullptr)
 {
     // Initialize memory channels with DMA engines
     for (uint8_t i = 0; i < config.num_memory_channels; ++i) {
@@ -39,6 +40,60 @@ ConcurrentExecutor::ConcurrentExecutor(const ResourceConfig& config)
     }
 }
 
+ConcurrentExecutor::ConcurrentExecutor(const ResourceConfig& config,
+                                       std::unique_ptr<TileLayout> layout)
+    : ConcurrentExecutor(config)
+{
+    tile_layout_ = std::move(layout);
+}
+
+void ConcurrentExecutor::set_tile_layout(std::unique_ptr<TileLayout> layout) {
+    tile_layout_ = std::move(layout);
+}
+
+LayoutPolicy ConcurrentExecutor::get_layout_policy() const {
+    if (tile_layout_) {
+        return tile_layout_->policy();
+    }
+    return LayoutPolicy::MATRIX_PARTITIONED;  // Default
+}
+
+void ConcurrentExecutor::initialize_layout_for_program(const DMProgram& program) {
+    // Create layout config from program dimensions
+    LayoutConfig layout_config;
+    layout_config.num_channels = config_.num_memory_channels;
+    layout_config.num_l3_tiles = 4;  // Default
+    layout_config.num_l2_banks = 8;  // Default
+    layout_config.tile_size_bytes = program.Ti * program.Tj * 4;  // Assume float32
+    layout_config.element_size = 4;
+
+    // Calculate tile counts
+    layout_config.m_tiles = (program.M + program.Ti - 1) / program.Ti;
+    layout_config.n_tiles = (program.N + program.Tj - 1) / program.Tj;
+    layout_config.k_tiles = (program.K + program.Tk - 1) / program.Tk;
+
+    // Set up channel assignments for MATRIX_PARTITIONED
+    // A gets half the channels, B gets the other half (or remaining)
+    uint8_t half = config_.num_memory_channels / 2;
+    if (half == 0) half = 1;
+
+    layout_config.matrix_channels.a_channels.clear();
+    layout_config.matrix_channels.b_channels.clear();
+    layout_config.matrix_channels.c_channels.clear();
+
+    for (uint8_t i = 0; i < half; ++i) {
+        layout_config.matrix_channels.a_channels.push_back(i);
+    }
+    for (uint8_t i = half; i < config_.num_memory_channels; ++i) {
+        layout_config.matrix_channels.b_channels.push_back(i);
+    }
+    // C shares channels with A (accessed at different times)
+    layout_config.matrix_channels.c_channels = layout_config.matrix_channels.a_channels;
+
+    // Create the layout - default to MATRIX_PARTITIONED for simplicity
+    tile_layout_ = create_tile_layout(LayoutPolicy::MATRIX_PARTITIONED, layout_config);
+}
+
 Cycle ConcurrentExecutor::execute(const DMProgram& program) {
     // Reset state
     all_ops_.clear();
@@ -46,6 +101,10 @@ Cycle ConcurrentExecutor::execute(const DMProgram& program) {
     current_cycle_ = 0;
     makespan_ = 0;
     last_barrier_cycle_ = 0;
+
+    // Always reinitialize tile layout for the program dimensions
+    // (each program may have different tile counts)
+    initialize_layout_for_program(program);
 
     // Reset all resources
     for (auto& mc : memory_channels_) {
@@ -127,7 +186,7 @@ void ConcurrentExecutor::schedule_instruction(const DMInstruction& instr) {
         case DMOpcode::BM_WRITEBACK_TILE:
         case DMOpcode::BM_RESHAPE_TILE: {
             const auto& ops = std::get<BlockMoverOperands>(instr.operands);
-            uint8_t bm_id = select_block_mover(ops.src_l3_tile_id);
+            uint8_t bm_id = select_block_mover(ops.matrix, ops.tile);
             auto& bm = block_movers_[bm_id];
             completion = bm.schedule_op(earliest, transfer_size,
                                        instr.instruction_id, instr.label,
@@ -141,7 +200,7 @@ void ConcurrentExecutor::schedule_instruction(const DMInstruction& instr) {
         case DMOpcode::STR_BROADCAST_ROW:
         case DMOpcode::STR_BROADCAST_COL: {
             const auto& ops = std::get<StreamerOperands>(instr.operands);
-            uint8_t str_id = select_streamer(ops.l2_bank_id);
+            uint8_t str_id = select_streamer(ops.matrix, ops.tile);
             auto& str = streamers_[str_id];
             completion = str.schedule_op(earliest, transfer_size,
                                         instr.instruction_id, instr.label,
@@ -277,21 +336,36 @@ Cycle ConcurrentExecutor::get_dependency_cycle(const DMInstruction& instr) const
 }
 
 uint8_t ConcurrentExecutor::select_dma_channel(MatrixID matrix, TileCoord tile) const {
-    // Round-robin based on tile coordinates
-    // This spreads load across channels
+    // Use the tile layout to determine channel assignment
+    if (tile_layout_) {
+        return tile_layout_->get_channel(matrix, tile.ti, tile.tj, tile.tk);
+    }
+    // Fallback: round-robin based on tile coordinates (old behavior)
     size_t hash = static_cast<size_t>(matrix) * 1000 +
                   tile.ti * 100 + tile.tj * 10 + tile.tk;
     return static_cast<uint8_t>(hash % config_.num_memory_channels);
 }
 
-uint8_t ConcurrentExecutor::select_block_mover(uint8_t l3_tile_id) const {
-    // Each L3 tile typically has an associated block mover
-    return l3_tile_id % config_.num_block_movers;
+uint8_t ConcurrentExecutor::select_block_mover(MatrixID matrix, TileCoord tile) const {
+    // Use the tile layout to determine L3 tile ID, then map to block mover
+    if (tile_layout_) {
+        auto loc = tile_layout_->get_tile_location(matrix, tile.ti, tile.tj, tile.tk);
+        return loc.l3_tile_id % config_.num_block_movers;
+    }
+    // Fallback: distribute based on tile coordinates
+    size_t idx = static_cast<size_t>(matrix) * 100 + tile.ti * 10 + tile.tk;
+    return static_cast<uint8_t>(idx % config_.num_block_movers);
 }
 
-uint8_t ConcurrentExecutor::select_streamer(uint8_t l2_bank_id) const {
-    // Each L2 bank typically has an associated streamer
-    return l2_bank_id % config_.num_streamers;
+uint8_t ConcurrentExecutor::select_streamer(MatrixID matrix, TileCoord tile) const {
+    // Use the tile layout to determine L2 bank ID, then map to streamer
+    if (tile_layout_) {
+        auto loc = tile_layout_->get_tile_location(matrix, tile.ti, tile.tj, tile.tk);
+        return loc.l2_bank_id % config_.num_streamers;
+    }
+    // Fallback: distribute based on tile coordinates
+    size_t idx = static_cast<size_t>(matrix) * 100 + tile.ti * 10 + tile.tj;
+    return static_cast<uint8_t>(idx % config_.num_streamers);
 }
 
 ConcurrentExecutor::UtilizationStats ConcurrentExecutor::get_utilization() const {

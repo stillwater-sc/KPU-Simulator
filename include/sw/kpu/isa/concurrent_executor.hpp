@@ -15,6 +15,7 @@
 #pragma once
 
 #include <sw/kpu/isa/data_movement_isa.hpp>
+#include <sw/kpu/isa/tile_layout.hpp>
 #include <sw/concepts.hpp>
 #include <vector>
 #include <deque>
@@ -24,6 +25,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <functional>
+#include <memory>
 
 namespace sw::kpu::isa {
 
@@ -164,15 +166,27 @@ struct MemoryChannel {
 
 /**
  * @brief Configuration for system resources
+ *
+ * Default bandwidth values based on LPDDR5X memory:
+ * - LPDDR5X at 8533 MT/s with x16 channel = ~17 GB/s theoretical
+ * - Effective bandwidth with protocol overhead: ~12-14 GB/s
+ * - Using 12.8 GB/s as conservative default per channel
+ *
+ * On-chip bandwidths are much higher:
+ * - L3→L2 (BlockMover): ~64 GB/s per mover (on-chip SRAM)
+ * - L2→L1 (Streamer): ~128 GB/s per streamer (register file feeding)
  */
 struct ResourceConfig {
-    uint8_t num_memory_channels = 4;    // DMA engines
+    uint8_t num_memory_channels = 4;    // DMA engines (one per LPDDR5X channel)
     uint8_t num_block_movers = 4;       // L3→L2 movers
     uint8_t num_streamers = 4;          // L2→L1 streamers
 
-    double dma_bandwidth_gb_s = 50.0;       // Per channel
-    double block_mover_bandwidth_gb_s = 100.0;
-    double streamer_bandwidth_gb_s = 200.0;
+    // External memory bandwidth (LPDDR5X x16 @ 8533 MT/s)
+    double dma_bandwidth_gb_s = 12.8;       // Per channel, conservative
+
+    // On-chip bandwidth (much faster than external)
+    double block_mover_bandwidth_gb_s = 64.0;   // L3 SRAM → L2 SRAM
+    double streamer_bandwidth_gb_s = 128.0;     // L2 → L1 register files
 
     Size systolic_size = 16;            // 16x16 systolic array
     double compute_throughput_gflops = 1000.0;
@@ -186,14 +200,38 @@ struct ResourceConfig {
  * @brief Executes Data Movement programs with true concurrency model
  *
  * This executor:
- * 1. Schedules operations onto available resources
+ * 1. Schedules operations onto available resources using a configurable tile layout
  * 2. Respects data dependencies
  * 3. Tracks resource occupancy over time
  * 4. Generates timeline visualizations
+ *
+ * The tile layout policy determines how tiles are mapped to memory channels,
+ * which directly affects bandwidth utilization and potential conflicts.
  */
 class ConcurrentExecutor {
 public:
+    /**
+     * @brief Construct executor with resource config (uses MATRIX_PARTITIONED layout)
+     */
     explicit ConcurrentExecutor(const ResourceConfig& config);
+
+    /**
+     * @brief Construct executor with explicit tile layout
+     * @param config Hardware resource configuration
+     * @param layout Tile layout policy (takes ownership)
+     */
+    ConcurrentExecutor(const ResourceConfig& config, std::unique_ptr<TileLayout> layout);
+
+    /**
+     * @brief Set the tile layout policy
+     * @param layout New layout policy (takes ownership)
+     */
+    void set_tile_layout(std::unique_ptr<TileLayout> layout);
+
+    /**
+     * @brief Get the current layout policy
+     */
+    LayoutPolicy get_layout_policy() const;
 
     /**
      * @brief Execute a program and collect timing information
@@ -250,6 +288,9 @@ private:
     // Barrier tracking
     Cycle last_barrier_cycle_;
 
+    // Tile layout policy
+    std::unique_ptr<TileLayout> tile_layout_;
+
     // Schedule an instruction onto appropriate resource
     void schedule_instruction(const DMInstruction& instr);
 
@@ -262,10 +303,13 @@ private:
     // Get dependency completion cycle
     Cycle get_dependency_cycle(const DMInstruction& instr) const;
 
-    // Resource allocation strategies
+    // Resource allocation using tile layout
     uint8_t select_dma_channel(MatrixID matrix, TileCoord tile) const;
-    uint8_t select_block_mover(uint8_t l3_tile_id) const;
-    uint8_t select_streamer(uint8_t l2_bank_id) const;
+    uint8_t select_block_mover(MatrixID matrix, TileCoord tile) const;
+    uint8_t select_streamer(MatrixID matrix, TileCoord tile) const;
+
+    // Create default layout config from program dimensions
+    void initialize_layout_for_program(const DMProgram& program);
 };
 
 // ============================================================================

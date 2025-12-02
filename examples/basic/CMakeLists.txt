@@ -100,3 +100,14 @@ kpu_add_example(concurrent_execution_debug
 target_link_libraries(example_concurrent_execution_debug PRIVATE
     kpu_isa
 )
+
+kpu_add_example(tile_layout_test
+    FOLDER "basic"
+    DESCRIPTION "Test and compare tile layout policies"
+    SOURCES tile_layout_test.cpp
+)
+
+# Link tile layout test against ISA library
+target_link_libraries(example_tile_layout_test PRIVATE
+    kpu_isa
+)
