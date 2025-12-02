@@ -167,29 +167,49 @@ struct MemoryChannel {
 /**
  * @brief Configuration for system resources
  *
- * Default bandwidth values based on LPDDR5X memory:
- * - LPDDR5X at 8533 MT/s with x16 channel = ~17 GB/s theoretical
- * - Effective bandwidth with protocol overhead: ~12-14 GB/s
- * - Using 12.8 GB/s as conservative default per channel
+ * Clock Domain Hierarchy:
+ * - Compute fabric (ALUs):     2.0 GHz (500 ps cycle time)
+ * - L1/L2/Streamer/BlockMover: 500 MHz (2 ns cycle time)
+ * - L3/DMA engines:            250 MHz (4 ns cycle time)
  *
- * On-chip bandwidths are much higher:
- * - L3→L2 (BlockMover): ~64 GB/s per mover (on-chip SRAM)
- * - L2→L1 (Streamer): ~128 GB/s per streamer (register file feeding)
+ * Bandwidth Analysis:
+ * - Systolic 16x16 array ingress: 32 elements × 4 bytes × 2 GHz = 256 GB/s
+ * - DMA engine: 64-byte burst per cycle @ 250 MHz = 16 GB/s per channel
+ * - BlockMover: 64-byte per cycle @ 500 MHz = 32 GB/s per mover
+ * - Streamer: 64-byte per cycle @ 500 MHz = 32 GB/s per streamer
+ * - L2 banks: 8 banks × 32 GB/s = 256 GB/s aggregate (matches systolic demand)
+ *
+ * Memory Interface:
+ * - DMA uses 512-bit (64-byte) bus to L3, burst-oriented
+ * - Ring bus topology for contention-free tile movement
  */
 struct ResourceConfig {
-    uint8_t num_memory_channels = 4;    // DMA engines (one per LPDDR5X channel)
+    uint8_t num_memory_channels = 4;    // DMA engines (one per memory channel)
     uint8_t num_block_movers = 4;       // L3→L2 movers
     uint8_t num_streamers = 4;          // L2→L1 streamers
 
-    // External memory bandwidth (LPDDR5X x16 @ 8533 MT/s)
-    double dma_bandwidth_gb_s = 12.8;       // Per channel, conservative
+    // Clock frequencies (MHz)
+    double dma_clock_mhz = 250.0;           // L3/DMA domain
+    double block_mover_clock_mhz = 500.0;   // L2 domain
+    double streamer_clock_mhz = 500.0;      // L1/L2 domain
+    double compute_clock_mhz = 2000.0;      // ALU domain
 
-    // On-chip bandwidth (much faster than external)
-    double block_mover_bandwidth_gb_s = 64.0;   // L3 SRAM → L2 SRAM
-    double streamer_bandwidth_gb_s = 128.0;     // L2 → L1 register files
+    // Bus widths (bytes per cycle)
+    Size dma_bus_width_bytes = 64;          // 512-bit bus, 64-byte cache line
+    Size block_mover_bus_width_bytes = 64;  // 512-bit internal bus
+    Size streamer_bus_width_bytes = 64;     // 512-bit to L1 buffers
 
-    Size systolic_size = 16;            // 16x16 systolic array
-    double compute_throughput_gflops = 1000.0;
+    // Derived bandwidths (GB/s) - computed from clock × bus width
+    // DMA: 64 bytes × 250 MHz = 16 GB/s per channel
+    // BM:  64 bytes × 500 MHz = 32 GB/s per mover
+    // STR: 64 bytes × 500 MHz = 32 GB/s per streamer
+    double dma_bandwidth_gb_s = 16.0;           // Per channel
+    double block_mover_bandwidth_gb_s = 32.0;   // Per mover
+    double streamer_bandwidth_gb_s = 32.0;      // Per streamer
+
+    // Compute fabric
+    Size systolic_size = 16;                // 16x16 systolic array
+    double compute_throughput_gflops = 1024.0;  // 16×16×2×2GHz = 1024 GFLOPS
 };
 
 // ============================================================================

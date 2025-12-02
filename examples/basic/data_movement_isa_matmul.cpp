@@ -364,27 +364,36 @@ schedule operations onto resources and visualize their occupancy over time.
     std::cout << "\nProgram: " << program.name << "\n";
     std::cout << "Instructions: " << program.instructions.size() << "\n\n";
 
-    // Configure the hardware resources with realistic LPDDR5X bandwidth
-    // LPDDR5X at 8533 MT/s with 16-bit channel = ~17 GB/s per channel
-    // But effective bandwidth with protocol overhead is ~12-14 GB/s
-    // Using conservative 12.8 GB/s per channel (x16 LPDDR5X)
-    ResourceConfig hw_config;
-    hw_config.num_memory_channels = 4;   // 4 DMA engines (one per channel)
-    hw_config.num_block_movers = 4;       // 4 block movers
-    hw_config.num_streamers = 4;          // 4 streamers
-    hw_config.dma_bandwidth_gb_s = 12.8;  // LPDDR5X x16 channel @ 8533 MT/s
-    hw_config.block_mover_bandwidth_gb_s = 64.0;   // On-chip L3->L2 (faster)
-    hw_config.streamer_bandwidth_gb_s = 128.0;     // On-chip L2->L1 (fastest)
+    // Configure hardware resources using default ResourceConfig
+    // Clock domains: DMA @ 250 MHz, BM/STR @ 500 MHz, Compute @ 2 GHz
+    // All use 64-byte (512-bit) buses for cache-line aligned transfers
+    ResourceConfig hw_config;  // Uses defaults from ResourceConfig
 
     std::cout << "Hardware Configuration:\n";
-    std::cout << "  Memory channels: " << (int)hw_config.num_memory_channels
-              << " x LPDDR5X @ " << hw_config.dma_bandwidth_gb_s << " GB/s each\n";
-    std::cout << "  Block movers:    " << (int)hw_config.num_block_movers
-              << " @ " << hw_config.block_mover_bandwidth_gb_s << " GB/s each (L3->L2)\n";
-    std::cout << "  Streamers:       " << (int)hw_config.num_streamers
-              << " @ " << hw_config.streamer_bandwidth_gb_s << " GB/s each (L2->L1)\n";
-    std::cout << "  Total external BW: " << (hw_config.num_memory_channels * hw_config.dma_bandwidth_gb_s)
-              << " GB/s\n";
+    std::cout << "\n  Clock Domains:\n";
+    std::cout << "    DMA/L3:     " << hw_config.dma_clock_mhz << " MHz ("
+              << (1000.0 / hw_config.dma_clock_mhz) << " ns/cycle)\n";
+    std::cout << "    BM/L2:      " << hw_config.block_mover_clock_mhz << " MHz ("
+              << (1000.0 / hw_config.block_mover_clock_mhz) << " ns/cycle)\n";
+    std::cout << "    STR/L1:     " << hw_config.streamer_clock_mhz << " MHz ("
+              << (1000.0 / hw_config.streamer_clock_mhz) << " ns/cycle)\n";
+    std::cout << "    Compute:    " << hw_config.compute_clock_mhz << " MHz ("
+              << (1000.0 / hw_config.compute_clock_mhz) << " ns/cycle)\n";
+    std::cout << "\n  Resources:\n";
+    std::cout << "    DMA engines:   " << (int)hw_config.num_memory_channels
+              << " @ " << hw_config.dma_bandwidth_gb_s << " GB/s each ("
+              << hw_config.dma_bus_width_bytes << "-byte bus)\n";
+    std::cout << "    Block movers:  " << (int)hw_config.num_block_movers
+              << " @ " << hw_config.block_mover_bandwidth_gb_s << " GB/s each (L3→L2)\n";
+    std::cout << "    Streamers:     " << (int)hw_config.num_streamers
+              << " @ " << hw_config.streamer_bandwidth_gb_s << " GB/s each (L2→L1)\n";
+    std::cout << "\n  Aggregate Bandwidth:\n";
+    std::cout << "    External:   " << (hw_config.num_memory_channels * hw_config.dma_bandwidth_gb_s)
+              << " GB/s (4 ch × 16 GB/s)\n";
+    std::cout << "    L3→L2:      " << (hw_config.num_block_movers * hw_config.block_mover_bandwidth_gb_s)
+              << " GB/s (4 BM × 32 GB/s)\n";
+    std::cout << "    L2→L1:      " << (hw_config.num_streamers * hw_config.streamer_bandwidth_gb_s)
+              << " GB/s (4 STR × 32 GB/s)\n";
 
     // Execute with concurrent model
     ConcurrentExecutor executor(hw_config);

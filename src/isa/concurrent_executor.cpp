@@ -431,11 +431,39 @@ std::string TimelineFormatter::format_gantt(
     double scale = static_cast<double>(total_cycles) / chart_width;
     if (scale < 1.0) scale = 1.0;
 
+    // Calculate timing in nanoseconds (DMA cycles @ 250 MHz = 4ns per cycle)
+    double dma_cycle_ns = 1000.0 / config.dma_clock_mhz;  // ns per DMA cycle
+    double total_time_ns = total_cycles * dma_cycle_ns;
+    double total_time_us = total_time_ns / 1000.0;
+
     oss << "\n";
     oss << std::string(width, '=') << "\n";
-    oss << "Resource Timeline (1 char = " << std::fixed << std::setprecision(1)
-        << scale << " cycles, total = " << total_cycles << " cycles)\n";
+    oss << "Resource Timeline\n";
     oss << std::string(width, '=') << "\n\n";
+
+    // Clock domain and timing legend
+    oss << "Clock Domains:\n";
+    oss << "  DMA/L3:     " << std::fixed << std::setprecision(0) << config.dma_clock_mhz
+        << " MHz (" << std::setprecision(1) << dma_cycle_ns << " ns/cycle), "
+        << config.dma_bus_width_bytes << "-byte bus = "
+        << std::setprecision(1) << config.dma_bandwidth_gb_s << " GB/s/channel\n";
+    oss << "  BM/L2:      " << std::setprecision(0) << config.block_mover_clock_mhz
+        << " MHz (" << std::setprecision(1) << (1000.0 / config.block_mover_clock_mhz) << " ns/cycle), "
+        << config.block_mover_bus_width_bytes << "-byte bus = "
+        << std::setprecision(1) << config.block_mover_bandwidth_gb_s << " GB/s/mover\n";
+    oss << "  STR/L1:     " << std::setprecision(0) << config.streamer_clock_mhz
+        << " MHz (" << std::setprecision(1) << (1000.0 / config.streamer_clock_mhz) << " ns/cycle), "
+        << config.streamer_bus_width_bytes << "-byte bus = "
+        << std::setprecision(1) << config.streamer_bandwidth_gb_s << " GB/s/streamer\n";
+    oss << "  Compute:    " << std::setprecision(0) << config.compute_clock_mhz
+        << " MHz (" << std::setprecision(2) << (1000.0 / config.compute_clock_mhz) << " ns/cycle), "
+        << config.systolic_size << "x" << config.systolic_size << " systolic array\n\n";
+
+    oss << "Timeline: " << total_cycles << " DMA cycles = "
+        << std::setprecision(1) << total_time_ns << " ns ("
+        << std::setprecision(2) << total_time_us << " µs)\n";
+    oss << "Scale: 1 char = " << std::setprecision(1) << scale << " cycles = "
+        << std::setprecision(1) << (scale * dma_cycle_ns) << " ns\n\n";
 
     // Build occupancy map for each resource
     auto render_resource = [&](ResourceType type, uint8_t index, const std::string& label) {
@@ -473,21 +501,21 @@ std::string TimelineFormatter::format_gantt(
     };
 
     // Render DMA engines
-    oss << "DMA Engines (External Memory ↔ L3):\n";
+    oss << "DMA Engines (Ext Mem ↔ L3) @ " << std::setprecision(0) << config.dma_clock_mhz << " MHz:\n";
     for (uint8_t i = 0; i < config.num_memory_channels; ++i) {
         render_resource(ResourceType::DMA_ENGINE, i, "DMA[" + std::to_string(i) + "]");
     }
     oss << "\n";
 
     // Render Block Movers
-    oss << "Block Movers (L3 ↔ L2):\n";
+    oss << "Block Movers (L3 ↔ L2) @ " << std::setprecision(0) << config.block_mover_clock_mhz << " MHz:\n";
     for (uint8_t i = 0; i < config.num_block_movers; ++i) {
         render_resource(ResourceType::BLOCK_MOVER, i, "BM[" + std::to_string(i) + "]");
     }
     oss << "\n";
 
     // Render Streamers
-    oss << "Streamers (L2 ↔ L1):\n";
+    oss << "Streamers (L2 ↔ L1) @ " << std::setprecision(0) << config.streamer_clock_mhz << " MHz:\n";
     for (uint8_t i = 0; i < config.num_streamers; ++i) {
         render_resource(ResourceType::STREAMER, i, "STR[" + std::to_string(i) + "]");
     }
@@ -510,10 +538,31 @@ std::string TimelineFormatter::format_occupancy_table(
         return oss.str();
     }
 
+    // Calculate timing
+    double dma_cycle_ns = 1000.0 / config.dma_clock_mhz;
+    double total_time_ns = total_cycles * dma_cycle_ns;
+    double total_time_us = total_time_ns / 1000.0;
+
     oss << "\n";
     oss << std::string(80, '=') << "\n";
     oss << "Resource Occupancy Summary\n";
     oss << std::string(80, '=') << "\n\n";
+
+    // Show aggregate bandwidth info
+    double total_dma_bw = config.num_memory_channels * config.dma_bandwidth_gb_s;
+    double total_bm_bw = config.num_block_movers * config.block_mover_bandwidth_gb_s;
+    double total_str_bw = config.num_streamers * config.streamer_bandwidth_gb_s;
+    oss << "Aggregate Bandwidth:\n";
+    oss << std::fixed;
+    oss << "  External (DMA):  " << config.num_memory_channels << " ch × "
+        << std::setprecision(1) << config.dma_bandwidth_gb_s << " GB/s = "
+        << total_dma_bw << " GB/s\n";
+    oss << "  L3→L2 (BM):      " << (int)config.num_block_movers << " movers × "
+        << config.block_mover_bandwidth_gb_s << " GB/s = "
+        << total_bm_bw << " GB/s\n";
+    oss << "  L2→L1 (STR):     " << (int)config.num_streamers << " streamers × "
+        << config.streamer_bandwidth_gb_s << " GB/s = "
+        << total_str_bw << " GB/s\n\n";
 
     // Calculate per-resource statistics
     struct ResourceStats {
@@ -580,7 +629,11 @@ std::string TimelineFormatter::format_occupancy_table(
     print_resource_stats(ResourceType::STREAMER, config.num_streamers, "STR");
 
     oss << "\n" << std::string(54, '-') << "\n";
-    oss << "Total execution cycles: " << total_cycles << "\n";
+    oss << "Total execution: " << total_cycles << " DMA cycles = "
+        << std::setprecision(1) << total_time_ns << " ns ("
+        << std::setprecision(2) << total_time_us << " µs)\n";
+    oss << "DMA cycle time: " << std::setprecision(1) << dma_cycle_ns << " ns (@ "
+        << std::setprecision(0) << config.dma_clock_mhz << " MHz)\n";
 
     return oss.str();
 }
@@ -593,9 +646,17 @@ std::string TimelineFormatter::format_cycle_view(
 {
     std::ostringstream oss;
 
+    double dma_cycle_ns = 1000.0 / config.dma_clock_mhz;
+    double start_ns = start_cycle * dma_cycle_ns;
+    double end_ns = end_cycle * dma_cycle_ns;
+
     oss << "\n";
     oss << std::string(120, '=') << "\n";
-    oss << "Cycle-by-Cycle View (cycles " << start_cycle << " to " << end_cycle << ")\n";
+    oss << "Cycle-by-Cycle View (DMA cycles " << start_cycle << "-" << end_cycle
+        << " = " << std::fixed << std::setprecision(0) << start_ns << "-" << end_ns << " ns)\n";
+    oss << "DMA @ " << config.dma_clock_mhz << " MHz, "
+        << "BM/STR @ " << config.block_mover_clock_mhz << " MHz, "
+        << "Compute @ " << config.compute_clock_mhz << " MHz\n";
     oss << std::string(120, '=') << "\n\n";
 
     // Header
