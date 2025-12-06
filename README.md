@@ -536,6 +536,135 @@ ctest --preset=default --output-on-failure
 # Submit pull request
 ```
 
+# Testing Guide
+
+## Running Tests
+
+### Run All KPU-Simulator Tests (Recommended)
+
+Exclude domain_flow's own tests which may fail independently:
+
+```bash
+# From project root
+ctest --test-dir build -E "^(dsp_|nla_|dfa_|dnn_|ctl_|cnn_)" --output-on-failure
+
+# Or from build directory
+cd build
+ctest -E "^(dsp_|nla_|dfa_|dnn_|ctl_|cnn_)" --output-on-failure
+```
+
+**Result**: 30/30 tests pass ✅
+
+### Run All Tests (Including domain_flow)
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+**Note**: This will include 12 domain_flow tests (tests #1-12) which may fail. These failures are from the external domain_flow library and do not affect KPU-simulator functionality.
+
+### Run Specific Test Suites
+
+```bash
+# Memory tests only
+ctest --test-dir build -R "memory" -V
+
+# DMA tests only
+ctest --test-dir build -R "dma" -V
+
+# Graph loader tests
+ctest --test-dir build -R "graph_loader" -V
+
+# Storage scheduler tests
+ctest --test-dir build -R "storage" -V
+
+# Integration tests
+ctest --test-dir build -R "integration" -V
+```
+
+### Run Single Test
+
+```bash
+ctest --test-dir build -R "test_name" -V
+```
+
+## Test Categories
+
+### KPU-Simulator Tests (30 tests)
+- **System Tests**: Configuration, formatting
+- **Memory Tests**: Allocation, sparse memory, memory map
+- **DMA Tests**: Basic, performance, tensor movement, tracing
+- **Block Mover Tests**: Basic operations, tracing
+- **Streamer Tests**: Basic operations, tracing
+- **Compute Tests**: Basic fabric operations, systolic array
+- **Storage Scheduler Tests**: IDDO, EDDO workflows, performance
+- **Integration Tests**: End-to-end, multi-component, Python bindings
+
+### Domain Flow Tests (12 tests - external)
+These are from the domain_flow library dependency:
+- Tests #1-12: dsp_, nla_, dfa_, dnn_, ctl_, cnn_
+
+**Note**: These tests may fail or not run properly. They test domain_flow functionality, not KPU-simulator.
+
+## CI/CD Integration
+
+### GitHub Actions
+
+Add to `.github/workflows/*.yml`:
+
+```yaml
+- name: Run tests
+  run: |
+    ctest --test-dir build -E "^(dsp_|nla_|dfa_|dnn_|ctl_|cnn_)" --output-on-failure
+```
+
+Or use the exclude pattern file:
+
+```yaml
+- name: Run tests
+  run: |
+    ctest --test-dir build -E "$(cat .github/workflows/test-exclude-pattern.txt)" --output-on-failure
+```
+
+## Test Results Summary
+
+```bash
+# Expected results when excluding domain_flow tests:
+100% tests passed, 0 tests failed out of 30
+
+Total Test time (real) =  ~15 sec
+```
+
+## Troubleshooting
+
+### All Tests Fail
+- Check build succeeded: `cmake --build build`
+- Verify working directory: run from project root or use `--test-dir build`
+
+### Graph Loader Tests Skip
+- Run: `scripts/copy_domain_flow_graphs.sh`
+- This copies .dfg test files from domain_flow dependency
+
+### Python Tests Fail
+- Verify Python bindings built: check for `stillwater_kpu.*.so` in build output
+- Check Python environment matches build (Python 3.12 expected)
+
+### Memory Tests Fail
+- May need larger system memory
+- Some tests validate sparse memory allocation
+
+## Performance Benchmarks
+
+Some tests include performance benchmarks:
+- `dma_performance_test`: DMA throughput
+- `storage_scheduler_performance_test`: EDDO command processing
+- `end_to_end`: Full system performance
+
+Run with:
+```bash
+ctest --test-dir build -R "performance" -V
+```
+
 ## License
 
 This project is released under the MIT License. See LICENSE file for details.
@@ -543,7 +672,7 @@ This project is released under the MIT License. See LICENSE file for details.
 ---
 
 **Stillwater Computing, Inc.**
-*Advancing the state of the art in knowledge processing*
+*Accelerating Innovation (TM)*
 
 **Version:** 0.1.0
 **Build System:** CMake 3.20+ with presets

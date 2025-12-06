@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Quick test script for the address-based DMA API.
 Run this to verify your Python bindings are working.
